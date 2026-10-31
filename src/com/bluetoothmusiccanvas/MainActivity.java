@@ -27,6 +27,7 @@ public class MainActivity extends Activity {
     private WebView mWebView;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private boolean mPageLoaded = false;
+    private AudioVisualizerHelper mVisualizerHelper;
 
     private static String sCachedTitle = "";
     private static String sCachedArtist = "";
@@ -103,6 +104,7 @@ public class MainActivity extends Activity {
                     dispatchBluetoothStatus(MediaMonitorService.getBluetoothInfo(MainActivity.this));
                 }
                 dispatchVolumeChanged();
+                initVisualizer();
             }
         });
 
@@ -216,11 +218,48 @@ public class MainActivity extends Activity {
         hideSystemUI();
     }
 
+    public void initVisualizer() {
+        try {
+            if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, 101);
+                return;
+            }
+            if (mVisualizerHelper == null) {
+                mVisualizerHelper = new AudioVisualizerHelper(new AudioVisualizerHelper.OnWaveDataListener() {
+                    @Override
+                    public void onFftBands(final float b0, final float b1, final float b2, final float b3, final float b4) {
+                        if (mWebView != null && mPageLoaded) {
+                            mWebView.evaluateJavascript("window.onAudioSpectrum && window.onAudioSpectrum("
+                                    + b0 + "," + b1 + "," + b2 + "," + b3 + "," + b4 + ");", null);
+                        }
+                    }
+                });
+            }
+            if (sCachedIsPlaying) {
+                mVisualizerHelper.start();
+            }
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 101 && grantResults != null && grantResults.length > 0
+                && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            initVisualizer();
+        }
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
         if (MediaMonitorService.sInstance != null) {
             MediaMonitorService.sInstance.hideFloatingView();
+        }
+        if (mVisualizerHelper != null && sCachedIsPlaying) {
+            mVisualizerHelper.start();
         }
         hideSystemUI();
     }
@@ -228,6 +267,9 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
+        if (mVisualizerHelper != null) {
+            mVisualizerHelper.stop();
+        }
         if (MediaMonitorService.sInstance != null) {
             MediaMonitorService.sInstance.onUserDismissed();
         }
@@ -237,6 +279,10 @@ public class MainActivity extends Activity {
     protected void onDestroy() {
         super.onDestroy();
         sInstance = null;
+        if (mVisualizerHelper != null) {
+            mVisualizerHelper.stop();
+            mVisualizerHelper = null;
+        }
         try {
             unregisterReceiver(mVolumeReceiver);
         } catch (Exception ignored) {}
@@ -333,8 +379,17 @@ public class MainActivity extends Activity {
     }
 
     public void dispatchPlaybackState(final boolean isPlaying, final long position, final float speed) {
+        boolean stateChanged = (sCachedIsPlaying != isPlaying);
         sCachedIsPlaying = isPlaying;
         sCachedPosition = position;
+
+        if (mVisualizerHelper != null && stateChanged) {
+            if (isPlaying) {
+                mVisualizerHelper.start();
+            } else {
+                mVisualizerHelper.stop();
+            }
+        }
 
         if (!mPageLoaded || mWebView == null) return;
         mHandler.post(new Runnable() {
@@ -346,6 +401,9 @@ public class MainActivity extends Activity {
                     obj.put("position", position);
                     obj.put("speed", speed);
                     mWebView.evaluateJavascript("window.onPlaybackStateChanged && window.onPlaybackStateChanged(" + obj.toString() + ");", null);
+                    if (!isPlaying) {
+                        mWebView.evaluateJavascript("window.onAudioSpectrum && window.onAudioSpectrum(0, 0, 0, 0, 0);", null);
+                    }
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
