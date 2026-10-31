@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="64dp"
+    android:layout_height="64dp"
+    android:background="@android:color/transparent">
+
+    <ImageView
+        android:id="@+id/floatingVinylIcon"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:layout_gravity="center"
+        android:background="@android:drawable/btn_star_big_off"
+        android:src="@android:drawable/ic_media_play"
+        android:tint="#FFFFFF" />
+
+</FrameLayout>
