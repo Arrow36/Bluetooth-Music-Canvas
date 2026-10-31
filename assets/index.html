@@ -289,8 +289,9 @@
             font-family: monospace, -apple-system, sans-serif;
         }
 
-        /* 顶部右侧：简约叉叉图标按钮 */
+        /* 顶部右侧：简约叉叉图标按钮（支持长按3秒充能进度环） */
         .btn-close {
+            position: relative;
             width: 36px;
             height: 36px;
             border-radius: 50%;
@@ -308,7 +309,38 @@
             -webkit-tap-highlight-color: transparent;
         }
 
-        .btn-close svg {
+        .close-ring-svg {
+            position: absolute;
+            top: -3px;
+            left: -3px;
+            width: 42px;
+            height: 42px;
+            transform: rotate(-90deg);
+            pointer-events: none;
+        }
+
+        .close-ring-bg {
+            fill: none;
+            stroke: transparent;
+            stroke-width: 2.4;
+        }
+
+        .close-ring-bar {
+            fill: none;
+            stroke: #ff4b2b;
+            stroke-width: 2.6;
+            stroke-dasharray: 114;
+            stroke-dashoffset: 114;
+            stroke-linecap: round;
+            transition: stroke-dashoffset 0.15s ease-out;
+        }
+
+        .btn-close.pressing .close-ring-bar {
+            stroke-dashoffset: 0;
+            transition: stroke-dashoffset 3s linear;
+        }
+
+        .close-x-icon {
             width: 18px;
             height: 18px;
             stroke: currentColor;
@@ -857,7 +889,7 @@
             margin-left: 2px;
         }
 
-        /* 10秒无操作后自动优雅渐隐顶栏与底栏 */
+        /* 6秒无操作后自动优雅渐隐四个角落的控件与音量条 */
         .top-bar, .bottom-bar {
             transition: opacity 0.8s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
             opacity: 1;
@@ -875,73 +907,148 @@
             transform: translateY(8px);
         }
 
-        /* 右侧屏幕滑动调节音量 HUD 浮层 */
-        .volume-hud {
+        /* 常驻垂直音量控制组件：极简磨砂质感，与右上角关闭按钮宽度相等（36px）、右边距严格对齐（36px） */
+        .volume-widget {
             position: fixed;
-            right: 42px;
+            right: 36px;
             top: 50%;
-            transform: translateY(-50%) scale(0.92);
-            width: 52px;
-            padding: 18px 0;
-            background: rgba(18, 22, 28, 0.94);
-            border: 1px solid rgba(255, 255, 255, 0.16);
-            border-radius: 26px;
+            transform: translateY(-50%);
+            width: 36px;
+            padding: 8px 0 10px 0;
+            box-sizing: border-box;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 18px;
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 12px;
-            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
-            backdrop-filter: blur(24px);
-            opacity: 0;
-            pointer-events: none;
-            z-index: 200;
-            transition: opacity 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            z-index: 60;
+            opacity: 1;
+            transition: opacity 0.8s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
         }
 
-        .volume-hud.show {
+        body.idle .volume-widget {
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(-50%) scale(0.96);
+        }
+
+        /* 手机端按键调整音量时：仅淡入音量条，四个角的控件保持隐藏 */
+        body.idle .volume-widget.force-show {
             opacity: 1;
+            pointer-events: auto;
             transform: translateY(-50%) scale(1);
         }
 
-        .volume-icon {
-            width: 22px;
-            height: 22px;
+        .vol-btn {
+            width: 32px;
+            height: 28px;
+            border: none;
+            background: transparent;
+            color: rgba(255, 255, 255, 0.72);
             display: flex;
             align-items: center;
             justify-content: center;
-            fill: #ffffff;
+            cursor: pointer;
+            outline: none;
+            padding: 0;
+            border-radius: 8px;
+            transition: all 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
         }
 
-        .volume-icon svg {
+        .vol-btn:active {
+            background: rgba(255, 255, 255, 0.12);
+            color: #ffffff;
+            transform: scale(0.88);
+        }
+
+        .vol-btn svg {
+            width: 15px;
+            height: 15px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2.2;
+            stroke-linecap: round;
+            pointer-events: none;
+        }
+
+        .vol-track-container {
             width: 100%;
-            height: 100%;
-            fill: currentColor;
+            padding: 4px 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            pointer-events: none; /* 禁止按到音量条直接跳跃调节 */
         }
 
-        .volume-track {
-            width: 6px;
-            height: 110px;
-            background: rgba(255, 255, 255, 0.14);
-            border-radius: 3px;
+        .vol-track {
+            width: 4px;
+            height: 100px;
+            background: rgba(255, 255, 255, 0.16);
+            border-radius: 2px;
             position: relative;
             overflow: hidden;
+            pointer-events: none;
         }
 
-        .volume-fill {
+        .vol-fill {
             position: absolute;
             bottom: 0;
             left: 0;
             width: 100%;
+            height: 50%;
             background: linear-gradient(to top, #00d2ff, #0072ff);
-            border-radius: 3px;
-            transition: height 0.08s linear;
+            border-radius: 2px;
+            transition: height 0.12s ease-out;
+            pointer-events: none;
         }
 
-        .volume-text {
+        .vol-pct-text {
             font-size: 11px;
-            font-weight: 700;
-            color: rgba(255, 255, 255, 0.9);
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.8);
             font-variant-numeric: tabular-nums;
+            letter-spacing: 0.2px;
+            text-align: center;
+            width: 100%;
+            padding: 4px 0 2px 0;
+            line-height: 1;
+            user-select: none;
+            pointer-events: none;
+        }
+
+        /* 优雅提示小弹窗 */
+        .toast-tip {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0.9);
+            background: rgba(18, 22, 28, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            border-radius: 16px;
+            padding: 14px 24px;
+            color: #ffffff;
+            font-size: 14px;
+            font-weight: 600;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            opacity: 0;
+            pointer-events: none;
+            z-index: 999;
+            transition: opacity 0.25s ease, transform 0.25s ease;
+        }
+
+        .toast-tip.show {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
         }
     </style>
 </head>
@@ -1000,8 +1107,12 @@
                 </div>
             </div>
 
-            <button class="btn-close" onclick="triggerExit(event)" title="返回桌面" aria-label="返回桌面">
-                <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            <button class="btn-close" id="closeBtn" title="短按返回桌面，长按3秒重启App" aria-label="返回桌面">
+                <svg class="close-ring-svg" viewBox="0 0 42 42">
+                    <circle class="close-ring-bg" cx="21" cy="21" r="18" />
+                    <circle class="close-ring-bar" id="closeRingBar" cx="21" cy="21" r="18" />
+                </svg>
+                <svg class="close-x-icon" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
         </div>
 
@@ -1097,16 +1208,24 @@
         </div>
     </div>
 
-    <!-- 右侧屏幕滑动调节音量 HUD 浮层 -->
-    <div class="volume-hud" id="volumeHud">
-        <div class="volume-icon" id="volumeIcon">
-            <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+    <!-- 常驻垂直音量控制组件：左右严格对齐右上角关闭按键、宽度相等（36px） -->
+    <div class="volume-widget" id="volumeWidget">
+        <button class="vol-btn vol-btn-plus" id="volBtnPlus" onclick="handleVolumeStep(1, event)" title="音量增加 (+1%)" aria-label="增加音量">
+            <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        </button>
+        <div class="vol-track-container" id="volTrackContainer">
+            <div class="vol-track">
+                <div class="vol-fill" id="volFill" style="height: 50%;"></div>
+            </div>
         </div>
-        <div class="volume-track">
-            <div class="volume-fill" id="volumeFill" style="height: 50%;"></div>
-        </div>
-        <span class="volume-text" id="volumeText">50%</span>
+        <span class="vol-pct-text" id="volPctText">50%</span>
+        <button class="vol-btn vol-btn-minus" id="volBtnMinus" onclick="handleVolumeStep(-1, event)" title="音量减小 (-1%)" aria-label="减小音量">
+            <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        </button>
     </div>
+
+    <!-- 优雅提示轻弹层 -->
+    <div class="toast-tip" id="toastTip">正在重启应用...</div>
 
     <script>
         // 彻底禁止屏幕拖动引起的 WebView 滚动
@@ -1319,6 +1438,12 @@
             updateStatusTag('车载蓝牙实时歌词', '#4a90e2');
         }
 
+        function getLyricSourceLabel(source) {
+            if (!source) return '官方歌词';
+            if (source.includes('歌词')) return source;
+            return source + '歌词';
+        }
+
         function toggleLyricSource(e) {
             if (e && e.stopPropagation) e.stopPropagation();
             const trackKey = (currentTrack.title + " - " + currentTrack.artist).toLowerCase().trim();
@@ -1329,27 +1454,29 @@
                 userExplicitMode = 'bluetooth';
                 const streamText = currentTrack.streamLyric || (cached && cached.streamLyric) || "当前蓝牙源暂未投送实时单句歌词";
                 showStreamLyric(streamText);
+                updateStatusTag('车载蓝牙歌词', '#4a90e2');
             } else {
                 lyricMode = 'official';
                 userExplicitMode = 'official';
+                const srcName = (cached && cached.lyricSource) || currentTrack.lyricSource || '官方';
+                const label = getLyricSourceLabel(srcName);
                 if (hasOfficialLyrics && parsedOfficialLyrics.length > 0) {
                     renderLyrics(parsedOfficialLyrics);
-                    updateStatusTag('已同步官方歌词', '#1db954');
+                    updateStatusTag(label, '#1db954');
                 } else if (cached && cached.parsedLyrics && cached.parsedLyrics.length > 0) {
                     parsedOfficialLyrics = cached.parsedLyrics;
                     hasOfficialLyrics = true;
                     renderLyrics(parsedOfficialLyrics);
-                    updateStatusTag('已同步官方歌词', '#1db954');
+                    updateStatusTag(label, '#1db954');
                 } else {
                     renderLyrics([]);
-                    updateStatusTag('正在检索官方歌词...', '#f5a623');
+                    updateStatusTag('正在检索' + label + '...', '#f5a623');
                 }
             }
         }
 
         // 接收来自 Java 原生多源高速检索的网络封面与官方歌词 (iTunes, Kugou, LRCLIB)
         window.onOnlineResult = function(data) {
-            console.log("onOnlineResult:", data);
             if (!data) return;
             const trackKey = (currentTrack.title + " - " + currentTrack.artist).toLowerCase().trim();
             if (!songCache[trackKey]) songCache[trackKey] = {};
@@ -1357,6 +1484,10 @@
             if (data.coverUrl) {
                 songCache[trackKey].coverUrl = data.coverUrl;
                 setCoverImage(data.coverUrl);
+            }
+            if (data.lyricSource) {
+                songCache[trackKey].lyricSource = data.lyricSource;
+                currentTrack.lyricSource = data.lyricSource;
             }
             if (data.lyrics) {
                 songCache[trackKey].rawLrc = data.lyrics;
@@ -1368,7 +1499,8 @@
                     if (userExplicitMode !== 'bluetooth') {
                         lyricMode = 'official';
                         renderLyrics(parsed);
-                        updateStatusTag('已同步官方歌词', '#1db954');
+                        const label = getLyricSourceLabel(data.lyricSource || songCache[trackKey].lyricSource);
+                        updateStatusTag(label, '#1db954');
                     }
                     return;
                 }
@@ -1378,12 +1510,11 @@
                 showStreamLyric(currentTrack.streamLyric);
             } else if (!hasOfficialLyrics) {
                 renderLyrics([]);
-                updateStatusTag(currentTrack.streamLyric ? '车载蓝牙歌词' : '无歌词', '#888888');
+                updateStatusTag(currentTrack.streamLyric ? '车载蓝牙歌词' : '暂无歌词', '#888888');
             }
         };
 
         window.onMetadataChanged = function(data) {
-            console.log("Metadata updated:", data);
             if (!data || !data.title) return;
 
             const title = data.title;
@@ -1418,11 +1549,13 @@
                         parsedOfficialLyrics = cached.parsedLyrics;
                         hasOfficialLyrics = true;
                         lyricMode = 'official';
+                        if (cached.lyricSource) currentTrack.lyricSource = cached.lyricSource;
                         renderLyrics(parsedOfficialLyrics);
-                        updateStatusTag('已同步官方歌词', '#1db954');
+                        const label = getLyricSourceLabel(cached.lyricSource);
+                        updateStatusTag(label, '#1db954');
                     }
                 } else {
-                    updateStatusTag('正在匹配官方歌词与封面...', '#f5a623');
+                    updateStatusTag('正在匹配歌词与封面...', '#f5a623');
                 }
             }
 
@@ -1549,120 +1682,226 @@
             if (window.AndroidApp) window.AndroidApp.exitToHome();
         }
 
-        // ===== 10秒无操作自动优雅渐隐顶栏、底栏与返回指示条 =====
+        // ===== 右上角返回桌面叉叉：短按返回桌面，长按3秒重启App =====
+        let closePressTimer = null;
+        let closePressStartTime = 0;
+        let isRestartTriggered = false;
+        const closeBtn = document.getElementById('closeBtn');
+
+        function startClosePress(e) {
+            if (e) {
+                if (e.cancelable && e.type === 'touchstart') e.preventDefault();
+                e.stopPropagation();
+            }
+            if (closePressTimer) return; // 避免 touch 与 pointer 重复触发
+            isRestartTriggered = false;
+            closePressStartTime = performance.now();
+            if (closeBtn) closeBtn.classList.add('pressing');
+
+            clearTimeout(closePressTimer);
+            closePressTimer = setTimeout(function() {
+                isRestartTriggered = true;
+                if (closeBtn) closeBtn.classList.remove('pressing');
+                const toast = document.getElementById('toastTip');
+                if (toast) toast.classList.add('show');
+                if (window.AndroidApp && window.AndroidApp.restartApp) {
+                    window.AndroidApp.restartApp();
+                }
+            }, 3000);
+        }
+
+        function cancelClosePress(e) {
+            if (e) e.stopPropagation();
+            if (!closePressTimer && closePressStartTime === 0) return;
+            clearTimeout(closePressTimer);
+            closePressTimer = null;
+            if (closeBtn) closeBtn.classList.remove('pressing');
+
+            if (isRestartTriggered) return;
+
+            const elapsed = performance.now() - closePressStartTime;
+            if (closePressStartTime > 0 && elapsed < 2500) {
+                triggerExit(e);
+            }
+            closePressStartTime = 0;
+        }
+
+        if (closeBtn) {
+            closeBtn.addEventListener('pointerdown', startClosePress);
+            closeBtn.addEventListener('pointerup', cancelClosePress);
+            closeBtn.addEventListener('pointercancel', cancelClosePress);
+            closeBtn.addEventListener('pointerleave', cancelClosePress);
+            closeBtn.addEventListener('touchstart', startClosePress, { passive: false });
+            closeBtn.addEventListener('touchend', cancelClosePress);
+            closeBtn.addEventListener('touchcancel', cancelClosePress);
+            closeBtn.addEventListener('mousedown', startClosePress);
+            closeBtn.addEventListener('mouseup', cancelClosePress);
+        }
+
+        // ===== 沉浸模式：6秒无操作自动渐隐，支持单击空白处手动切换 =====
+        const IDLE_TIMEOUT_MS = 6000;
         let idleTimer = null;
 
-        function resetIdleTimer() {
-            if (document.body.classList.contains('idle')) {
+        function setIdleState(isIdle) {
+            if (isIdle) {
+                const dropdown = document.getElementById('deviceDropdown');
+                if (dropdown && dropdown.classList.contains('show')) return;
+                document.body.classList.add('idle');
+                clearTimeout(idleTimer);
+                if (window.AndroidApp && window.AndroidApp.onIdleStateChanged) {
+                    window.AndroidApp.onIdleStateChanged(true);
+                }
+            } else {
                 document.body.classList.remove('idle');
                 if (window.AndroidApp && window.AndroidApp.onIdleStateChanged) {
                     window.AndroidApp.onIdleStateChanged(false);
                 }
+                if (window.AndroidApp && window.AndroidApp.onUserInteraction) {
+                    window.AndroidApp.onUserInteraction();
+                }
+                resetIdleTimer();
             }
-            if (window.AndroidApp && window.AndroidApp.onUserInteraction) {
-                window.AndroidApp.onUserInteraction();
-            }
+        }
 
+        function resetIdleTimer() {
             clearTimeout(idleTimer);
             idleTimer = setTimeout(function() {
-                const dropdown = document.getElementById('deviceDropdown');
-                // 如果用户当前打开了详情浮层，暂不触发渐隐
-                if (!dropdown || !dropdown.classList.contains('show')) {
-                    document.body.classList.add('idle');
-                    if (window.AndroidApp && window.AndroidApp.onIdleStateChanged) {
-                        window.AndroidApp.onIdleStateChanged(true);
-                    }
-                } else {
-                    resetIdleTimer();
-                }
-            }, 10000);
+                setIdleState(true);
+            }, IDLE_TIMEOUT_MS);
         }
 
-        ['pointerdown', 'touchstart', 'mousemove', 'click', 'keydown'].forEach(function(evt) {
-            document.addEventListener(evt, resetIdleTimer, { passive: true });
-        });
-        resetIdleTimer();
+        // 单击屏幕手动激活淡出 / 唤醒
+        let tapDownX = 0;
+        let tapDownY = 0;
+        let tapDownTime = 0;
+        let isTapCandidate = false;
+        let lastTapHandledTime = 0;
 
-        // ===== 右侧屏幕滑动调节系统音量交互识别 =====
-        // 映射规则：从屏幕正中间往上滑到顶（约半屏高度 400px）增加 25% 音量
-        let touchStartY = 0;
-        let touchStartX = 0;
-        let touchStartVolume = 50;
-        let isVolumeSwiping = false;
-        let volumeHideTimeout = null;
+        function handleTapStart(x, y) {
+            tapDownX = x;
+            tapDownY = y;
+            tapDownTime = performance.now();
+            isTapCandidate = true;
+        }
 
-        function updateVolumeUI(pct) {
-            const fill = document.getElementById('volumeFill');
-            const text = document.getElementById('volumeText');
-            const icon = document.getElementById('volumeIcon');
-            const hud = document.getElementById('volumeHud');
-            if (fill) fill.style.height = pct + '%';
-            if (text) text.textContent = pct + '%';
-            if (icon) {
-                if (pct === 0) {
-                    icon.innerHTML = '<svg viewBox="0 0 24 24"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>';
-                } else if (pct <= 40) {
-                    icon.innerHTML = '<svg viewBox="0 0 24 24"><path d="M7 9v6h4l5 5V4L11 9H7z"/></svg>';
-                } else {
-                    icon.innerHTML = '<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>';
+        function handleTapEnd(x, y, target) {
+            const now = performance.now();
+            if (now - lastTapHandledTime < 400) {
+                return; // 过滤 pointerup 与 touchend 重复事件
+            }
+            lastTapHandledTime = now;
+
+            const elapsed = now - tapDownTime;
+            const dist = Math.hypot(x - tapDownX, y - tapDownY);
+            const isInteractive = target && target.closest && !!target.closest('button, .btn-ctrl, .vol-btn, .volume-widget, .source-tag, .device-pill, .device-dropdown, #closeBtn');
+
+            if (isTapCandidate && elapsed < 500 && dist < 20) {
+                isTapCandidate = false;
+                if (!isInteractive) {
+                    // 点击空白处 / 歌词 / 唱片区域：手动切换淡出/唤醒
+                    if (document.body.classList.contains('idle')) {
+                        setIdleState(false);
+                    } else {
+                        setIdleState(true);
+                    }
+                    return;
                 }
             }
-            if (hud) hud.classList.add('show');
+
+            // 点击或交互了具体控件
+            if (document.body.classList.contains('idle')) {
+                setIdleState(false);
+            } else {
+                resetIdleTimer();
+            }
         }
 
-        document.addEventListener('touchstart', function(e) {
-            resetIdleTimer();
-            if (e.touches && e.touches.length === 1) {
-                const t = e.touches[0];
-                // 仅识别右侧屏幕（大于屏幕 44% 宽度，即右侧面板视口区）
-                if (t.clientX > window.innerWidth * 0.44) {
-                    touchStartX = t.clientX;
-                    touchStartY = t.clientY;
-                    touchStartVolume = window.AndroidApp && window.AndroidApp.getVolume ? window.AndroidApp.getVolume() : 50;
-                    isVolumeSwiping = false;
+        document.addEventListener('pointerdown', function(e) {
+            handleTapStart(e.clientX, e.clientY);
+        }, { passive: true });
+
+        document.addEventListener('pointermove', function(e) {
+            if (isTapCandidate) {
+                const dist = Math.hypot(e.clientX - tapDownX, e.clientY - tapDownY);
+                if (dist > 20) {
+                    isTapCandidate = false;
+                    if (document.body.classList.contains('idle')) {
+                        setIdleState(false);
+                    } else {
+                        resetIdleTimer();
+                    }
                 }
             }
         }, { passive: true });
 
-        document.addEventListener('touchmove', function(e) {
-            resetIdleTimer();
-            if (e.touches && e.touches.length === 1 && touchStartX > window.innerWidth * 0.44) {
-                const t = e.touches[0];
-                const deltaY = touchStartY - t.clientY; // 往上滑动为正
-                const deltaX = Math.abs(t.clientX - touchStartX);
+        document.addEventListener('pointerup', function(e) {
+            handleTapEnd(e.clientX, e.clientY, e.target);
+        }, { passive: true });
 
-                // 纵向滑动意图识别，过滤微小抖动
-                if (Math.abs(deltaY) > 8 && Math.abs(deltaY) > deltaX) {
-                    isVolumeSwiping = true;
-                    if (e.cancelable) e.preventDefault();
-
-                    // 映射：从正中间往上滑到顶（约半屏高度 400px）增加 25% 音量
-                    const halfHeight = window.innerHeight * 0.5 || 400;
-                    const deltaPct = (deltaY / halfHeight) * 25.0;
-                    const targetPct = Math.max(0, Math.min(100, Math.round(touchStartVolume + deltaPct)));
-
-                    if (window.AndroidApp && window.AndroidApp.setVolumePercent) {
-                        window.AndroidApp.setVolumePercent(targetPct);
-                    }
-                    updateVolumeUI(targetPct);
-
-                    clearTimeout(volumeHideTimeout);
-                }
+        // Fallback for touch devices if PointerEvent doesn't fire
+        document.addEventListener('touchstart', function(e) {
+            if (e.touches && e.touches[0]) {
+                handleTapStart(e.touches[0].clientX, e.touches[0].clientY);
             }
-        }, { passive: false });
+        }, { passive: true });
 
         document.addEventListener('touchend', function(e) {
-            resetIdleTimer();
-            if (isVolumeSwiping) {
-                isVolumeSwiping = false;
-                clearTimeout(volumeHideTimeout);
-                volumeHideTimeout = setTimeout(function() {
-                    const hud = document.getElementById('volumeHud');
-                    if (hud) hud.classList.remove('show');
-                }, 1200);
+            if (e.changedTouches && e.changedTouches[0]) {
+                handleTapEnd(e.changedTouches[0].clientX, e.changedTouches[0].clientY, e.target);
             }
-            touchStartX = 0;
         }, { passive: true });
+
+        resetIdleTimer();
+
+        // ===== 常驻垂直音量控制组件交互与系统联动 =====
+        let currentVolumePct = 50;
+        let volForceTimeout = null;
+
+        function updateVolumeDisplay(pct) {
+            currentVolumePct = Math.max(0, Math.min(100, Math.round(pct)));
+            const fill = document.getElementById('volFill');
+            const text = document.getElementById('volPctText');
+            if (fill) fill.style.height = currentVolumePct + '%';
+            if (text) text.textContent = currentVolumePct + '%';
+        }
+
+        function handleVolumeStep(delta, e) {
+            if (e) {
+                if (e.preventDefault) e.preventDefault();
+                if (e.stopPropagation) e.stopPropagation();
+            }
+            resetIdleTimer();
+            if (window.AndroidApp && window.AndroidApp.changeVolumeBy) {
+                const res = window.AndroidApp.changeVolumeBy(delta);
+                updateVolumeDisplay(res);
+            } else if (window.AndroidApp && window.AndroidApp.setVolumePercent) {
+                const target = Math.max(0, Math.min(100, currentVolumePct + delta));
+                const res = window.AndroidApp.setVolumePercent(target);
+                updateVolumeDisplay(res);
+            } else {
+                updateVolumeDisplay(currentVolumePct + delta);
+            }
+        }
+
+        // 手机端物理按键/蓝牙调整音量时的系统级事件同步：仅淡入音量条，四个角落的控件保持隐藏
+        window.onSystemVolumeChanged = function(newPct) {
+            updateVolumeDisplay(newPct);
+            const widget = document.getElementById('volumeWidget');
+            if (widget) {
+                widget.classList.add('force-show');
+                clearTimeout(volForceTimeout);
+                volForceTimeout = setTimeout(function() {
+                    widget.classList.remove('force-show');
+                }, 3000);
+            }
+        };
+
+        // 页面初始化时拉取当前系统音量
+        if (window.AndroidApp && window.AndroidApp.getVolume) {
+            try {
+                updateVolumeDisplay(window.AndroidApp.getVolume());
+            } catch (err) {}
+        }
     </script>
 </body>
 </html>

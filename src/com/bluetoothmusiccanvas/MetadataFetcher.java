@@ -18,11 +18,13 @@ public class MetadataFetcher {
     public static class CachedMeta {
         public final String coverUrl;
         public final String lyricsLrc;
+        public final String lyricSource;
         public final long timestamp;
 
-        public CachedMeta(String coverUrl, String lyricsLrc) {
+        public CachedMeta(String coverUrl, String lyricsLrc, String lyricSource) {
             this.coverUrl = coverUrl;
             this.lyricsLrc = lyricsLrc;
+            this.lyricSource = lyricSource;
             this.timestamp = System.currentTimeMillis();
         }
     }
@@ -31,7 +33,7 @@ public class MetadataFetcher {
             new java.util.concurrent.ConcurrentHashMap<>();
 
     public interface Callback {
-        void onResult(String coverUrl, String lyricsLrc);
+        void onResult(String coverUrl, String lyricsLrc, String lyricSource);
     }
 
     public static CachedMeta getCached(String rawTitle, String rawArtist) {
@@ -46,8 +48,8 @@ public class MetadataFetcher {
 
         if (!key.isEmpty() && sCache.containsKey(key)) {
             CachedMeta cached = sCache.get(key);
-            Log.i(TAG, "Instant cache hit for key: [" + key + "]");
-            callback.onResult(cached.coverUrl, cached.lyricsLrc);
+            Log.i(TAG, "Instant cache hit for key: [" + key + "], source: " + cached.lyricSource);
+            callback.onResult(cached.coverUrl, cached.lyricsLrc, cached.lyricSource);
             return;
         }
 
@@ -58,6 +60,7 @@ public class MetadataFetcher {
 
                 String coverUrl = null;
                 String lyricsLrc = null;
+                String lyricSource = "";
 
                 // 1. Fetch Cover: iTunes (Fastest, highest resolution 600x600)
                 try {
@@ -66,34 +69,88 @@ public class MetadataFetcher {
                     Log.w(TAG, "iTunes cover search failed: " + e.getMessage());
                 }
 
-                // 2. Fetch Lyrics: LRCLIB (Direct synced LRC)
-                try {
-                    lyricsLrc = fetchLyricsFromLRCLIB(title, artist);
-                } catch (Exception e) {
-                    Log.w(TAG, "LRCLIB lyrics search failed: " + e.getMessage());
-                }
-
-                // 3. Fallback to Kugou if either cover or lyrics is missing
-                if (coverUrl == null || lyricsLrc == null) {
-                    try {
-                        String[] kugouResult = fetchFromKugou(title, artist, coverUrl == null, lyricsLrc == null);
-                        if (coverUrl == null && kugouResult[0] != null) {
-                            coverUrl = kugouResult[0];
-                        }
-                        if (lyricsLrc == null && kugouResult[1] != null) {
-                            lyricsLrc = kugouResult[1];
-                        }
-                    } catch (Exception e) {
-                        Log.w(TAG, "Kugou fallback failed: " + e.getMessage());
+                // 判断是否包含中文字符，决定优先检索 Kugou 还是 LRCLIB
+                boolean hasChinese = false;
+                for (char c : title.toCharArray()) {
+                    Character.UnicodeBlock ub = Character.UnicodeBlock.of(c);
+                    if (ub == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS
+                            || ub == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
+                            || ub == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A) {
+                        hasChinese = true;
+                        break;
                     }
                 }
 
-                if (!key.isEmpty() && (coverUrl != null || lyricsLrc != null)) {
-                    sCache.put(key, new CachedMeta(coverUrl, lyricsLrc));
+                if (hasChinese) {
+                    // 中文歌曲优先检索酷狗音乐
+                    try {
+                        String[] kugouRes = fetchFromKugou(title, artist, coverUrl == null, true);
+                        if (coverUrl == null && kugouRes[0] != null) {
+                            coverUrl = kugouRes[0];
+                        }
+                        if (kugouRes[1] != null && !kugouRes[1].isEmpty()) {
+                            lyricsLrc = kugouRes[1];
+                            lyricSource = "酷狗音乐";
+                        }
+                    } catch (Exception e) {
+                        Log.w(TAG, "Kugou search failed: " + e.getMessage());
+                    }
+
+                    // 备选 LRCLIB
+                    if (lyricsLrc == null) {
+                        try {
+                            lyricsLrc = fetchLyricsFromLRCLIB(title, artist);
+                            if (lyricsLrc != null && !lyricsLrc.isEmpty()) {
+                                lyricSource = "LRCLIB";
+                            }
+                        } catch (Exception e) {
+                            Log.w(TAG, "LRCLIB fallback failed: " + e.getMessage());
+                        }
+                    }
+                } else {
+                    // 外文歌曲优先检索 LRCLIB
+                    try {
+                        lyricsLrc = fetchLyricsFromLRCLIB(title, artist);
+                        if (lyricsLrc != null && !lyricsLrc.isEmpty()) {
+                            lyricSource = "LRCLIB";
+                        }
+                    } catch (Exception e) {
+                        Log.w(TAG, "LRCLIB search failed: " + e.getMessage());
+                    }
+
+                    // 备选酷狗
+                    if (coverUrl == null || lyricsLrc == null) {
+                        try {
+                            String[] kugouRes = fetchFromKugou(title, artist, coverUrl == null, lyricsLrc == null);
+                            if (coverUrl == null && kugouRes[0] != null) {
+                                coverUrl = kugouRes[0];
+                            }
+                            if (lyricsLrc == null && kugouRes[1] != null && !kugouRes[1].isEmpty()) {
+                                lyricsLrc = kugouRes[1];
+                                lyricSource = "酷狗音乐";
+                            }
+                        } catch (Exception e) {
+                            Log.w(TAG, "Kugou fallback failed: " + e.getMessage());
+                        }
+                    }
                 }
 
-                Log.i(TAG, "Metadata fetch complete. Cover found=" + (coverUrl != null) + ", Lyrics found=" + (lyricsLrc != null));
-                callback.onResult(coverUrl, lyricsLrc);
+                // 若仍未获取到封面，尝试从酷狗补全
+                if (coverUrl == null) {
+                    try {
+                        String[] kugouRes = fetchFromKugou(title, artist, true, false);
+                        if (kugouRes[0] != null) {
+                            coverUrl = kugouRes[0];
+                        }
+                    } catch (Exception ignored) {}
+                }
+
+                if (!key.isEmpty() && (coverUrl != null || lyricsLrc != null)) {
+                    sCache.put(key, new CachedMeta(coverUrl, lyricsLrc, lyricSource));
+                }
+
+                Log.i(TAG, "Metadata fetch complete. Cover found=" + (coverUrl != null) + ", Lyrics found=" + (lyricsLrc != null) + " (" + lyricSource + ")");
+                callback.onResult(coverUrl, lyricsLrc, lyricSource);
             }
         }).start();
     }

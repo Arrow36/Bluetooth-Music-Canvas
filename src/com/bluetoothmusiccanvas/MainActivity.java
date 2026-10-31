@@ -1,13 +1,18 @@
 package com.bluetoothmusiccanvas;
 
 import android.app.Activity;
+import android.app.AlarmManager;
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
-import android.graphics.PixelFormat;
-import android.os.Build;
+import android.content.IntentFilter;
+import android.database.ContentObserver;
+import android.media.AudioManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.view.Gravity;
+import android.provider.Settings;
 import android.view.View;
 import android.view.WindowManager;
 import android.webkit.WebChromeClient;
@@ -30,9 +35,19 @@ public class MainActivity extends Activity {
     private static String sCachedStreamLyric = "";
     private static String sCachedCoverUrl = "";
     private static String sCachedLyrics = "";
+    private static String sCachedLyricSource = "";
     private static boolean sCachedIsPlaying = false;
     private static long sCachedPosition = 0;
     private static String sLastFetchedKey = "";
+
+    private final BroadcastReceiver mVolumeReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            dispatchVolumeChanged();
+        }
+    };
+
+    private ContentObserver mVolumeObserver;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -78,7 +93,7 @@ public class MainActivity extends Activity {
                 if (!sCachedTitle.isEmpty()) {
                     dispatchMetadata(sCachedTitle, sCachedArtist, sCachedAlbum, sCachedDuration, sCachedStreamLyric);
                     if (!sCachedCoverUrl.isEmpty() || !sCachedLyrics.isEmpty()) {
-                        dispatchOnlineResult(sCachedCoverUrl, sCachedLyrics);
+                        dispatchOnlineResult(sCachedCoverUrl, sCachedLyrics, sCachedLyricSource);
                     }
                     dispatchPlaybackState(sCachedIsPlaying, sCachedPosition, 1.0f);
                 }
@@ -87,77 +102,107 @@ public class MainActivity extends Activity {
                 } else {
                     dispatchBluetoothStatus(MediaMonitorService.getBluetoothInfo(MainActivity.this));
                 }
+                dispatchVolumeChanged();
             }
         });
 
+        // Register volume listeners to sync phone physical volume presses
+        try {
+            IntentFilter vf = new IntentFilter("android.media.VOLUME_CHANGED_ACTION");
+            registerReceiver(mVolumeReceiver, vf);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        try {
+            mVolumeObserver = new ContentObserver(mHandler) {
+                @Override
+                public void onChange(boolean selfChange) {
+                    super.onChange(selfChange);
+                    dispatchVolumeChanged();
+                }
+            };
+            getContentResolver().registerContentObserver(
+                    Settings.System.CONTENT_URI, true, mVolumeObserver);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
         mWebView.loadUrl("file:///android_asset/index.html");
-        initEdgeCover();
     }
 
-    private View mEdgeCoverView = null;
-    private WindowManager mCoverWindowManager = null;
-
-    private void initEdgeCover() {
+    public void dispatchVolumeChanged() {
+        if (!mPageLoaded || mWebView == null) return;
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !android.provider.Settings.canDrawOverlays(this)) {
-                return;
-            }
-            mEdgeCoverView = new View(this);
-            android.graphics.drawable.GradientDrawable gd = new android.graphics.drawable.GradientDrawable();
-            gd.setColor(0xFF0B0D10);
-            gd.setCornerRadii(new float[]{0, 0, 16, 16, 16, 16, 0, 0});
-            mEdgeCoverView.setBackground(gd);
-            mEdgeCoverView.setAlpha(0.0f);
-
-            int layoutType = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-                    ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                    : WindowManager.LayoutParams.TYPE_PHONE;
-
-            WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
-                    (int) (18 * getResources().getDisplayMetrics().density),
-                    (int) (110 * getResources().getDisplayMetrics().density),
-                    layoutType,
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                            | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-                            | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                    PixelFormat.TRANSLUCENT
-            );
-            lp.gravity = Gravity.START | Gravity.CENTER_VERTICAL;
-            lp.x = 0;
-            lp.y = 0;
-
-            mCoverWindowManager = (WindowManager) getApplicationContext().getSystemService(WINDOW_SERVICE);
-            if (mCoverWindowManager != null) {
-                mCoverWindowManager.addView(mEdgeCoverView, lp);
+            AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
+            if (am != null) {
+                int max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                int cur = am.getStreamVolume(AudioManager.STREAM_MUSIC);
+                final int pct = max > 0 ? Math.round((cur * 100.0f) / max) : cur;
+                mHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (mWebView != null && mPageLoaded) {
+                            mWebView.evaluateJavascript("window.onSystemVolumeChanged && window.onSystemVolumeChanged(" + pct + ");", null);
+                        }
+                    }
+                });
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    public void onIdleStateChanged(final boolean isIdle) {
-        mHandler.post(new Runnable() {
+    public int changeVolumeBy(int deltaPercent) {
+        try {
+            AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
+            if (am != null) {
+                int max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                int cur = am.getStreamVolume(AudioManager.STREAM_MUSIC);
+                int step = Math.round((deltaPercent / 100.0f) * max);
+                if (step == 0 && deltaPercent > 0) step = 1;
+                if (step == 0 && deltaPercent < 0) step = -1;
+                int target = Math.max(0, Math.min(max, cur + step));
+                am.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0);
+                return max > 0 ? Math.round((target * 100.0f) / max) : target;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return 50;
+    }
+
+    public void restartApp() {
+        runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                if (mEdgeCoverView != null) {
-                    mEdgeCoverView.animate()
-                            .alpha(isIdle ? 1.0f : 0.0f)
-                            .setDuration(isIdle ? 800 : 200)
-                            .start();
+                try {
+                    Context ctx = getApplicationContext();
+                    Intent intent = ctx.getPackageManager().getLaunchIntentForPackage(ctx.getPackageName());
+                    if (intent != null) {
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                        PendingIntent restartIntent = PendingIntent.getActivity(
+                                ctx, 0, intent, PendingIntent.FLAG_CANCEL_CURRENT);
+                        AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
+                        if (am != null) {
+                            am.set(AlarmManager.RTC, System.currentTimeMillis() + 400, restartIntent);
+                        }
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
                 }
+                finishAffinity();
+                System.exit(0);
             }
         });
     }
 
+    public void onIdleStateChanged(final boolean isIdle) {
+        // App-level idle callback hook
+    }
+
     public void onUserInteraction() {
-        mHandler.post(new Runnable() {
-            @Override
-            public void run() {
-                if (mEdgeCoverView != null && mEdgeCoverView.getAlpha() > 0.0f) {
-                    mEdgeCoverView.animate().alpha(0.0f).setDuration(200).start();
-                }
-            }
-        });
+        // App-level user interaction callback hook
     }
 
     @Override
@@ -192,14 +237,17 @@ public class MainActivity extends Activity {
     protected void onDestroy() {
         super.onDestroy();
         sInstance = null;
+        try {
+            unregisterReceiver(mVolumeReceiver);
+        } catch (Exception ignored) {}
+        if (mVolumeObserver != null) {
+            try {
+                getContentResolver().unregisterContentObserver(mVolumeObserver);
+            } catch (Exception ignored) {}
+            mVolumeObserver = null;
+        }
         if (mWebView != null) {
             mWebView.destroy();
-        }
-        if (mEdgeCoverView != null && mCoverWindowManager != null) {
-            try {
-                mCoverWindowManager.removeView(mEdgeCoverView);
-            } catch (Exception ignored) {}
-            mEdgeCoverView = null;
         }
     }
 
@@ -219,7 +267,7 @@ public class MainActivity extends Activity {
                 | View.SYSTEM_UI_FLAG_FULLSCREEN);
     }
 
-    private void dispatchOnlineResult(final String coverUrl, final String lyricsLrc) {
+    private void dispatchOnlineResult(final String coverUrl, final String lyricsLrc, final String lyricSource) {
         mHandler.post(new Runnable() {
             @Override
             public void run() {
@@ -228,6 +276,7 @@ public class MainActivity extends Activity {
                         JSONObject obj = new JSONObject();
                         obj.put("coverUrl", coverUrl != null ? coverUrl : "");
                         obj.put("lyrics", lyricsLrc != null ? lyricsLrc : "");
+                        obj.put("lyricSource", lyricSource != null ? lyricSource : "");
                         mWebView.evaluateJavascript("window.onOnlineResult && window.onOnlineResult(" + obj.toString() + ");", null);
                     } catch (Exception e) {
                         e.printStackTrace();
@@ -249,15 +298,17 @@ public class MainActivity extends Activity {
         if (cached != null && (cached.coverUrl != null || cached.lyricsLrc != null)) {
             sCachedCoverUrl = cached.coverUrl != null ? cached.coverUrl : "";
             sCachedLyrics = cached.lyricsLrc != null ? cached.lyricsLrc : "";
-            dispatchOnlineResult(sCachedCoverUrl, sCachedLyrics);
+            sCachedLyricSource = cached.lyricSource != null ? cached.lyricSource : "";
+            dispatchOnlineResult(sCachedCoverUrl, sCachedLyrics, sCachedLyricSource);
         } else if (!key.isEmpty() && (!key.equals(sLastFetchedKey) || (sCachedCoverUrl.isEmpty() && sCachedLyrics.isEmpty()))) {
             sLastFetchedKey = key;
             MetadataFetcher.fetch(title, artist, new MetadataFetcher.Callback() {
                 @Override
-                public void onResult(final String coverUrl, final String lyricsLrc) {
+                public void onResult(final String coverUrl, final String lyricsLrc, final String lyricSource) {
                     sCachedCoverUrl = coverUrl != null ? coverUrl : "";
                     sCachedLyrics = lyricsLrc != null ? lyricsLrc : "";
-                    dispatchOnlineResult(sCachedCoverUrl, sCachedLyrics);
+                    sCachedLyricSource = lyricSource != null ? lyricSource : "";
+                    dispatchOnlineResult(sCachedCoverUrl, sCachedLyrics, sCachedLyricSource);
                 }
             });
         }

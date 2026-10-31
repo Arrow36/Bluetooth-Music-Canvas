@@ -65,6 +65,16 @@ public class WebAppInterface {
     }
 
     @JavascriptInterface
+    public int changeVolumeBy(int deltaPercent) {
+        return mActivity.changeVolumeBy(deltaPercent);
+    }
+
+    @JavascriptInterface
+    public void restartApp() {
+        mActivity.restartApp();
+    }
+
+    @JavascriptInterface
     public void onIdleStateChanged(boolean isIdle) {
         mActivity.onIdleStateChanged(isIdle);
     }

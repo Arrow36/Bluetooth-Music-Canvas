@@ -318,7 +318,7 @@ public class MediaMonitorService extends NotificationListenerService {
                 mLastFetchedCoverKey = key;
                 MetadataFetcher.fetch(mRealTitle, mRealArtist, new MetadataFetcher.Callback() {
                     @Override
-                    public void onResult(final String coverUrl, final String lyricsLrc) {
+                    public void onResult(final String coverUrl, final String lyricsLrc, final String lyricSource) {
                         if (coverUrl != null && !coverUrl.isEmpty()) {
                             new Thread(new Runnable() {
                                 @Override
