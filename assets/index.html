@@ -75,13 +75,262 @@
             background: radial-gradient(circle at 35% 50%, rgba(15, 18, 24, 0.15) 0%, rgba(11, 13, 16, 0.72) 100%);
         }
 
+        /* 全屏容器：网格式纵向布局 */
         .container {
             position: relative;
             z-index: 2;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 18px 36px 16px 36px;
+            box-sizing: border-box;
+        }
+
+        /* 顶部全宽栏：左上角设备电量胶囊，右上角退出按钮 */
+        .top-bar {
+            width: 100%;
+            height: 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+            z-index: 60;
+            flex-shrink: 0;
+        }
+
+        /* 设备电量胶囊与浮层容器 */
+        .device-card-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+
+        .device-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            height: 34px;
+            padding: 0 14px;
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 17px;
+            color: rgba(255, 255, 255, 0.85);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            backdrop-filter: blur(16px);
+            transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+            outline: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .device-pill:active, .device-pill.active {
+            background: rgba(255, 255, 255, 0.16);
+            border-color: rgba(255, 255, 255, 0.3);
+            color: #ffffff;
+            transform: scale(0.97);
+        }
+
+        .device-pill * {
+            pointer-events: none;
+        }
+
+        .device-bt-icon {
+            width: 13px;
+            height: 13px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            fill: #00d2ff;
+            flex-shrink: 0;
+        }
+
+        .device-bt-icon svg {
             width: 100%;
             height: 100%;
+            fill: currentColor;
+        }
+
+        .battery-widget {
             display: flex;
-            padding: 24px 36px;
+            align-items: center;
+            position: relative;
+        }
+
+        .battery-shell {
+            width: 22px;
+            height: 11px;
+            border: 1.5px solid rgba(255, 255, 255, 0.8);
+            border-radius: 3px;
+            padding: 1.5px;
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+        }
+
+        .battery-level-bar {
+            height: 100%;
+            width: 85%;
+            background: #1db954;
+            border-radius: 1px;
+            transition: width 0.3s ease, background 0.3s ease;
+        }
+
+        .battery-tip {
+            width: 2px;
+            height: 5px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 0 1px 1px 0;
+            margin-left: 1px;
+        }
+
+        .battery-pct-text {
+            font-variant-numeric: tabular-nums;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+            color: rgba(255, 255, 255, 0.85);
+        }
+
+        /* 展开的详情浮层卡片 */
+        .device-dropdown {
+            position: absolute;
+            top: calc(100% + 10px);
+            left: 0;
+            width: 280px;
+            background: rgba(18, 22, 28, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            border-radius: 18px;
+            padding: 16px 18px;
+            box-sizing: border-box;
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.06);
+            backdrop-filter: blur(28px);
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(-8px) scale(0.96);
+            transition: opacity 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+            z-index: 200;
+        }
+
+        .device-dropdown.show {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateY(0) scale(1);
+        }
+
+        .device-dropdown-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            margin-bottom: 12px;
+        }
+
+        .device-name-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            overflow: hidden;
+        }
+
+        .device-status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #1db954;
+            box-shadow: 0 0 8px #1db954;
+            flex-shrink: 0;
+        }
+
+        .device-name {
+            font-size: 15px;
+            font-weight: 700;
+            color: #ffffff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .device-status-badge {
+            font-size: 11px;
+            color: #1db954;
+            background: rgba(29, 185, 84, 0.12);
+            border: 1px solid rgba(29, 185, 84, 0.3);
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .device-dropdown-body {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .spec-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+        }
+
+        .spec-label {
+            color: rgba(255, 255, 255, 0.5);
+            font-weight: 400;
+        }
+
+        .spec-val-text {
+            color: rgba(255, 255, 255, 0.88);
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            font-family: monospace, -apple-system, sans-serif;
+        }
+
+        /* 顶部右侧：简约叉叉图标按钮 */
+        .btn-close {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            color: rgba(255, 255, 255, 0.75);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+            outline: none;
+            padding: 0;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .btn-close svg {
+            width: 18px;
+            height: 18px;
+            stroke: currentColor;
+            stroke-width: 2.2;
+            stroke-linecap: round;
+            fill: none;
+            pointer-events: none;
+        }
+
+        .btn-close:active {
+            background: rgba(255, 255, 255, 0.25);
+            color: #ffffff;
+            transform: scale(0.92);
+        }
+
+        /* 中部主体双栏区 */
+        .main-body {
+            flex: 1;
+            width: 100%;
+            display: flex;
+            min-height: 0;
+            overflow: hidden;
         }
 
         /* 左侧面板：黑胶唱机与播控一体化高阶设计 */
@@ -94,13 +343,13 @@
             align-items: center;
             padding-right: 36px;
             border-right: 1px solid rgba(255, 255, 255, 0.07);
-            gap: 22px;
+            gap: 20px;
         }
 
         .turntable-container {
             position: relative;
-            width: 290px;
-            height: 290px;
+            width: 280px;
+            height: 280px;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -108,8 +357,8 @@
         }
 
         .vinyl-record {
-            width: 270px;
-            height: 270px;
+            width: 260px;
+            height: 260px;
             border-radius: 50%;
             background:
                 radial-gradient(circle, transparent 36%, rgba(255, 255, 255, 0.04) 37%, transparent 38%),
@@ -145,8 +394,8 @@
 
         .vinyl-cover {
             position: relative;
-            width: 156px;
-            height: 156px;
+            width: 150px;
+            height: 150px;
             border-radius: 50%;
             overflow: hidden;
             box-shadow:
@@ -198,8 +447,8 @@
             position: absolute;
             top: 2px;
             right: 22px;
-            width: 32px;
-            height: 32px;
+            width: 30px;
+            height: 30px;
             border-radius: 50%;
             background: radial-gradient(circle, #555 0%, #222 70%, #111 100%);
             box-shadow: 0 4px 10px rgba(0,0,0,0.7), inset 0 1px 1px rgba(255,255,255,0.4);
@@ -211,8 +460,8 @@
             position: absolute;
             top: 4px;
             right: 20px;
-            width: 72px;
-            height: 145px;
+            width: 70px;
+            height: 140px;
             background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 145"><path d="M26 0 A15 15 0 0 1 46 0 L41 95 L20 132 L9 126 L29 93 Z" fill="%23e2e2e2"/><path d="M34 10 L37 93 L27 91 Z" fill="%23ffffff" opacity="0.3"/><circle cx="16" cy="129" r="3" fill="%23ff416c"/></svg>');
             background-repeat: no-repeat;
             background-size: contain;
@@ -227,7 +476,7 @@
             transform: rotate(-3deg);
         }
 
-        /* 紧凑而富有质感的控制底座 */
+        /* 紧凑而富有质感的控制底座（无音频规格胶囊，更加纯粹专注） */
         .player-deck {
             width: 100%;
             max-width: 360px;
@@ -237,34 +486,10 @@
             background: rgba(255, 255, 255, 0.035);
             border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: 24px;
-            padding: 16px 20px 14px 20px;
+            padding: 18px 20px 16px 20px;
             box-sizing: border-box;
             backdrop-filter: blur(20px);
             box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
-        }
-
-        .audio-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 10px;
-            font-weight: 700;
-            letter-spacing: 1.5px;
-            text-transform: uppercase;
-            color: rgba(255, 255, 255, 0.55);
-            background: rgba(255, 255, 255, 0.06);
-            padding: 2px 10px;
-            border-radius: 10px;
-            margin-bottom: 8px;
-            border: 1px solid rgba(255, 255, 255, 0.06);
-        }
-
-        .badge-dot {
-            width: 5px;
-            height: 5px;
-            border-radius: 50%;
-            background: #00d2ff;
-            box-shadow: 0 0 6px #00d2ff;
         }
 
         .meta-container {
@@ -381,8 +606,8 @@
         }
 
         .btn-main {
-            width: 54px;
-            height: 54px;
+            width: 52px;
+            height: 52px;
             background: #ffffff;
             border: none;
             box-shadow: 0 6px 20px rgba(255, 255, 255, 0.28);
@@ -408,133 +633,47 @@
             display: flex;
             flex-direction: column;
             position: relative;
-        }
-
-        .lyrics-header {
-            display: flex;
-            justify-content: flex-end;
-            align-items: center;
-            padding-bottom: 8px;
-            height: 38px;
-        }
-
-        .btn-close {
-            width: 42px;
-            height: 42px;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.16);
-            color: rgba(255, 255, 255, 0.75);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
-            outline: none;
-            padding: 0;
-            user-select: none;
-            -webkit-tap-highlight-color: transparent;
-        }
-
-        .btn-close svg {
-            width: 20px;
-            height: 20px;
-            stroke: currentColor;
-            stroke-width: 2.2;
-            stroke-linecap: round;
-            fill: none;
-            pointer-events: none;
-        }
-
-        .btn-close:active {
-            background: rgba(255, 255, 255, 0.25);
-            color: #ffffff;
-            transform: scale(0.92);
+            min-height: 0;
         }
 
         .lyrics-viewport {
             flex: 1;
+            width: 100%;
+            height: 100%;
             position: relative;
             overflow: hidden;
             /* 纯净透明视口，绝无任何黑色遮罩与 GPU 闪烁 */
         }
 
-        .lyrics-footer {
-            display: flex;
-            justify-content: flex-end;
-            align-items: center;
-            padding-top: 8px;
-            height: 36px;
-        }
-
-        .source-tag {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 12px;
-            color: rgba(255, 255, 255, 0.7);
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            padding: 5px 12px;
-            border-radius: 14px;
-            letter-spacing: 0.5px;
-            cursor: pointer;
-            outline: none;
-            transition: all 0.2s ease;
-            user-select: none;
-            -webkit-tap-highlight-color: transparent;
-        }
-
-        .source-tag * {
-            pointer-events: none;
-        }
-
-        .source-tag:active {
-            background: rgba(255, 255, 255, 0.2);
-            transform: scale(0.96);
-        }
-
-        .source-dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: #1db954;
-            display: inline-block;
-            transition: background-color 0.3s;
-        }
-
-        .source-switch-icon {
-            font-size: 12px;
-            opacity: 0.6;
-            margin-left: 2px;
-        }
-
         .lyrics-stream {
             position: absolute;
             width: 100%;
-            top: 42%;
-            transition: transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+            top: 40%;
+            /* 采用苹果级临界阻尼缓动曲线，丝滑推进，绝不回弹抖动 */
+            transition: transform 0.6s cubic-bezier(0.25, 1, 0.5, 1);
             text-align: left;
+            will-change: transform;
         }
 
-        /* 歌词文字自带透明渐变，完全不借助黑色背景遮罩 */
+        /* 歌词文字自带自然透明阶梯渐变，绝无发散光晕 */
         .lyric-line {
             font-size: 20px;
             font-weight: 500;
             line-height: 2.3;
             color: rgba(255, 255, 255, 0.4);
             opacity: 0.15;
-            transition: all 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+            transition: all 0.45s cubic-bezier(0.25, 1, 0.5, 1);
             transform-origin: left center;
         }
 
+        /* 当前激活歌词：高亮、纯净实心白、彻底去除发散光晕 */
         .lyric-line.active {
             font-size: 30px;
             font-weight: 700;
             color: #ffffff;
             opacity: 1;
-            transform: scale(1.05);
-            text-shadow: 0 0 28px rgba(255, 255, 255, 0.75);
+            transform: scale(1.04);
+            text-shadow: none !important;
         }
 
         .lyric-line.near-1 {
@@ -567,7 +706,7 @@
             pointer-events: none;
         }
 
-        /* 蓝牙实时单行车载歌词视口：纯净大字居中靠上 */
+        /* 蓝牙实时单行车载歌词视口：纯净大字无晕光 */
         .live-stream-box {
             display: flex;
             justify-content: center;
@@ -587,7 +726,7 @@
             color: #ffffff;
             line-height: 1.5;
             letter-spacing: 0.6px;
-            text-shadow: 0 4px 32px rgba(255, 255, 255, 0.85);
+            text-shadow: none !important;
             transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
             max-width: 92%;
             word-break: break-word;
@@ -629,6 +768,114 @@
             0% { transform: scaleY(0.3); }
             100% { transform: scaleY(1); }
         }
+
+        /* 底部全宽栏：左下角音频硬件规格，右下角歌词源切换 */
+        .bottom-bar {
+            width: 100%;
+            height: 36px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+            z-index: 50;
+            flex-shrink: 0;
+            padding-top: 4px;
+        }
+
+        /* 全屏左下角：发烧级音频参数卡片 */
+        .audio-spec-card {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            height: 30px;
+            padding: 0 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            backdrop-filter: blur(14px);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+        }
+
+        .spec-chip {
+            font-size: 11px;
+            font-weight: 800;
+            color: #ffffff;
+            background: linear-gradient(135deg, #00d2ff, #0072ff);
+            padding: 2px 7px;
+            border-radius: 5px;
+            letter-spacing: 0.8px;
+            line-height: 1.2;
+            text-transform: uppercase;
+        }
+
+        .spec-separator {
+            width: 1px;
+            height: 12px;
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .spec-details {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11.5px;
+            color: rgba(255, 255, 255, 0.7);
+            letter-spacing: 0.3px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .spec-param {
+            font-weight: 500;
+        }
+
+        .spec-slash, .spec-bullet {
+            color: rgba(255, 255, 255, 0.3);
+        }
+
+        /* 全屏右下角：歌词源切换胶囊 */
+        .source-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            height: 30px;
+            padding: 0 12px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.75);
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 15px;
+            letter-spacing: 0.4px;
+            cursor: pointer;
+            outline: none;
+            transition: all 0.2s ease;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            backdrop-filter: blur(12px);
+        }
+
+        .source-tag * {
+            pointer-events: none;
+        }
+
+        .source-tag:active {
+            background: rgba(255, 255, 255, 0.18);
+            transform: scale(0.96);
+        }
+
+        .source-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #1db954;
+            display: inline-block;
+            transition: background-color 0.3s;
+        }
+
+        .source-switch-icon {
+            font-size: 12px;
+            opacity: 0.6;
+            margin-left: 2px;
+        }
     </style>
 </head>
 <body>
@@ -640,92 +887,148 @@
     </div>
 
     <div class="container">
-        <!-- 左侧面板：黑胶唱机与控制底座 -->
-        <div class="left-panel">
-            <div class="turntable-container">
-                <div class="vinyl-record" id="vinylRecord">
-                    <div class="vinyl-cover" id="vinylCover">
-                        <img id="vinylCoverImg" class="vinyl-cover-img" src="" alt="" referrerpolicy="no-referrer" />
-                        <div class="vinyl-cover-placeholder" id="vinylCoverPlaceholder">
-                            <svg viewBox="0 0 100 100" width="48" height="48">
-                                <circle cx="50" cy="50" r="46" fill="#222" stroke="#444" stroke-width="2"/>
-                                <circle cx="50" cy="50" r="28" fill="#151515" stroke="#333" stroke-width="1.5"/>
-                                <circle cx="50" cy="50" r="14" fill="#ff416c" opacity="0.85"/>
-                                <polygon points="46,42 58,50 46,58" fill="#ffffff"/>
-                            </svg>
+        <!-- 顶部全宽栏：左上角设备电量胶囊与详情卡片，右上角关闭按钮 -->
+        <div class="top-bar">
+            <div class="device-card-wrapper" id="deviceCardWrapper">
+                <button class="device-pill" id="devicePill" onclick="toggleDeviceInfo(event)" title="点击查看连接设备详情">
+                    <span class="device-bt-icon">
+                        <svg viewBox="0 0 24 24"><path d="M17.71 7.71L12 2h-1v7.59L6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 11 14.41V22h1l5.71-5.71-4.3-4.29 4.3-4.29zM13 5.83l1.88 1.88L13 9.59V5.83zm1.88 10.46L13 18.17v-3.76l1.88 1.88z"/></svg>
+                    </span>
+                    <div class="battery-widget">
+                        <div class="battery-shell">
+                            <div class="battery-level-bar" id="batteryLevelBar" style="width: 85%;"></div>
+                        </div>
+                        <span class="battery-tip"></span>
+                    </div>
+                    <span class="battery-pct-text" id="batteryPctText">85%</span>
+                </button>
+
+                <!-- 浮层设备详情卡片 -->
+                <div class="device-dropdown" id="deviceDropdown">
+                    <div class="device-dropdown-header">
+                        <div class="device-name-row">
+                            <span class="device-status-dot"></span>
+                            <span class="device-name" id="dropdownDeviceName">XY</span>
+                        </div>
+                        <span class="device-status-badge">已连接</span>
+                    </div>
+                    <div class="device-dropdown-body">
+                        <div class="spec-row">
+                            <span class="spec-label">MAC 地址</span>
+                            <span class="spec-val-text" id="dropdownDeviceMac">C8:1F:E8:E2:CC:9D</span>
+                        </div>
+                        <div class="spec-row">
+                            <span class="spec-label">设备电量</span>
+                            <span class="spec-val-text" id="dropdownDeviceBat">85%</span>
+                        </div>
+                        <div class="spec-row">
+                            <span class="spec-label">传输协议</span>
+                            <span class="spec-val-text">A2DP / AVRCP</span>
+                        </div>
+                        <div class="spec-row">
+                            <span class="spec-label">音频通道</span>
+                            <span class="spec-val-text">SINK (无线立体声)</span>
                         </div>
                     </div>
-                    <div class="vinyl-center-dot"></div>
                 </div>
-                <div class="tonearm-base"></div>
-                <div class="tonearm" id="tonearm"></div>
             </div>
 
-            <div class="player-deck">
-                <div class="audio-badge">
-                    <span class="badge-dot"></span>
-                    <span>A2DP HD AUDIO</span>
+            <button class="btn-close" onclick="triggerExit(event)" title="返回桌面" aria-label="返回桌面">
+                <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+        </div>
+
+        <!-- 中部主体区：左侧唱机与播控，右侧歌词流 -->
+        <div class="main-body">
+            <!-- 左侧面板：黑胶唱机与控制底座 -->
+            <div class="left-panel">
+                <div class="turntable-container">
+                    <div class="vinyl-record" id="vinylRecord">
+                        <div class="vinyl-cover" id="vinylCover">
+                            <img id="vinylCoverImg" class="vinyl-cover-img" src="" alt="" referrerpolicy="no-referrer" />
+                            <div class="vinyl-cover-placeholder" id="vinylCoverPlaceholder">
+                                <svg viewBox="0 0 100 100" width="48" height="48">
+                                    <circle cx="50" cy="50" r="46" fill="#222" stroke="#444" stroke-width="2"/>
+                                    <circle cx="50" cy="50" r="28" fill="#151515" stroke="#333" stroke-width="1.5"/>
+                                    <circle cx="50" cy="50" r="14" fill="#ff416c" opacity="0.85"/>
+                                    <polygon points="46,42 58,50 46,58" fill="#ffffff"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="vinyl-center-dot"></div>
+                    </div>
+                    <div class="tonearm-base"></div>
+                    <div class="tonearm" id="tonearm"></div>
                 </div>
 
-                <div class="meta-container">
-                    <div class="song-title" id="songTitle">等待播放蓝牙音乐...</div>
-                    <div class="song-artist" id="songArtist">请在手机端播放任意音乐</div>
-                </div>
+                <div class="player-deck">
+                    <div class="meta-container">
+                        <div class="song-title" id="songTitle">等待播放蓝牙音乐...</div>
+                        <div class="song-artist" id="songArtist">请在手机端播放任意音乐</div>
+                    </div>
 
-                <div class="progress-box">
-                    <span id="timeCurrent" class="time-label">00:00</span>
-                    <div class="progress-bar-bg">
-                        <div class="progress-bar-fill" id="progressBar">
-                            <div class="progress-bar-thumb"></div>
+                    <div class="progress-box">
+                        <span id="timeCurrent" class="time-label">00:00</span>
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill" id="progressBar">
+                                <div class="progress-bar-thumb"></div>
+                            </div>
+                        </div>
+                        <span id="timeTotal" class="time-label">00:00</span>
+                    </div>
+
+                    <div class="controls-row">
+                        <button class="btn-ctrl" onclick="triggerPrev()" title="上一首">
+                            <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+                        </button>
+                        <button class="btn-ctrl btn-main" onclick="triggerPlayPause()" title="播放/暂停">
+                            <svg id="playIcon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                        </button>
+                        <button class="btn-ctrl" onclick="triggerNext()" title="下一首">
+                            <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧面板：透明渐隐滚动歌词 -->
+            <div class="right-panel">
+                <div class="lyrics-viewport" id="lyricsViewport">
+                    <div class="lyrics-stream" id="lyricsStream">
+                        <div class="empty-lyrics" id="emptyLyrics">
+                            <div class="equalizer-wave">
+                                <div class="wave-bar"></div>
+                                <div class="wave-bar"></div>
+                                <div class="wave-bar"></div>
+                                <div class="wave-bar"></div>
+                                <div class="wave-bar"></div>
+                            </div>
+                            <div id="emptyText">正在检索官方歌词与封面...</div>
                         </div>
                     </div>
-                    <span id="timeTotal" class="time-label">00:00</span>
-                </div>
-
-                <div class="controls-row">
-                    <button class="btn-ctrl" onclick="triggerPrev()" title="上一首">
-                        <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
-                    </button>
-                    <button class="btn-ctrl btn-main" onclick="triggerPlayPause()" title="播放/暂停">
-                        <svg id="playIcon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                    </button>
-                    <button class="btn-ctrl" onclick="triggerNext()" title="下一首">
-                        <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
-                    </button>
                 </div>
             </div>
         </div>
 
-        <!-- 右侧面板：透明渐隐滚动歌词 -->
-        <div class="right-panel">
-            <div class="lyrics-header">
-                <button class="btn-close" onclick="triggerExit(event)" title="返回桌面" aria-label="返回桌面">
-                    <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                </button>
-            </div>
-
-            <div class="lyrics-viewport" id="lyricsViewport">
-                <div class="lyrics-stream" id="lyricsStream">
-                    <div class="empty-lyrics" id="emptyLyrics">
-                        <div class="equalizer-wave">
-                            <div class="wave-bar"></div>
-                            <div class="wave-bar"></div>
-                            <div class="wave-bar"></div>
-                            <div class="wave-bar"></div>
-                            <div class="wave-bar"></div>
-                        </div>
-                        <div id="emptyText">正在检索官方歌词与封面...</div>
-                    </div>
+        <!-- 底部全宽栏：左下角音频硬件规格，右下角歌词源切换 -->
+        <div class="bottom-bar">
+            <div class="audio-spec-card">
+                <div class="spec-chip" id="specCodec">AAC</div>
+                <div class="spec-separator"></div>
+                <div class="spec-details">
+                    <span class="spec-param" id="specRate">48 kHz</span>
+                    <span class="spec-slash">/</span>
+                    <span class="spec-param" id="specBits">24-Bit</span>
+                    <span class="spec-bullet">·</span>
+                    <span class="spec-param" id="specChannels">双声道立体声</span>
                 </div>
             </div>
 
-            <div class="lyrics-footer">
-                <button class="source-tag" id="statusTag" onclick="toggleLyricSource(event)" title="点击切换歌词源">
-                    <span class="source-dot" id="sourceDot"></span>
-                    <span id="statusTagText">正在匹配歌词...</span>
-                    <span class="source-switch-icon">⇄</span>
-                </button>
-            </div>
+            <button class="source-tag" id="statusTag" onclick="toggleLyricSource(event)" title="点击切换歌词源">
+                <span class="source-dot" id="sourceDot"></span>
+                <span id="statusTagText">正在匹配歌词...</span>
+                <span class="source-switch-icon">⇄</span>
+            </button>
         </div>
     </div>
 
@@ -749,6 +1052,87 @@
 
         // 歌曲元数据与歌词内存缓存表（避免返回桌面重新点击时重复请求与闪白）
         const songCache = {};
+
+        function toggleDeviceInfo(e) {
+            if (e && e.stopPropagation) e.stopPropagation();
+            const dropdown = document.getElementById('deviceDropdown');
+            const pill = document.getElementById('devicePill');
+            if (dropdown) {
+                const isOpen = dropdown.classList.toggle('show');
+                if (pill) {
+                    if (isOpen) pill.classList.add('active');
+                    else pill.classList.remove('active');
+                }
+            }
+        }
+
+        // 点击或触摸外部区域自动关闭设备详情浮层
+        function handleOutsideDismiss(e) {
+            const wrapper = document.getElementById('deviceCardWrapper');
+            if (wrapper && !wrapper.contains(e.target)) {
+                const dropdown = document.getElementById('deviceDropdown');
+                const pill = document.getElementById('devicePill');
+                if (dropdown && dropdown.classList.contains('show')) {
+                    dropdown.classList.remove('show');
+                    if (pill) pill.classList.remove('active');
+                }
+            }
+        }
+        document.addEventListener('pointerdown', handleOutsideDismiss);
+        document.addEventListener('touchstart', handleOutsideDismiss, { passive: true });
+        document.addEventListener('click', handleOutsideDismiss);
+
+        // 接收来自 Java 原生层的蓝牙设备状态与音频协议数据
+        window.onBluetoothStatusChanged = function(data) {
+            console.log("Bluetooth status:", data);
+            if (!data) return;
+
+            if (data.batteryLevel !== undefined && data.batteryLevel >= 0) {
+                const pct = Math.min(100, Math.max(0, data.batteryLevel));
+                const bar = document.getElementById('batteryLevelBar');
+                const text = document.getElementById('batteryPctText');
+                const dropBat = document.getElementById('dropdownDeviceBat');
+                if (bar) {
+                    bar.style.width = pct + '%';
+                    if (pct <= 20) {
+                        bar.style.background = '#ff4b2b';
+                    } else if (pct <= 40) {
+                        bar.style.background = '#f5a623';
+                    } else {
+                        bar.style.background = '#1db954';
+                    }
+                }
+                if (text) text.textContent = pct + '%';
+                if (dropBat) dropBat.textContent = pct + '%';
+            }
+
+            if (data.deviceName) {
+                const nameEl = document.getElementById('dropdownDeviceName');
+                if (nameEl) nameEl.textContent = data.deviceName;
+            }
+            if (data.deviceAddress) {
+                const macEl = document.getElementById('dropdownDeviceMac');
+                if (macEl) macEl.textContent = data.deviceAddress;
+            }
+
+            // 更新左下角音频规格
+            if (data.codec) {
+                const el = document.getElementById('specCodec');
+                if (el) el.textContent = data.codec;
+            }
+            if (data.sampleRate) {
+                const el = document.getElementById('specRate');
+                if (el) el.textContent = data.sampleRate;
+            }
+            if (data.bitDepth) {
+                const el = document.getElementById('specBits');
+                if (el) el.textContent = data.bitDepth;
+            }
+            if (data.channels) {
+                const el = document.getElementById('specChannels');
+                if (el) el.textContent = data.channels;
+            }
+        };
 
         function updateStatusTag(text, dotColor) {
             const tagText = document.getElementById('statusTagText');
@@ -1006,6 +1390,14 @@
                         targetIndex = i;
                     } else {
                         break;
+                    }
+                }
+
+                // 防抖抗振单调递增锁 (Monotonic anti-bounce hysteresis)
+                // 在向前播放时，避免因蓝牙传输延迟或微小时间重置导致 targetIndex 往回掉引发的歌词上下反复抖动
+                if (isPlaying && activeLyricIndex >= 0 && targetIndex < activeLyricIndex) {
+                    if ((activeLyricIndex - targetIndex) <= 2 && currentPos >= (lastPositionMs - 500)) {
+                        targetIndex = activeLyricIndex;
                     }
                 }
 

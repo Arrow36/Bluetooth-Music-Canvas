@@ -81,6 +81,8 @@ public class MainActivity extends Activity {
                 }
                 if (MediaMonitorService.sInstance != null) {
                     MediaMonitorService.sInstance.syncToActivity(MainActivity.this);
+                } else {
+                    dispatchBluetoothStatus(MediaMonitorService.getBluetoothInfo(MainActivity.this));
                 }
             }
         });
@@ -217,6 +219,20 @@ public class MainActivity extends Activity {
                     obj.put("position", position);
                     obj.put("speed", speed);
                     mWebView.evaluateJavascript("window.onPlaybackStateChanged && window.onPlaybackStateChanged(" + obj.toString() + ");", null);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+    }
+
+    public void dispatchBluetoothStatus(final JSONObject obj) {
+        if (!mPageLoaded || mWebView == null || obj == null) return;
+        mHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    mWebView.evaluateJavascript("window.onBluetoothStatusChanged && window.onBluetoothStatusChanged(" + obj.toString() + ");", null);
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
