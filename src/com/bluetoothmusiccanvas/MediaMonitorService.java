@@ -3,7 +3,16 @@ package com.bluetoothmusiccanvas;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.BitmapShader;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Matrix;
+import android.graphics.Paint;
 import android.graphics.PixelFormat;
+import android.graphics.Shader;
 import android.media.MediaMetadata;
 import android.media.session.MediaController;
 import android.media.session.MediaSessionManager;
@@ -23,9 +32,12 @@ import android.view.animation.Animation;
 import android.view.animation.LinearInterpolator;
 import android.view.animation.RotateAnimation;
 import android.widget.ImageView;
+import android.widget.TextView;
 
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.List;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class MediaMonitorService extends NotificationListenerService {
@@ -38,11 +50,21 @@ public class MediaMonitorService extends NotificationListenerService {
     private boolean mIsPlaying = false;
     private PowerManager.WakeLock mWakeLock;
 
-    // WindowManager for Mini Floating Vinyl Icon
+    // WindowManager for Mini Floating Vinyl Capsule
     private WindowManager mWindowManager;
     private View mFloatingView;
     private boolean mIsFloatingShown = false;
     private boolean mUserDismissed = false; // Set to true when user clicks "返回桌面"
+
+    // Persistent drag coordinates
+    private SharedPreferences mPrefs;
+    private int mFloatingX = 40;
+    private int mFloatingY = 120;
+
+    // Album cover caching & dynamic vinyl disc
+    private Bitmap mCurrentCoverBitmap = null;
+    private Bitmap mGeneratedVinylBitmap = null;
+    private String mLastFetchedCoverKey = "";
 
     // Metadata caching
     private String mRealTitle = "";
@@ -93,6 +115,10 @@ public class MediaMonitorService extends NotificationListenerService {
         super.onCreate();
         sInstance = this;
         mWindowManager = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
+        mPrefs = getSharedPreferences("floating_widget_prefs", Context.MODE_PRIVATE);
+        mFloatingX = mPrefs.getInt("pos_x", 40);
+        mFloatingY = mPrefs.getInt("pos_y", 120);
+
         PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
         if (pm != null) {
             mWakeLock = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP, "BluetoothMusicCanvas:WakeLock");
@@ -213,7 +239,6 @@ public class MediaMonitorService extends NotificationListenerService {
 
         // Smart detection for "车载蓝牙歌词":
         // e.g. rawArtist="王菲/如愿 (电影《我和我的父辈》主题推广曲)", rawTitle="我愿活成你的愿"
-        // e.g. rawArtist="Disney/Shakira/Zoo (From \"Zootopia 2\"/Soundtrack Version)", rawTitle="In a place where anyone..."
         String cleanArtist = rawArtist.replaceAll("\\s*[\\(（【\\[].*$", "").trim();
         int lastSlash = cleanArtist.lastIndexOf('/');
         if (lastSlash > 0) {
@@ -229,6 +254,53 @@ public class MediaMonitorService extends NotificationListenerService {
         mDuration = duration;
 
         Log.i(TAG, "Parsed track: [" + mRealTitle + "] by [" + mRealArtist + "], lyric=[" + mStreamLyric + "]");
+
+        // Check local album artwork first
+        Bitmap localArt = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
+        if (localArt == null) {
+            localArt = metadata.getBitmap(MediaMetadata.METADATA_KEY_ART);
+        }
+        if (localArt != null) {
+            mCurrentCoverBitmap = localArt;
+            mGeneratedVinylBitmap = null;
+            updateFloatingViewContent();
+        } else {
+            // Fetch online cover for floating vinyl
+            final String key = (mRealTitle + " - " + mRealArtist).toLowerCase().trim();
+            if (!key.isEmpty() && !key.equals(mLastFetchedCoverKey)) {
+                mLastFetchedCoverKey = key;
+                MetadataFetcher.fetch(mRealTitle, mRealArtist, new MetadataFetcher.Callback() {
+                    @Override
+                    public void onResult(final String coverUrl, final String lyricsLrc) {
+                        if (coverUrl != null && !coverUrl.isEmpty()) {
+                            new Thread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    try {
+                                        URL url = new URL(coverUrl);
+                                        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                                        conn.setConnectTimeout(4000);
+                                        conn.setReadTimeout(4000);
+                                        InputStream is = conn.getInputStream();
+                                        Bitmap bmp = BitmapFactory.decodeStream(is);
+                                        is.close();
+                                        if (bmp != null) {
+                                            mCurrentCoverBitmap = bmp;
+                                            mGeneratedVinylBitmap = null;
+                                            updateFloatingViewContent();
+                                        }
+                                    } catch (Exception e) {
+                                        Log.w(TAG, "Failed to load floating cover: " + e.getMessage());
+                                    }
+                                }
+                            }).start();
+                        }
+                    }
+                });
+            }
+        }
+
+        updateFloatingViewContent();
 
         if (MainActivity.sInstance != null) {
             MainActivity.sInstance.dispatchMetadata(mRealTitle, mRealArtist, mRealAlbum, mDuration, mStreamLyric);
@@ -260,6 +332,109 @@ public class MediaMonitorService extends NotificationListenerService {
         startActivity(i);
     }
 
+    private void updateFloatingViewContent() {
+        mHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                if (mFloatingView == null || !mIsFloatingShown) return;
+
+                TextView titleTv = mFloatingView.findViewById(R.id.floatingTrackTitle);
+                TextView artistTv = mFloatingView.findViewById(R.id.floatingTrackArtist);
+                ImageView vinylIv = mFloatingView.findViewById(R.id.floatingVinylIcon);
+
+                if (titleTv != null) {
+                    String title = !mRealTitle.isEmpty() ? mRealTitle : "蓝牙音乐";
+                    titleTv.setText(title);
+                    titleTv.setSelected(true); // Triggers continuous marquee scrolling
+                }
+
+                if (artistTv != null) {
+                    if (mRealArtist != null && !mRealArtist.isEmpty()) {
+                        artistTv.setText(mRealArtist);
+                        artistTv.setVisibility(View.VISIBLE);
+                    } else {
+                        artistTv.setVisibility(View.GONE);
+                    }
+                }
+
+                if (vinylIv != null) {
+                    if (mGeneratedVinylBitmap == null) {
+                        int px = (int) (44 * getResources().getDisplayMetrics().density);
+                        mGeneratedVinylBitmap = createVinylBitmap(mCurrentCoverBitmap, px);
+                    }
+                    vinylIv.setImageBitmap(mGeneratedVinylBitmap);
+                }
+            }
+        });
+    }
+
+    /**
+     * Create a realistic circular vinyl record bitmap with concentric grooves
+     * and the current song's album cover embedded in the center spindle label.
+     */
+    private Bitmap createVinylBitmap(Bitmap cover, int size) {
+        Bitmap out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(out);
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        float center = size / 2.0f;
+        float radius = size / 2.0f;
+
+        // 1. Dark outer vinyl disc
+        paint.setColor(Color.parseColor("#121316"));
+        paint.setStyle(Paint.Style.FILL);
+        canvas.drawCircle(center, center, radius, paint);
+
+        // 2. Realistic concentric micro-grooves
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(1.2f);
+        for (float r = radius * 0.94f; r > radius * 0.58f; r -= size * 0.045f) {
+            paint.setColor(Color.parseColor("#1E2026"));
+            canvas.drawCircle(center, center, r, paint);
+            paint.setColor(Color.parseColor("#0A0B0E"));
+            canvas.drawCircle(center, center, r - 1.0f, paint);
+        }
+
+        // 3. Center Label (Radius ~ 55% of disc)
+        float labelRadius = radius * 0.55f;
+        if (cover != null) {
+            BitmapShader shader = new BitmapShader(cover, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+            Matrix matrix = new Matrix();
+            float scale = (labelRadius * 2.0f) / Math.min(cover.getWidth(), cover.getHeight());
+            matrix.setScale(scale, scale);
+            matrix.postTranslate(center - (cover.getWidth() * scale) / 2.0f,
+                                center - (cover.getHeight() * scale) / 2.0f);
+            shader.setLocalMatrix(matrix);
+
+            Paint coverPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            coverPaint.setShader(shader);
+            canvas.drawCircle(center, center, labelRadius, coverPaint);
+
+            // Subtle dark rim around cover label
+            paint.setColor(Color.parseColor("#40000000"));
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(2.0f);
+            canvas.drawCircle(center, center, labelRadius, paint);
+        } else {
+            // Default warm coral center label if no cover available
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(Color.parseColor("#E06D53"));
+            canvas.drawCircle(center, center, labelRadius, paint);
+        }
+
+        // 4. Center spindle hole
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(Color.parseColor("#08090A"));
+        canvas.drawCircle(center, center, radius * 0.08f, paint);
+
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setColor(Color.parseColor("#444955"));
+        paint.setStrokeWidth(1.5f);
+        canvas.drawCircle(center, center, radius * 0.08f, paint);
+
+        return out;
+    }
+
     private void showFloatingView() {
         mHandler.post(new Runnable() {
             @Override
@@ -270,24 +445,27 @@ public class MediaMonitorService extends NotificationListenerService {
                             ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                             : WindowManager.LayoutParams.TYPE_PHONE;
 
-                    int size = (int) (64 * getResources().getDisplayMetrics().density);
                     final WindowManager.LayoutParams params = new WindowManager.LayoutParams(
-                            size,
-                            size,
+                            WindowManager.LayoutParams.WRAP_CONTENT,
+                            WindowManager.LayoutParams.WRAP_CONTENT,
                             layoutType,
                             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                             PixelFormat.TRANSLUCENT
                     );
 
                     params.gravity = Gravity.TOP | Gravity.START;
-                    params.x = 40;
-                    params.y = 120;
+                    params.x = mFloatingX;
+                    params.y = mFloatingY;
 
                     mFloatingView = LayoutInflater.from(MediaMonitorService.this).inflate(R.layout.floating_vinyl, null);
 
+                    // Update live track title, artist and album vinyl cover
+                    updateFloatingViewContent();
+
+                    // Continuous smooth rotating vinyl animation
                     ImageView vinylIcon = mFloatingView.findViewById(R.id.floatingVinylIcon);
                     RotateAnimation rotate = new RotateAnimation(0, 360, Animation.RELATIVE_TO_SELF, 0.5f, Animation.RELATIVE_TO_SELF, 0.5f);
-                    rotate.setDuration(8000);
+                    rotate.setDuration(7000);
                     rotate.setRepeatCount(Animation.INFINITE);
                     rotate.setInterpolator(new LinearInterpolator());
                     vinylIcon.startAnimation(rotate);
@@ -310,7 +488,7 @@ public class MediaMonitorService extends NotificationListenerService {
                                 case MotionEvent.ACTION_MOVE:
                                     int dx = (int) (event.getRawX() - initialTouchX);
                                     int dy = (int) (event.getRawY() - initialTouchY);
-                                    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+                                    if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
                                         isMove = true;
                                         params.x = initialX + dx;
                                         params.y = initialY + dy;
@@ -318,7 +496,15 @@ public class MediaMonitorService extends NotificationListenerService {
                                     }
                                     return true;
                                 case MotionEvent.ACTION_UP:
-                                    if (!isMove) {
+                                    if (isMove) {
+                                        // Save dragged position permanently
+                                        mFloatingX = params.x;
+                                        mFloatingY = params.y;
+                                        if (mPrefs != null) {
+                                            mPrefs.edit().putInt("pos_x", mFloatingX).putInt("pos_y", mFloatingY).apply();
+                                        }
+                                        Log.i(TAG, "Floating position saved: (" + mFloatingX + ", " + mFloatingY + ")");
+                                    } else {
                                         restoreFullScreen();
                                     }
                                     return true;
@@ -329,7 +515,7 @@ public class MediaMonitorService extends NotificationListenerService {
 
                     mWindowManager.addView(mFloatingView, params);
                     mIsFloatingShown = true;
-                    Log.i(TAG, "Floating mini vinyl icon shown");
+                    Log.i(TAG, "Floating vinyl capsule shown at (" + params.x + ", " + params.y + ")");
                 } catch (Exception e) {
                     Log.e(TAG, "Failed to show floating window: " + e.getMessage());
                 }
