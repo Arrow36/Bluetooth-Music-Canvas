@@ -20,15 +20,16 @@ public class MainActivity extends Activity {
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private boolean mPageLoaded = false;
 
-    private String mCachedTitle = "";
-    private String mCachedArtist = "";
-    private String mCachedAlbum = "";
-    private long mCachedDuration = 0;
-    private String mCachedStreamLyric = "";
-    private boolean mCachedIsPlaying = false;
-    private long mCachedPosition = 0;
-
-    private String mLastFetchedKey = "";
+    private static String sCachedTitle = "";
+    private static String sCachedArtist = "";
+    private static String sCachedAlbum = "";
+    private static long sCachedDuration = 0;
+    private static String sCachedStreamLyric = "";
+    private static String sCachedCoverUrl = "";
+    private static String sCachedLyrics = "";
+    private static boolean sCachedIsPlaying = false;
+    private static long sCachedPosition = 0;
+    private static String sLastFetchedKey = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -71,11 +72,15 @@ public class MainActivity extends Activity {
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 mPageLoaded = true;
+                if (!sCachedTitle.isEmpty()) {
+                    dispatchMetadata(sCachedTitle, sCachedArtist, sCachedAlbum, sCachedDuration, sCachedStreamLyric);
+                    if (!sCachedCoverUrl.isEmpty() || !sCachedLyrics.isEmpty()) {
+                        dispatchOnlineResult(sCachedCoverUrl, sCachedLyrics);
+                    }
+                    dispatchPlaybackState(sCachedIsPlaying, sCachedPosition, 1.0f);
+                }
                 if (MediaMonitorService.sInstance != null) {
                     MediaMonitorService.sInstance.syncToActivity(MainActivity.this);
-                } else if (!mCachedTitle.isEmpty()) {
-                    dispatchMetadata(mCachedTitle, mCachedArtist, mCachedAlbum, mCachedDuration, mCachedStreamLyric);
-                    dispatchPlaybackState(mCachedIsPlaying, mCachedPosition, 1.0f);
                 }
             }
         });
@@ -120,6 +125,11 @@ public class MainActivity extends Activity {
         }
     }
 
+    @Override
+    public void onBackPressed() {
+        moveTaskToBack(true);
+    }
+
     private void hideSystemUI() {
         View decorView = getWindow().getDecorView();
         decorView.setSystemUiVisibility(
@@ -131,34 +141,45 @@ public class MainActivity extends Activity {
                 | View.SYSTEM_UI_FLAG_FULLSCREEN);
     }
 
+    private void dispatchOnlineResult(final String coverUrl, final String lyricsLrc) {
+        mHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                if (mWebView != null && mPageLoaded) {
+                    try {
+                        JSONObject obj = new JSONObject();
+                        obj.put("coverUrl", coverUrl != null ? coverUrl : "");
+                        obj.put("lyrics", lyricsLrc != null ? lyricsLrc : "");
+                        mWebView.evaluateJavascript("window.onOnlineResult && window.onOnlineResult(" + obj.toString() + ");", null);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        });
+    }
+
     public void dispatchMetadata(final String title, final String artist, final String album, final long duration, final String streamLyric) {
-        mCachedTitle = title;
-        mCachedArtist = artist;
-        mCachedAlbum = album;
-        mCachedDuration = duration;
-        mCachedStreamLyric = streamLyric;
+        sCachedTitle = title;
+        sCachedArtist = artist;
+        sCachedAlbum = album;
+        sCachedDuration = duration;
+        sCachedStreamLyric = streamLyric;
 
         final String key = (title + " - " + artist).toLowerCase().trim();
-        if (!key.isEmpty() && !key.equals(mLastFetchedKey)) {
-            mLastFetchedKey = key;
+        MetadataFetcher.CachedMeta cached = MetadataFetcher.getCached(title, artist);
+        if (cached != null) {
+            sCachedCoverUrl = cached.coverUrl != null ? cached.coverUrl : "";
+            sCachedLyrics = cached.lyricsLrc != null ? cached.lyricsLrc : "";
+            dispatchOnlineResult(sCachedCoverUrl, sCachedLyrics);
+        } else if (!key.isEmpty() && !key.equals(sLastFetchedKey)) {
+            sLastFetchedKey = key;
             MetadataFetcher.fetch(title, artist, new MetadataFetcher.Callback() {
                 @Override
                 public void onResult(final String coverUrl, final String lyricsLrc) {
-                    mHandler.post(new Runnable() {
-                        @Override
-                        public void run() {
-                            if (mWebView != null && mPageLoaded) {
-                                try {
-                                    JSONObject obj = new JSONObject();
-                                    obj.put("coverUrl", coverUrl != null ? coverUrl : "");
-                                    obj.put("lyrics", lyricsLrc != null ? lyricsLrc : "");
-                                    mWebView.evaluateJavascript("window.onOnlineResult && window.onOnlineResult(" + obj.toString() + ");", null);
-                                } catch (Exception e) {
-                                    e.printStackTrace();
-                                }
-                            }
-                        }
-                    });
+                    sCachedCoverUrl = coverUrl != null ? coverUrl : "";
+                    sCachedLyrics = lyricsLrc != null ? lyricsLrc : "";
+                    dispatchOnlineResult(sCachedCoverUrl, sCachedLyrics);
                 }
             });
         }
@@ -183,8 +204,8 @@ public class MainActivity extends Activity {
     }
 
     public void dispatchPlaybackState(final boolean isPlaying, final long position, final float speed) {
-        mCachedIsPlaying = isPlaying;
-        mCachedPosition = position;
+        sCachedIsPlaying = isPlaying;
+        sCachedPosition = position;
 
         if (!mPageLoaded || mWebView == null) return;
         mHandler.post(new Runnable() {

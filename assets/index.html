@@ -313,42 +313,120 @@
 
         .lyrics-header {
             display: flex;
-            justify-content: space-between;
+            justify-content: flex-end;
             align-items: center;
-            padding-bottom: 12px;
+            padding-bottom: 8px;
+            height: 38px;
         }
 
-        .source-tag {
-            font-size: 13px;
-            color: rgba(255, 255, 255, 0.6);
+        .btn-close {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
             background: rgba(255, 255, 255, 0.08);
-            padding: 4px 12px;
-            border-radius: 12px;
-            letter-spacing: 0.5px;
-        }
-
-        .btn-exit {
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            color: rgba(255, 255, 255, 0.8);
-            border-radius: 14px;
-            padding: 5px 14px;
-            font-size: 13px;
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            color: rgba(255, 255, 255, 0.75);
+            display: flex;
+            align-items: center;
+            justify-content: center;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+            outline: none;
+            padding: 0;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
         }
 
-        .btn-exit:active {
-            background: rgba(255, 255, 255, 0.2);
+        .btn-close svg {
+            width: 20px;
+            height: 20px;
+            stroke: currentColor;
+            stroke-width: 2.2;
+            stroke-linecap: round;
+            fill: none;
+            pointer-events: none;
+        }
+
+        .btn-close:active {
+            background: rgba(255, 255, 255, 0.25);
             color: #ffffff;
+            transform: scale(0.92);
         }
 
         .lyrics-viewport {
             flex: 1;
             position: relative;
             overflow: hidden;
-            mask-image: linear-gradient(to bottom, transparent 0%, black 18%, black 82%, transparent 100%);
-            -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 18%, black 82%, transparent 100%);
+            /* Removed -webkit-mask-image to prevent Mali GPU hardware compositor flickering */
+        }
+
+        .lyrics-fade-top, .lyrics-fade-bottom {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 48px;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .lyrics-fade-top {
+            top: 0;
+            background: linear-gradient(to bottom, #0b0d10 0%, rgba(11, 13, 16, 0.8) 40%, transparent 100%);
+        }
+
+        .lyrics-fade-bottom {
+            bottom: 0;
+            background: linear-gradient(to top, #0b0d10 0%, rgba(11, 13, 16, 0.8) 40%, transparent 100%);
+        }
+
+        .lyrics-footer {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            padding-top: 8px;
+            height: 36px;
+        }
+
+        .source-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            padding: 5px 12px;
+            border-radius: 14px;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            outline: none;
+            transition: all 0.2s ease;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .source-tag * {
+            pointer-events: none;
+        }
+
+        .source-tag:active {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(0.96);
+        }
+
+        .source-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #1db954;
+            display: inline-block;
+            transition: background-color 0.3s;
+        }
+
+        .source-switch-icon {
+            font-size: 12px;
+            opacity: 0.6;
+            margin-left: 2px;
         }
 
         .lyrics-stream {
@@ -502,11 +580,13 @@
         <!-- 右侧面板 -->
         <div class="right-panel">
             <div class="lyrics-header">
-                <div class="source-tag" id="statusTag">蓝牙 A2DP 实时监听</div>
-                <button class="btn-exit" onclick="triggerExit()">返回桌面 ✕</button>
+                <button class="btn-close" onclick="triggerExit(event)" title="返回桌面" aria-label="返回桌面">
+                    <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
             </div>
 
             <div class="lyrics-viewport" id="lyricsViewport">
+                <div class="lyrics-fade-top"></div>
                 <div class="lyrics-stream" id="lyricsStream">
                     <div class="empty-lyrics" id="emptyLyrics">
                         <div class="equalizer-wave">
@@ -519,6 +599,15 @@
                         <div id="emptyText">正在检索官方歌词与封面...</div>
                     </div>
                 </div>
+                <div class="lyrics-fade-bottom"></div>
+            </div>
+
+            <div class="lyrics-footer">
+                <button class="source-tag" id="statusTag" onclick="toggleLyricSource(event)" title="点击切换歌词源">
+                    <span class="source-dot" id="sourceDot"></span>
+                    <span id="statusTagText">正在匹配歌词...</span>
+                    <span class="source-switch-icon">⇄</span>
+                </button>
             </div>
         </div>
     </div>
@@ -534,9 +623,21 @@
         let lastPositionMs = 0;
         let lastSyncTime = performance.now();
         let lyrics = [];
+        let parsedOfficialLyrics = [];
+        let hasOfficialLyrics = false;
         let activeLyricIndex = -1;
-        let hasOnlineLyrics = false;
         let currentCoverUrl = "";
+        let lyricMode = 'official'; // 'official' | 'bluetooth'
+
+        // 歌曲元数据与歌词内存缓存表（避免返回桌面重新点击时重复请求与闪白）
+        const songCache = {};
+
+        function updateStatusTag(text, dotColor) {
+            const tagText = document.getElementById('statusTagText');
+            const dot = document.getElementById('sourceDot');
+            if (tagText) tagText.textContent = text;
+            if (dot && dotColor) dot.style.backgroundColor = dotColor;
+        }
 
         function setCoverImage(url) {
             currentCoverUrl = url || "";
@@ -562,6 +663,7 @@
         }
 
         function parseLRC(lrcText) {
+            if (!lrcText) return [];
             const lines = lrcText.split('\n');
             const result = [];
             const timeReg = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/g;
@@ -590,10 +692,11 @@
             activeLyricIndex = -1;
 
             if (!lyrics || lyrics.length === 0) {
-                hasOnlineLyrics = false;
+                hasOfficialLyrics = false;
                 if (currentTrack.streamLyric) {
                     showStreamLyric(currentTrack.streamLyric);
                 } else {
+                    stream.style.transform = 'translateY(0)';
                     stream.innerHTML = `
                         <div class="empty-lyrics">
                             <div class="equalizer-wave">
@@ -603,13 +706,14 @@
                                 <div class="wave-bar"></div>
                                 <div class="wave-bar"></div>
                             </div>
-                            <div>♪ 纯音乐 / 暂无歌词 ♪</div>
+                            <div>♪ 纯音乐 / 暂无官方歌词 ♪</div>
                         </div>`;
+                    updateStatusTag('暂无官方歌词', '#888888');
                 }
                 return;
             }
 
-            hasOnlineLyrics = true;
+            hasOfficialLyrics = true;
             lyrics.forEach((item, index) => {
                 const div = document.createElement('div');
                 div.className = 'lyric-line';
@@ -620,36 +724,73 @@
         }
 
         function showStreamLyric(text) {
-            if (hasOnlineLyrics) return;
             const stream = document.getElementById('lyricsStream');
             stream.style.transform = 'translateY(0)';
             stream.innerHTML = `
                 <div class="live-stream-box">
                     <div class="live-stream-lyric">${text}</div>
-                    <div class="live-stream-sub">蓝牙车载实时歌词</div>
+                    <div class="live-stream-sub">蓝牙车载实时单句歌词</div>
                 </div>`;
-            document.getElementById('statusTag').textContent = '车载蓝牙实时歌词';
+            updateStatusTag('车载蓝牙实时歌词', '#4a90e2');
+        }
+
+        function toggleLyricSource(e) {
+            if (e && e.stopPropagation) e.stopPropagation();
+            const trackKey = (currentTrack.title + " - " + currentTrack.artist).toLowerCase().trim();
+            const cached = songCache[trackKey];
+
+            if (lyricMode === 'official') {
+                lyricMode = 'bluetooth';
+                const streamText = currentTrack.streamLyric || (cached && cached.streamLyric) || "当前蓝牙源暂未投送实时单句歌词";
+                showStreamLyric(streamText);
+            } else {
+                lyricMode = 'official';
+                if (hasOfficialLyrics && parsedOfficialLyrics.length > 0) {
+                    renderLyrics(parsedOfficialLyrics);
+                    updateStatusTag('已同步官方歌词', '#1db954');
+                } else if (cached && cached.parsedLyrics && cached.parsedLyrics.length > 0) {
+                    parsedOfficialLyrics = cached.parsedLyrics;
+                    hasOfficialLyrics = true;
+                    renderLyrics(parsedOfficialLyrics);
+                    updateStatusTag('已同步官方歌词', '#1db954');
+                } else {
+                    renderLyrics([]);
+                    updateStatusTag('正在检索官方歌词...', '#f5a623');
+                }
+            }
         }
 
         // 接收来自 Java 原生多源高速检索的网络封面与官方歌词 (iTunes, Kugou, LRCLIB)
         window.onOnlineResult = function(data) {
             console.log("onOnlineResult:", data);
             if (!data) return;
+            const trackKey = (currentTrack.title + " - " + currentTrack.artist).toLowerCase().trim();
+            if (!songCache[trackKey]) songCache[trackKey] = {};
+
             if (data.coverUrl) {
+                songCache[trackKey].coverUrl = data.coverUrl;
                 setCoverImage(data.coverUrl);
             }
             if (data.lyrics) {
+                songCache[trackKey].rawLrc = data.lyrics;
                 const parsed = parseLRC(data.lyrics);
                 if (parsed.length > 0) {
-                    renderLyrics(parsed);
-                    document.getElementById('statusTag').textContent = '已同步官方歌词';
+                    songCache[trackKey].parsedLyrics = parsed;
+                    parsedOfficialLyrics = parsed;
+                    hasOfficialLyrics = true;
+                    if (lyricMode === 'official') {
+                        renderLyrics(parsed);
+                        updateStatusTag('已同步官方歌词', '#1db954');
+                    }
                     return;
                 }
             }
-            if (currentTrack.streamLyric) {
+
+            if (lyricMode === 'bluetooth' && currentTrack.streamLyric) {
                 showStreamLyric(currentTrack.streamLyric);
-            } else {
+            } else if (!hasOfficialLyrics) {
                 renderLyrics([]);
+                updateStatusTag(currentTrack.streamLyric ? '车载蓝牙歌词' : '无歌词', '#888888');
             }
         };
 
@@ -669,12 +810,35 @@
             document.getElementById('songArtist').textContent = album ? `${artist} · ${album}` : artist;
             document.getElementById('timeTotal').textContent = formatTime(data.duration);
 
+            const trackKey = (title + " - " + artist).toLowerCase().trim();
+            if (!songCache[trackKey]) songCache[trackKey] = {};
+            if (streamLyric) songCache[trackKey].streamLyric = streamLyric;
+
             if (isNewSong) {
-                hasOnlineLyrics = false;
-                document.getElementById('statusTag').textContent = '正在匹配官方歌词与封面...';
+                hasOfficialLyrics = false;
+                parsedOfficialLyrics = [];
+                activeLyricIndex = -1;
+
+                // 优先从内存缓存中秒开封面和歌词
+                const cached = songCache[trackKey];
+                if (cached && (cached.coverUrl || cached.parsedLyrics)) {
+                    if (cached.coverUrl) {
+                        setCoverImage(cached.coverUrl);
+                    }
+                    if (cached.parsedLyrics && cached.parsedLyrics.length > 0) {
+                        parsedOfficialLyrics = cached.parsedLyrics;
+                        hasOfficialLyrics = true;
+                        if (lyricMode === 'official') {
+                            renderLyrics(parsedOfficialLyrics);
+                            updateStatusTag('已同步官方歌词', '#1db954');
+                        }
+                    }
+                } else {
+                    updateStatusTag('正在匹配官方歌词与封面...', '#f5a623');
+                }
             }
 
-            if (streamLyric) {
+            if (streamLyric && (lyricMode === 'bluetooth' || !hasOfficialLyrics)) {
                 showStreamLyric(streamLyric);
             }
         };
@@ -713,7 +877,7 @@
                 document.getElementById('timeCurrent').textContent = formatTime(currentPos);
             }
 
-            if (hasOnlineLyrics && lyrics && lyrics.length > 0) {
+            if (lyricMode === 'official' && hasOfficialLyrics && lyrics && lyrics.length > 0) {
                 let targetIndex = -1;
                 for (let i = 0; i < lyrics.length; i++) {
                     if (currentPos >= lyrics[i].time) {
@@ -756,7 +920,9 @@
             if (window.AndroidApp) window.AndroidApp.skipPrevious();
         }
 
-        function triggerExit() {
+        function triggerExit(e) {
+            if (e && e.preventDefault) e.preventDefault();
+            if (e && e.stopPropagation) e.stopPropagation();
             if (window.AndroidApp) window.AndroidApp.exitToHome();
         }
     </script>

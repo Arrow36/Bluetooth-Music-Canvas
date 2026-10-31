@@ -32,10 +32,15 @@ public class WebAppInterface {
 
     @JavascriptInterface
     public void exitToHome() {
+        android.util.Log.i("WebAppInterface", "exitToHome triggered from JS");
         mActivity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                mActivity.finish();
+                android.content.Intent home = new android.content.Intent(android.content.Intent.ACTION_MAIN);
+                home.addCategory(android.content.Intent.CATEGORY_HOME);
+                home.setFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                mActivity.startActivity(home);
+                mActivity.moveTaskToBack(true);
             }
         });
     }

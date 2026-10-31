@@ -15,16 +15,45 @@ import java.net.URLEncoder;
 public class MetadataFetcher {
     private static final String TAG = "BTMusicFetcher";
 
+    public static class CachedMeta {
+        public final String coverUrl;
+        public final String lyricsLrc;
+        public final long timestamp;
+
+        public CachedMeta(String coverUrl, String lyricsLrc) {
+            this.coverUrl = coverUrl;
+            this.lyricsLrc = lyricsLrc;
+            this.timestamp = System.currentTimeMillis();
+        }
+    }
+
+    private static final java.util.concurrent.ConcurrentHashMap<String, CachedMeta> sCache =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     public interface Callback {
         void onResult(String coverUrl, String lyricsLrc);
     }
 
+    public static CachedMeta getCached(String rawTitle, String rawArtist) {
+        String key = (cleanTitle(rawTitle) + " - " + cleanArtist(rawArtist)).toLowerCase().trim();
+        return sCache.get(key);
+    }
+
     public static void fetch(final String rawTitle, final String rawArtist, final Callback callback) {
+        final String title = cleanTitle(rawTitle);
+        final String artist = cleanArtist(rawArtist);
+        final String key = (title + " - " + artist).toLowerCase().trim();
+
+        if (!key.isEmpty() && sCache.containsKey(key)) {
+            CachedMeta cached = sCache.get(key);
+            Log.i(TAG, "Instant cache hit for key: [" + key + "]");
+            callback.onResult(cached.coverUrl, cached.lyricsLrc);
+            return;
+        }
+
         new Thread(new Runnable() {
             @Override
             public void run() {
-                final String title = cleanTitle(rawTitle);
-                final String artist = cleanArtist(rawArtist);
                 Log.i(TAG, "Starting metadata fetch for title: [" + title + "], artist: [" + artist + "]");
 
                 String coverUrl = null;
@@ -57,6 +86,10 @@ public class MetadataFetcher {
                     } catch (Exception e) {
                         Log.w(TAG, "Kugou fallback failed: " + e.getMessage());
                     }
+                }
+
+                if (!key.isEmpty() && (coverUrl != null || lyricsLrc != null)) {
+                    sCache.put(key, new CachedMeta(coverUrl, lyricsLrc));
                 }
 
                 Log.i(TAG, "Metadata fetch complete. Cover found=" + (coverUrl != null) + ", Lyrics found=" + (lyricsLrc != null));
