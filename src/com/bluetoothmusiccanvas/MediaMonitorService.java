@@ -1,8 +1,10 @@
 package com.bluetoothmusiccanvas;
 
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -77,6 +79,30 @@ public class MediaMonitorService extends NotificationListenerService {
     // Pattern for "车载蓝牙歌词" e.g. Artist: "王菲/如愿 (电影《我和我的父辈》主题推广曲)"
     private static final Pattern BT_LYRIC_PATTERN = Pattern.compile("^([^/]+)/([^\\(（]+)");
 
+    private static int sLastKnownBattery = -1;
+
+    private final BroadcastReceiver mBatteryReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (intent == null) return;
+            String action = intent.getAction();
+            if ("android.bluetooth.device.action.BATTERY_LEVEL_CHANGED".equals(action)
+                    || "org.codeaurora.intent.action.BATTERY_LEVEL_PARENT".equals(action)) {
+                int level = intent.getIntExtra("android.bluetooth.device.extra.BATTERY_LEVEL", -1);
+                if (level < 0) {
+                    level = intent.getIntExtra("level", -1);
+                }
+                if (level >= 0) {
+                    sLastKnownBattery = level;
+                    Log.i(TAG, "Bluetooth battery broadcast received: " + level + "%");
+                    if (MainActivity.sInstance != null) {
+                        MainActivity.sInstance.dispatchBluetoothStatus(getBluetoothInfo(context));
+                    }
+                }
+            }
+        }
+    };
+
     private final Runnable mAutoCloseRunnable = new Runnable() {
         @Override
         public void run() {
@@ -123,6 +149,12 @@ public class MediaMonitorService extends NotificationListenerService {
         if (pm != null) {
             mWakeLock = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP, "BluetoothMusicCanvas:WakeLock");
         }
+
+        IntentFilter filter = new IntentFilter();
+        filter.addAction("android.bluetooth.device.action.BATTERY_LEVEL_CHANGED");
+        filter.addAction("org.codeaurora.intent.action.BATTERY_LEVEL_PARENT");
+        registerReceiver(mBatteryReceiver, filter);
+
         Log.i(TAG, "MediaMonitorService created");
     }
 
@@ -153,6 +185,9 @@ public class MediaMonitorService extends NotificationListenerService {
         if (mActiveController != null) {
             mActiveController.unregisterCallback(mControllerCallback);
         }
+        try {
+            unregisterReceiver(mBatteryReceiver);
+        } catch (Exception ignored) {}
     }
 
     private void inspectControllers(List<MediaController> controllers) {
@@ -348,13 +383,13 @@ public class MediaMonitorService extends NotificationListenerService {
                 }
             }
 
-            if (battery < 0) {
-                battery = 85;
+            if (battery < 0 && sLastKnownBattery >= 0) {
+                battery = sLastKnownBattery;
             }
 
             obj.put("deviceName", name);
             obj.put("deviceAddress", address.isEmpty() ? "C8:1F:E8:E2:CC:9D" : address);
-            obj.put("batteryLevel", battery);
+            obj.put("batteryLevel", battery); // If phone doesn't report battery over A2DP, value is -1
             obj.put("codec", "AAC");
             obj.put("sampleRate", "48 kHz");
             obj.put("bitDepth", "24-Bit");

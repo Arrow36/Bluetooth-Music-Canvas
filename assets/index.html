@@ -171,7 +171,7 @@
 
         .battery-level-bar {
             height: 100%;
-            width: 85%;
+            width: 100%;
             background: #1db954;
             border-radius: 1px;
             transition: width 0.3s ease, background 0.3s ease;
@@ -456,6 +456,7 @@
             z-index: 9;
         }
 
+        /* 真实黑胶唱臂：根据播放进度实时计算旋转角度，支持平滑物理走针 */
         .tonearm {
             position: absolute;
             top: 4px;
@@ -467,16 +468,13 @@
             background-size: contain;
             transform-origin: 36px 9px;
             transform: rotate(-32deg);
-            transition: transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+            transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
             z-index: 10;
             filter: drop-shadow(0 6px 8px rgba(0,0,0,0.6));
+            will-change: transform;
         }
 
-        .tonearm.playing {
-            transform: rotate(-3deg);
-        }
-
-        /* 紧凑而富有质感的控制底座（无音频规格胶囊，更加纯粹专注） */
+        /* 紧凑而富有质感的控制底座 */
         .player-deck {
             width: 100%;
             max-width: 360px;
@@ -655,55 +653,60 @@
             will-change: transform;
         }
 
-        /* 歌词文字自带自然透明阶梯渐变，绝无发散光晕 */
+        /* 
+           歌词固定行高设计：彻底杜绝动态字体尺寸变化引起的 DOM 布局重排（Reflow）颠簸抖动！
+           高亮放大完全通过 GPU transform: scale 渲染，物理 offsetTop 永恒恒定！
+        */
         .lyric-line {
-            font-size: 20px;
+            height: 50px;
+            line-height: 50px;
+            font-size: 21px;
             font-weight: 500;
-            line-height: 2.3;
             color: rgba(255, 255, 255, 0.4);
             opacity: 0.15;
-            transition: all 0.45s cubic-bezier(0.25, 1, 0.5, 1);
+            transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.4s cubic-bezier(0.25, 1, 0.5, 1), color 0.4s cubic-bezier(0.25, 1, 0.5, 1);
             transform-origin: left center;
+            white-space: nowrap;
+            overflow: visible;
         }
 
-        /* 当前激活歌词：高亮、纯净实心白、彻底去除发散光晕 */
+        /* 当前激活歌词：高亮、实心白、无模糊杂边、彻底去除发散光晕 */
         .lyric-line.active {
-            font-size: 30px;
             font-weight: 700;
             color: #ffffff;
             opacity: 1;
-            transform: scale(1.04);
+            transform: scale(1.28);
             text-shadow: none !important;
         }
 
         .lyric-line.near-1 {
-            font-size: 22px;
             color: rgba(255, 255, 255, 0.85);
             opacity: 0.75;
-            transform: scale(1.0);
+            transform: scale(1.04);
         }
 
         .lyric-line.near-2 {
-            font-size: 20px;
             color: rgba(255, 255, 255, 0.65);
             opacity: 0.45;
+            transform: scale(1.0);
         }
 
         .lyric-line.near-3 {
-            font-size: 19px;
             color: rgba(255, 255, 255, 0.45);
             opacity: 0.22;
+            transform: scale(0.98);
         }
 
         .lyric-line.near-4 {
-            font-size: 18px;
             color: rgba(255, 255, 255, 0.30);
             opacity: 0.08;
+            transform: scale(0.96);
         }
 
         .lyric-line.far {
             opacity: 0;
             pointer-events: none;
+            transform: scale(0.94);
         }
 
         /* 蓝牙实时单行车载歌词视口：纯净大字无晕光 */
@@ -782,50 +785,27 @@
             padding-top: 4px;
         }
 
-        /* 全屏左下角：发烧级音频参数卡片 */
+        /* 全屏左下角：发烧级音频参数卡片（文字统一低调优雅排版） */
         .audio-spec-card {
             display: inline-flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             height: 30px;
-            padding: 0 12px;
+            padding: 0 14px;
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 15px;
             backdrop-filter: blur(14px);
             box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-        }
-
-        .spec-chip {
-            font-size: 11px;
-            font-weight: 800;
-            color: #ffffff;
-            background: linear-gradient(135deg, #00d2ff, #0072ff);
-            padding: 2px 7px;
-            border-radius: 5px;
-            letter-spacing: 0.8px;
-            line-height: 1.2;
-            text-transform: uppercase;
-        }
-
-        .spec-separator {
-            width: 1px;
-            height: 12px;
-            background: rgba(255, 255, 255, 0.15);
-        }
-
-        .spec-details {
-            display: flex;
-            align-items: center;
-            gap: 6px;
             font-size: 11.5px;
-            color: rgba(255, 255, 255, 0.7);
+            color: rgba(255, 255, 255, 0.75);
             letter-spacing: 0.3px;
             font-variant-numeric: tabular-nums;
         }
 
         .spec-param {
             font-weight: 500;
+            color: rgba(255, 255, 255, 0.75);
         }
 
         .spec-slash, .spec-bullet {
@@ -894,13 +874,13 @@
                     <span class="device-bt-icon">
                         <svg viewBox="0 0 24 24"><path d="M17.71 7.71L12 2h-1v7.59L6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 11 14.41V22h1l5.71-5.71-4.3-4.29 4.3-4.29zM13 5.83l1.88 1.88L13 9.59V5.83zm1.88 10.46L13 18.17v-3.76l1.88 1.88z"/></svg>
                     </span>
-                    <div class="battery-widget">
+                    <div class="battery-widget" id="batteryWidget" style="display: none;">
                         <div class="battery-shell">
-                            <div class="battery-level-bar" id="batteryLevelBar" style="width: 85%;"></div>
+                            <div class="battery-level-bar" id="batteryLevelBar" style="width: 100%;"></div>
                         </div>
                         <span class="battery-tip"></span>
                     </div>
-                    <span class="battery-pct-text" id="batteryPctText">85%</span>
+                    <span class="battery-pct-text" id="batteryPctText">已连接</span>
                 </button>
 
                 <!-- 浮层设备详情卡片 -->
@@ -919,7 +899,7 @@
                         </div>
                         <div class="spec-row">
                             <span class="spec-label">设备电量</span>
-                            <span class="spec-val-text" id="dropdownDeviceBat">85%</span>
+                            <span class="spec-val-text" id="dropdownDeviceBat">手机未回传 (A2DP)</span>
                         </div>
                         <div class="spec-row">
                             <span class="spec-label">传输协议</span>
@@ -1013,15 +993,13 @@
         <!-- 底部全宽栏：左下角音频硬件规格，右下角歌词源切换 -->
         <div class="bottom-bar">
             <div class="audio-spec-card">
-                <div class="spec-chip" id="specCodec">AAC</div>
-                <div class="spec-separator"></div>
-                <div class="spec-details">
-                    <span class="spec-param" id="specRate">48 kHz</span>
-                    <span class="spec-slash">/</span>
-                    <span class="spec-param" id="specBits">24-Bit</span>
-                    <span class="spec-bullet">·</span>
-                    <span class="spec-param" id="specChannels">双声道立体声</span>
-                </div>
+                <span class="spec-param" id="specCodec">AAC</span>
+                <span class="spec-slash">/</span>
+                <span class="spec-param" id="specRate">48 kHz</span>
+                <span class="spec-slash">/</span>
+                <span class="spec-param" id="specBits">24-Bit</span>
+                <span class="spec-bullet">·</span>
+                <span class="spec-param" id="specChannels">双声道立体声</span>
             </div>
 
             <button class="source-tag" id="statusTag" onclick="toggleLyricSource(event)" title="点击切换歌词源">
@@ -1087,11 +1065,14 @@
             console.log("Bluetooth status:", data);
             if (!data) return;
 
+            const text = document.getElementById('batteryPctText');
+            const dropBat = document.getElementById('dropdownDeviceBat');
+            const widget = document.getElementById('batteryWidget');
+
             if (data.batteryLevel !== undefined && data.batteryLevel >= 0) {
                 const pct = Math.min(100, Math.max(0, data.batteryLevel));
                 const bar = document.getElementById('batteryLevelBar');
-                const text = document.getElementById('batteryPctText');
-                const dropBat = document.getElementById('dropdownDeviceBat');
+                if (widget) widget.style.display = 'flex';
                 if (bar) {
                     bar.style.width = pct + '%';
                     if (pct <= 20) {
@@ -1104,6 +1085,11 @@
                 }
                 if (text) text.textContent = pct + '%';
                 if (dropBat) dropBat.textContent = pct + '%';
+            } else {
+                // 手机未通过 A2DP 回传电量（标准蓝牙车载协议限制）：不显示伪造电量，显示真实连接态
+                if (widget) widget.style.display = 'none';
+                if (text) text.textContent = '已连接';
+                if (dropBat) dropBat.textContent = '手机未回传 (A2DP协议限制)';
             }
 
             if (data.deviceName) {
@@ -1356,16 +1342,13 @@
             lastSyncTime = performance.now();
 
             const vinyl = document.getElementById('vinylRecord');
-            const tonearm = document.getElementById('tonearm');
             const playIcon = document.getElementById('playIcon');
 
             if (isPlaying) {
                 vinyl.classList.add('playing');
-                tonearm.classList.add('playing');
                 playIcon.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
             } else {
                 vinyl.classList.remove('playing');
-                tonearm.classList.remove('playing');
                 playIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
             }
         };
@@ -1377,12 +1360,29 @@
                 currentPos += delta;
             }
 
+            // 更新播放进度条
             if (currentTrack.duration > 0) {
                 const pct = Math.min(100, Math.max(0, (currentPos / currentTrack.duration) * 100));
                 document.getElementById('progressBar').style.width = pct + '%';
                 document.getElementById('timeCurrent').textContent = formatTime(currentPos);
             }
 
+            // 真实唱机唱针物理轨迹：根据当前播放进度从黑胶外圈(-26°)平滑走向内圈(-6°)
+            const tonearm = document.getElementById('tonearm');
+            if (tonearm) {
+                if (isPlaying) {
+                    let progressRatio = 0;
+                    if (currentTrack.duration > 0) {
+                        progressRatio = Math.min(1.0, Math.max(0.0, currentPos / currentTrack.duration));
+                    }
+                    const tonearmAngle = -26 + progressRatio * 20; // 0% 时在 -26° (外圈)，100% 时在 -6° (内圈外缘)
+                    tonearm.style.transform = `rotate(${tonearmAngle.toFixed(2)}deg)`;
+                } else {
+                    tonearm.style.transform = 'rotate(-32deg)'; // 停放回唱臂架
+                }
+            }
+
+            // 官方歌词流处理
             if (lyricMode === 'official' && hasOfficialLyrics && lyrics && lyrics.length > 0) {
                 let targetIndex = -1;
                 for (let i = 0; i < lyrics.length; i++) {
@@ -1393,10 +1393,12 @@
                     }
                 }
 
-                // 防抖抗振单调递增锁 (Monotonic anti-bounce hysteresis)
-                // 在向前播放时，避免因蓝牙传输延迟或微小时间重置导致 targetIndex 往回掉引发的歌词上下反复抖动
-                if (isPlaying && activeLyricIndex >= 0 && targetIndex < activeLyricIndex) {
-                    if ((activeLyricIndex - targetIndex) <= 2 && currentPos >= (lastPositionMs - 500)) {
+                // 严格单调防抖迟滞锁：
+                // 严禁因手机蓝牙 AVRCP 传输延时微弱抖动导致 targetIndex 往回掉引发的歌词上下颠簸。
+                // 仅当用户手动拖动倒退超过 3 秒时才允许回退。
+                if (activeLyricIndex >= 0 && targetIndex < activeLyricIndex) {
+                    const activeTime = lyrics[activeLyricIndex] ? lyrics[activeLyricIndex].time : 0;
+                    if (currentPos > (activeTime - 3000)) {
                         targetIndex = activeLyricIndex;
                     }
                 }
@@ -1420,6 +1422,7 @@
                     const targetEl = document.getElementById(`line-${targetIndex}`);
                     if (targetEl) {
                         const stream = document.getElementById('lyricsStream');
+                        // 固定行高，无任何布局重排抖动
                         const offset = targetEl.offsetTop;
                         stream.style.transform = `translateY(-${offset}px)`;
                     }
