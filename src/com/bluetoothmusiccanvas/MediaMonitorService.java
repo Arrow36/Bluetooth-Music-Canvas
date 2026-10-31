@@ -280,31 +280,58 @@ public class MediaMonitorService extends NotificationListenerService {
         rawArtist = rawArtist != null ? rawArtist.trim() : "";
         album = album != null ? album.trim() : "";
 
-        // 针对古典音乐与多演出者元数据倒置的智能修复：
-        // 部分播放器（如 QQ音乐/网易云）遇到古典乐时，会将 "作曲: Niccolò Paganini" 填入 Title，
-        // 而将 "Chloe Chua/Singapore Symphony Orchestra/Mario Venzago/Violin Concerto No. 1 in D Major..." 填入 Artist。
-        if (rawTitle.startsWith("作曲:") || rawTitle.startsWith("作曲：")
-                || rawTitle.startsWith("作词:") || rawTitle.startsWith("作词：")
-                || rawTitle.toLowerCase().startsWith("composer:")) {
-            int lastSlash = rawArtist.lastIndexOf('/');
-            if (lastSlash > 0) {
-                String composerInfo = rawTitle;
-                rawTitle = rawArtist.substring(lastSlash + 1).trim();
-                String performers = rawArtist.substring(0, lastSlash).trim();
-                rawArtist = performers + " · " + composerInfo;
+        // 智能检测古典乐与蓝牙 AVRCP 歌词投送中的元数据倒置与占位符：
+        // 网易云/QQ音乐在开启车载蓝牙歌词时，遇到纯音乐或古典乐会将占位符
+        // （如 "纯音乐，请欣赏"、"作曲：..."、"作词：..."、"没有填词"）填入 Title 字段，
+        // 而将真实乐章名称放在 Artist 字段的最末端（以 '/' 分隔）。
+        boolean isPlaceholderOrLyric = rawTitle.contains("纯音乐")
+                || rawTitle.contains("请欣赏")
+                || rawTitle.contains("没有填词")
+                || rawTitle.contains("享受音乐")
+                || rawTitle.startsWith("作曲")
+                || rawTitle.startsWith("作词")
+                || rawTitle.startsWith("编曲")
+                || rawTitle.toLowerCase().startsWith("composer")
+                || rawTitle.toLowerCase().startsWith("lyricist");
+
+        int lastSlash = rawArtist.lastIndexOf('/');
+        if (lastSlash > 0) {
+            String candidateTitle = rawArtist.substring(lastSlash + 1).trim();
+            String performers = rawArtist.substring(0, lastSlash).trim();
+
+            boolean candidateLooksLikePiece = candidateTitle.contains("Concerto")
+                    || candidateTitle.contains("Symphony")
+                    || candidateTitle.contains("Sonata")
+                    || candidateTitle.contains("Op.")
+                    || candidateTitle.contains("No.")
+                    || candidateTitle.contains("K.")
+                    || candidateTitle.contains("BWV")
+                    || candidateTitle.contains("Major")
+                    || candidateTitle.contains("Minor")
+                    || candidateTitle.contains("Allegro")
+                    || candidateTitle.contains("Adagio")
+                    || candidateTitle.contains("Andante")
+                    || candidateTitle.length() > 25
+                    || (!album.isEmpty() && candidateTitle.toLowerCase().contains(album.toLowerCase()));
+
+            if (isPlaceholderOrLyric || candidateLooksLikePiece) {
+                Log.i(TAG, "Restored inverted title from artist: [" + candidateTitle + "] performers=[" + performers + "]");
+                rawTitle = candidateTitle;
+                rawArtist = performers;
             }
         }
 
         // 智能区分：真实歌曲元数据 VS 蓝牙动态逐句投屏歌词
-        // 1. 标准歌曲（包含古典多作者、多乐章长标题）：rawTitle 始终是真正的曲目全名，rawArtist 包含所有演出者
-        // 2. 蓝牙动态逐句投屏模式：整首歌播放过程中 duration 与 rawArtist 保持恒定，但 rawTitle 会每隔数秒随旋律动态变为下一句歌词
+        // 整首歌播放过程中 duration 与 rawArtist 保持恒定，但 rawTitle 随旋律动态变为下一句歌词
         boolean isDynamicLyricUpdate = (mDuration > 0 && duration == mDuration
                 && !rawArtist.isEmpty() && rawArtist.equals(mLastRawArtist)
                 && !rawTitle.equals(mRealTitle));
 
         if (isDynamicLyricUpdate) {
-            mStreamLyric = rawTitle;
-            Log.i(TAG, "Bluetooth stream lyric updated: [" + mStreamLyric + "]");
+            if (!rawTitle.contains("纯音乐") && !rawTitle.contains("请欣赏")) {
+                mStreamLyric = rawTitle;
+                Log.i(TAG, "Bluetooth stream lyric updated: [" + mStreamLyric + "]");
+            }
         } else {
             // 新曲目载入：严格保留完整的真实标题与艺术家列表，绝不截断或错位
             mUserDismissed = false;

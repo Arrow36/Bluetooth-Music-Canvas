@@ -46,6 +46,12 @@ public class MetadataFetcher {
         final String artist = cleanArtist(rawArtist);
         final String key = (title + " - " + artist).toLowerCase().trim();
 
+        if (title.isEmpty() || title.contains("纯音乐") || title.contains("请欣赏") || title.equals("未知歌曲") || title.equals("Not Provided")) {
+            Log.i(TAG, "Skipping fetch for placeholder title: [" + title + "]");
+            callback.onResult(null, null, "");
+            return;
+        }
+
         if (!key.isEmpty() && sCache.containsKey(key)) {
             CachedMeta cached = sCache.get(key);
             Log.i(TAG, "Instant cache hit for key: [" + key + "], source: " + cached.lyricSource);
