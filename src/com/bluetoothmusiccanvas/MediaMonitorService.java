@@ -71,6 +71,7 @@ public class MediaMonitorService extends NotificationListenerService {
     // Metadata caching
     private String mRealTitle = "";
     private String mRealArtist = "";
+    private String mLastRawArtist = "";
     private String mRealAlbum = "";
     private String mStreamLyric = "";
     private long mDuration = 0;
@@ -279,28 +280,42 @@ public class MediaMonitorService extends NotificationListenerService {
         rawArtist = rawArtist != null ? rawArtist.trim() : "";
         album = album != null ? album.trim() : "";
 
-        boolean isNewSong = !rawTitle.equals(mRealTitle) || (rawArtist != null && !rawArtist.equals(mRealArtist));
-        if (isNewSong) {
-            mUserDismissed = false;
+        // 针对古典音乐与多演出者元数据倒置的智能修复：
+        // 部分播放器（如 QQ音乐/网易云）遇到古典乐时，会将 "作曲: Niccolò Paganini" 填入 Title，
+        // 而将 "Chloe Chua/Singapore Symphony Orchestra/Mario Venzago/Violin Concerto No. 1 in D Major..." 填入 Artist。
+        if (rawTitle.startsWith("作曲:") || rawTitle.startsWith("作曲：")
+                || rawTitle.startsWith("作词:") || rawTitle.startsWith("作词：")
+                || rawTitle.toLowerCase().startsWith("composer:")) {
+            int lastSlash = rawArtist.lastIndexOf('/');
+            if (lastSlash > 0) {
+                String composerInfo = rawTitle;
+                rawTitle = rawArtist.substring(lastSlash + 1).trim();
+                String performers = rawArtist.substring(0, lastSlash).trim();
+                rawArtist = performers + " · " + composerInfo;
+            }
         }
 
-        // Smart detection for "车载蓝牙歌词":
-        // e.g. rawArtist="王菲/如愿 (电影《我和我的父辈》主题推广曲)", rawTitle="我愿活成你的愿"
-        String cleanArtist = rawArtist.replaceAll("\\s*[\\(（【\\[].*$", "").trim();
-        int lastSlash = cleanArtist.lastIndexOf('/');
-        if (lastSlash > 0) {
-            mRealArtist = cleanArtist.substring(0, lastSlash).trim();
-            mRealTitle = cleanArtist.substring(lastSlash + 1).trim();
-            mStreamLyric = rawTitle; // The rawTitle is the real-time lyric line!
+        // 智能区分：真实歌曲元数据 VS 蓝牙动态逐句投屏歌词
+        // 1. 标准歌曲（包含古典多作者、多乐章长标题）：rawTitle 始终是真正的曲目全名，rawArtist 包含所有演出者
+        // 2. 蓝牙动态逐句投屏模式：整首歌播放过程中 duration 与 rawArtist 保持恒定，但 rawTitle 会每隔数秒随旋律动态变为下一句歌词
+        boolean isDynamicLyricUpdate = (mDuration > 0 && duration == mDuration
+                && !rawArtist.isEmpty() && rawArtist.equals(mLastRawArtist)
+                && !rawTitle.equals(mRealTitle));
+
+        if (isDynamicLyricUpdate) {
+            mStreamLyric = rawTitle;
+            Log.i(TAG, "Bluetooth stream lyric updated: [" + mStreamLyric + "]");
         } else {
+            // 新曲目载入：严格保留完整的真实标题与艺术家列表，绝不截断或错位
+            mUserDismissed = false;
+            mLastRawArtist = rawArtist;
             mRealTitle = rawTitle;
             mRealArtist = rawArtist;
             mStreamLyric = "";
+            mRealAlbum = album;
+            mDuration = duration;
+            Log.i(TAG, "New song loaded: [" + mRealTitle + "] by [" + mRealArtist + "]");
         }
-        mRealAlbum = album;
-        mDuration = duration;
-
-        Log.i(TAG, "Parsed track: [" + mRealTitle + "] by [" + mRealArtist + "], lyric=[" + mStreamLyric + "]");
 
         // Check local album artwork first
         Bitmap localArt = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
