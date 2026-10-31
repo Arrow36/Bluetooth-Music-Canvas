@@ -1,4 +1,4 @@
-package com.c10h.musiccanvas;
+package com.bluetoothmusiccanvas;
 
 import android.content.ComponentName;
 import android.content.Context;
@@ -29,7 +29,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class MediaMonitorService extends NotificationListenerService {
-    private static final String TAG = "C10H_MusicService";
+    private static final String TAG = "BTMusicService";
     public static MediaMonitorService sInstance;
 
     private MediaSessionManager mSessionManager;
@@ -95,7 +95,7 @@ public class MediaMonitorService extends NotificationListenerService {
         mWindowManager = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
         PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
         if (pm != null) {
-            mWakeLock = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP, "C10H:MusicWakeLock");
+            mWakeLock = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP, "BluetoothMusicCanvas:WakeLock");
         }
         Log.i(TAG, "MediaMonitorService created");
     }

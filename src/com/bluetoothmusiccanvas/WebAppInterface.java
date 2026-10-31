@@ -1,4 +1,4 @@
-package com.c10h.musiccanvas;
+package com.bluetoothmusiccanvas;
 
 import android.webkit.JavascriptInterface;
 

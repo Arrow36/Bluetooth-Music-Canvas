@@ -1,4 +1,4 @@
-package com.c10h.musiccanvas;
+package com.bluetoothmusiccanvas;
 
 import android.util.Base64;
 import android.util.Log;
@@ -13,7 +13,7 @@ import java.net.URL;
 import java.net.URLEncoder;
 
 public class MetadataFetcher {
-    private static final String TAG = "C10H_Fetcher";
+    private static final String TAG = "BTMusicFetcher";
 
     public interface Callback {
         void onResult(String coverUrl, String lyricsLrc);

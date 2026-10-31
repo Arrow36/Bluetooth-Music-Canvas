@@ -1,4 +1,4 @@
-package com.c10h.musiccanvas;
+package com.bluetoothmusiccanvas;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -6,7 +6,7 @@ import android.content.Intent;
 import android.util.Log;
 
 public class BootReceiver extends BroadcastReceiver {
-    private static final String TAG = "C10H_MusicBoot";
+    private static final String TAG = "BTMusicBoot";
 
     @Override
     public void onReceive(Context context, Intent intent) {
