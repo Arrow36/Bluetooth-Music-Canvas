@@ -11,6 +11,8 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
+import java.util.HashMap;
+import java.util.Map;
 
 public class MetadataFetcher {
     private static final String TAG = "BTMusicFetcher";
@@ -68,80 +70,90 @@ public class MetadataFetcher {
                 String lyricsLrc = null;
                 String lyricSource = "";
 
-                // 1. Fetch Cover: iTunes (Fastest, highest resolution 600x600)
+                // 1. 优先从网易云音乐 (NetEase) 检索官方高清封面与同步歌词
                 try {
-                    coverUrl = fetchCoverFromiTunes(title, artist);
+                    String[] neteaseRes = fetchFromNetEase(title, artist);
+                    if (neteaseRes[0] != null && !neteaseRes[0].isEmpty()) {
+                        coverUrl = neteaseRes[0];
+                    }
+                    if (neteaseRes[1] != null && !neteaseRes[1].isEmpty()) {
+                        lyricsLrc = neteaseRes[1];
+                        lyricSource = "网易云音乐";
+                    }
                 } catch (Exception e) {
-                    Log.w(TAG, "iTunes cover search failed: " + e.getMessage());
+                    Log.w(TAG, "NetEase search failed: " + e.getMessage());
                 }
 
-                // 判断是否包含中文字符，决定优先检索 Kugou 还是 LRCLIB
-                boolean hasChinese = false;
-                for (char c : title.toCharArray()) {
-                    Character.UnicodeBlock ub = Character.UnicodeBlock.of(c);
-                    if (ub == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS
-                            || ub == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
-                            || ub == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A) {
-                        hasChinese = true;
-                        break;
-                    }
-                }
-
-                if (hasChinese) {
-                    // 中文歌曲优先检索酷狗音乐
+                // 2. 备用封面：iTunes (600x600 官方高保真)
+                if (coverUrl == null) {
                     try {
-                        String[] kugouRes = fetchFromKugou(title, artist, coverUrl == null, true);
-                        if (coverUrl == null && kugouRes[0] != null) {
-                            coverUrl = kugouRes[0];
-                        }
-                        if (kugouRes[1] != null && !kugouRes[1].isEmpty()) {
-                            lyricsLrc = kugouRes[1];
-                            lyricSource = "酷狗音乐";
-                        }
+                        coverUrl = fetchCoverFromiTunes(title, artist);
                     } catch (Exception e) {
-                        Log.w(TAG, "Kugou search failed: " + e.getMessage());
+                        Log.w(TAG, "iTunes cover search failed: " + e.getMessage());
+                    }
+                }
+
+                // 3. 备用歌词：酷狗音乐或 LRCLIB
+                if (lyricsLrc == null) {
+                    boolean hasChinese = false;
+                    for (char c : title.toCharArray()) {
+                        Character.UnicodeBlock ub = Character.UnicodeBlock.of(c);
+                        if (ub == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS
+                                || ub == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
+                                || ub == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A) {
+                            hasChinese = true;
+                            break;
+                        }
                     }
 
-                    // 备选 LRCLIB
-                    if (lyricsLrc == null) {
+                    if (hasChinese) {
+                        // 中文歌曲备选酷狗音乐
+                        try {
+                            String[] kugouRes = fetchFromKugou(title, artist, coverUrl == null, true);
+                            if (coverUrl == null && kugouRes[0] != null) {
+                                coverUrl = kugouRes[0];
+                            }
+                            if (kugouRes[1] != null && !kugouRes[1].isEmpty()) {
+                                lyricsLrc = kugouRes[1];
+                                lyricSource = "酷狗音乐";
+                            }
+                        } catch (Exception e) {
+                            Log.w(TAG, "Kugou search failed: " + e.getMessage());
+                        }
+
+                        if (lyricsLrc == null) {
+                            try {
+                                lyricsLrc = fetchLyricsFromLRCLIB(title, artist);
+                                if (lyricsLrc != null && !lyricsLrc.isEmpty()) {
+                                    lyricSource = "LRCLIB";
+                                }
+                            } catch (Exception ignored) {}
+                        }
+                    } else {
+                        // 外文歌曲备选 LRCLIB
                         try {
                             lyricsLrc = fetchLyricsFromLRCLIB(title, artist);
                             if (lyricsLrc != null && !lyricsLrc.isEmpty()) {
                                 lyricSource = "LRCLIB";
                             }
-                        } catch (Exception e) {
-                            Log.w(TAG, "LRCLIB fallback failed: " + e.getMessage());
-                        }
-                    }
-                } else {
-                    // 外文歌曲优先检索 LRCLIB
-                    try {
-                        lyricsLrc = fetchLyricsFromLRCLIB(title, artist);
-                        if (lyricsLrc != null && !lyricsLrc.isEmpty()) {
-                            lyricSource = "LRCLIB";
-                        }
-                    } catch (Exception e) {
-                        Log.w(TAG, "LRCLIB search failed: " + e.getMessage());
-                    }
+                        } catch (Exception ignored) {}
 
-                    // 备选酷狗
-                    if (coverUrl == null || lyricsLrc == null) {
-                        try {
-                            String[] kugouRes = fetchFromKugou(title, artist, coverUrl == null, lyricsLrc == null);
-                            if (coverUrl == null && kugouRes[0] != null) {
-                                coverUrl = kugouRes[0];
-                            }
-                            if (lyricsLrc == null && kugouRes[1] != null && !kugouRes[1].isEmpty()) {
-                                lyricsLrc = kugouRes[1];
-                                lyricSource = "酷狗音乐";
-                            }
-                        } catch (Exception e) {
-                            Log.w(TAG, "Kugou fallback failed: " + e.getMessage());
+                        if (lyricsLrc == null) {
+                            try {
+                                String[] kugouRes = fetchFromKugou(title, artist, coverUrl == null, true);
+                                if (coverUrl == null && kugouRes[0] != null) {
+                                    coverUrl = kugouRes[0];
+                                }
+                                if (kugouRes[1] != null && !kugouRes[1].isEmpty()) {
+                                    lyricsLrc = kugouRes[1];
+                                    lyricSource = "酷狗音乐";
+                                }
+                            } catch (Exception ignored) {}
                         }
                     }
                 }
 
-                // 若仍未获取到封面，尝试从酷狗补全
+                // 4. 若封面仍缺失，从酷狗兜底
                 if (coverUrl == null) {
                     try {
                         String[] kugouRes = fetchFromKugou(title, artist, true, false);
@@ -296,6 +308,112 @@ public class MetadataFetcher {
             Log.w(TAG, "fetchFromKugou error: " + e.getMessage());
         }
         return out;
+    }
+
+    private static String[] fetchFromNetEase(String title, String artist) {
+        String coverUrl = null;
+        String lyrics = null;
+        try {
+            Map<String, String> headers = new HashMap<>();
+            headers.put("Referer", "https://music.163.com/");
+            headers.put("Cookie", "os=pc");
+
+            String[] queries;
+            if (artist != null && !artist.trim().isEmpty()) {
+                String firstArtist = artist.split("/|,|&")[0].trim();
+                queries = new String[]{ title + " " + firstArtist, title };
+            } else {
+                queries = new String[]{ title };
+            }
+
+            for (String q : queries) {
+                if (q == null || q.trim().isEmpty()) continue;
+                String searchUrl = "https://music.163.com/api/cloudsearch/pc?s="
+                        + URLEncoder.encode(q.trim(), "UTF-8")
+                        + "&type=1&offset=0&limit=3";
+                String jsonStr = httpGetWithHeaders(searchUrl, headers);
+                if (jsonStr == null || jsonStr.isEmpty()) continue;
+
+                JSONObject obj = new JSONObject(jsonStr);
+                JSONObject result = obj.optJSONObject("result");
+                if (result == null) continue;
+                JSONArray songs = result.optJSONArray("songs");
+                if (songs == null || songs.length() == 0) continue;
+
+                JSONObject song = songs.getJSONObject(0);
+                long songId = song.optLong("id");
+                JSONObject album = song.optJSONObject("al");
+                if (album == null) {
+                    album = song.optJSONObject("album");
+                }
+                if (album != null) {
+                    String picUrl = album.optString("picUrl");
+                    if (picUrl != null && !picUrl.isEmpty()) {
+                        if (picUrl.startsWith("http://")) {
+                            picUrl = "https://" + picUrl.substring(7);
+                        }
+                        coverUrl = picUrl + "?param=600y600";
+                    }
+                }
+
+                // 获取歌词
+                if (songId > 0) {
+                    String lyricUrl = "https://music.163.com/api/song/lyric?os=pc&id=" + songId + "&lv=-1&kv=-1&tv=-1";
+                    String lyricJson = httpGetWithHeaders(lyricUrl, headers);
+                    if (lyricJson != null && !lyricJson.isEmpty()) {
+                        JSONObject lrcObj = new JSONObject(lyricJson);
+                        JSONObject lrc = lrcObj.optJSONObject("lrc");
+                        if (lrc != null) {
+                            lyrics = lrc.optString("lyric");
+                        }
+                    }
+                }
+
+                if (coverUrl != null || lyrics != null) {
+                    break;
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "fetchFromNetEase error: " + e.getMessage());
+        }
+        return new String[]{coverUrl, lyrics};
+    }
+
+    private static String httpGetWithHeaders(String urlStr, Map<String, String> headers) {
+        HttpURLConnection conn = null;
+        try {
+            URL url = new URL(urlStr);
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(5000);
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            if (headers != null) {
+                for (Map.Entry<String, String> entry : headers.entrySet()) {
+                    conn.setRequestProperty(entry.getKey(), entry.getValue());
+                }
+            }
+
+            int code = conn.getResponseCode();
+            if (code == 200) {
+                InputStream is = conn.getInputStream();
+                BufferedReader reader = new BufferedReader(new InputStreamReader(is, "UTF-8"));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line).append("\n");
+                }
+                reader.close();
+                return sb.toString();
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "HTTP GET failed for " + urlStr + ": " + e.getMessage());
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
+        }
+        return null;
     }
 
     private static String httpGet(String urlStr, String customUA) {
