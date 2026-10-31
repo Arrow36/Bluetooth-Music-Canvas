@@ -481,8 +481,8 @@
         /* 真实黑胶唱臂：精工金属材质、高保真倒角与唱头，根据播放进度实时计算旋转角度 */
         .tonearm {
             position: absolute;
-            top: -26px;
-            right: 18px;
+            top: -38px;
+            right: 8px;
             width: 72px;
             height: 208px;
             transform-origin: 36px 54.4px;
@@ -542,7 +542,8 @@
             -webkit-box-orient: vertical;
             overflow: hidden;
             text-overflow: ellipsis;
-            word-break: break-word;
+            word-break: normal;
+            overflow-wrap: break-word;
         }
 
         .song-artist {
@@ -777,15 +778,29 @@
         }
 
         .empty-lyrics {
+            position: absolute;
+            top: 50%;
+            left: 0;
             width: 100%;
-            height: 300px;
+            transform: translateY(-50%);
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             color: rgba(255, 255, 255, 0.5);
             font-size: 18px;
-            gap: 16px;
+            gap: 20px;
+            pointer-events: none;
+            z-index: 5;
+            transition: opacity 0.4s ease;
+        }
+
+        .empty-lyrics-text {
+            font-size: 26px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.88);
+            letter-spacing: 1.2px;
+            text-align: center;
         }
 
         .equalizer-wave {
@@ -1212,18 +1227,17 @@
             <!-- 右侧面板：透明渐隐滚动歌词 -->
             <div class="right-panel">
                 <div class="lyrics-viewport" id="lyricsViewport">
-                    <div class="lyrics-stream" id="lyricsStream">
-                        <div class="empty-lyrics" id="emptyLyrics">
-                            <div class="equalizer-wave">
-                                <div class="wave-bar"></div>
-                                <div class="wave-bar"></div>
-                                <div class="wave-bar"></div>
-                                <div class="wave-bar"></div>
-                                <div class="wave-bar"></div>
-                            </div>
-                            <div id="emptyText">正在检索官方歌词与封面...</div>
+                    <div class="empty-lyrics" id="emptyLyrics">
+                        <div class="equalizer-wave">
+                            <div class="wave-bar"></div>
+                            <div class="wave-bar"></div>
+                            <div class="wave-bar"></div>
+                            <div class="wave-bar"></div>
+                            <div class="wave-bar"></div>
                         </div>
+                        <div class="empty-lyrics-text" id="emptyText">正在检索官方歌词与封面...</div>
                     </div>
+                    <div class="lyrics-stream" id="lyricsStream"></div>
                 </div>
             </div>
         </div>
@@ -1430,34 +1444,44 @@
             return result;
         }
 
+                // 智能优化歌名分行逻辑（尤其是古典音乐作品名、乐章、编号等）
+        function formatSongTitle(rawTitle) {
+            if (!rawTitle) return "";
+            // 1. 标准化标点符号与其后空格：确保冒号后有空格（如 "K. 285:I. Allegro" -> "K. 285: I. Allegro"）
+            let t = rawTitle.replace(/:([^\s])/g, ': $1');
+            // 2. 乐章罗马数字（I. / II. / III. / IV. 等）与后方速度标记之间绑定不换行空格（&nbsp; /  ），
+            //    确保 "I." 和 "Allegro" 绝对保持在同一行，绝不孤立分行
+            t = t.replace(/\b([IVXLCDM]+\.)\s+/gi, '$1\u00A0');
+            // 3. 作品编号前缀（Op. / K. / BWV / Hob. / No.）与其编号之间绑定不换行空格
+            t = t.replace(/\b(Op\.|K\.|BWV|Hob\.|No\.)\s*(\d+)/gi, '$1\u00A0$2');
+            return t;
+        }
+
         function renderLyrics(lrcArray) {
             lyrics = lrcArray;
             const stream = document.getElementById('lyricsStream');
+            const emptyBox = document.getElementById('emptyLyrics');
+            const emptyText = document.getElementById('emptyText');
             stream.innerHTML = '';
             activeLyricIndex = -1;
 
             if (!lyrics || lyrics.length === 0) {
                 hasOfficialLyrics = false;
                 if (currentTrack.streamLyric) {
+                    if (emptyBox) emptyBox.style.display = 'none';
                     showStreamLyric(currentTrack.streamLyric);
                 } else {
-                    stream.style.transform = 'translateY(0)';
-                    stream.innerHTML = `
-                        <div class="empty-lyrics">
-                            <div class="equalizer-wave">
-                                <div class="wave-bar"></div>
-                                <div class="wave-bar"></div>
-                                <div class="wave-bar"></div>
-                                <div class="wave-bar"></div>
-                                <div class="wave-bar"></div>
-                            </div>
-                            <div style="font-size: 26px; font-weight: 600; color: rgba(255, 255, 255, 0.88); letter-spacing: 1px;">纯音乐，请欣赏</div>
-                        </div>`;
+                    if (emptyBox) {
+                        emptyBox.style.display = 'flex';
+                        if (emptyText) emptyText.textContent = '纯音乐，请欣赏';
+                    }
+                    stream.innerHTML = '';
                     updateStatusTag('纯音乐', '#888888');
                 }
                 return;
             }
 
+            if (emptyBox) emptyBox.style.display = 'none';
             hasOfficialLyrics = true;
             lyrics.forEach((item, index) => {
                 const div = document.createElement('div');
@@ -1470,6 +1494,8 @@
 
         function showStreamLyric(text) {
             const stream = document.getElementById('lyricsStream');
+            const emptyBox = document.getElementById('emptyLyrics');
+            if (emptyBox) emptyBox.style.display = 'none';
             stream.style.transform = 'translateY(-24px)';
             stream.innerHTML = `
                 <div class="live-stream-box">
@@ -1565,7 +1591,7 @@
             const isNewSong = (currentTrack.title !== title || currentTrack.artist !== artist);
             currentTrack = data;
 
-            document.getElementById('songTitle').textContent = title;
+            document.getElementById('songTitle').textContent = formatSongTitle(title);
             const formattedArtist = (artist || "未知歌手").replace(/\s*\/\s*/g, ' / ');
             let artistAlbumText = formattedArtist;
             if (album && !title.toLowerCase().includes(album.toLowerCase()) && !album.toLowerCase().includes(title.toLowerCase())) {
@@ -1579,6 +1605,12 @@
             if (streamLyric) songCache[trackKey].streamLyric = streamLyric;
 
             if (isNewSong) {
+                const emptyBox = document.getElementById('emptyLyrics');
+                const emptyText = document.getElementById('emptyText');
+                if (emptyBox) {
+                    emptyBox.style.display = 'flex';
+                    if (emptyText) emptyText.textContent = '正在检索官方歌词与封面...';
+                }
                 hasOfficialLyrics = false;
                 parsedOfficialLyrics = [];
                 activeLyricIndex = -1;
