@@ -49,15 +49,12 @@
 
 ---
 
-## 📸 实机展示 (Screenshots)
+## 📸 实机展示 (Screenshot)
 
-| 官方封面 + 毫秒级逐行歌词 | 纯音乐模式 + 5频段 AGC 动态频谱仪 |
-| :---: | :---: |
-| ![全屏播放效果](docs/images/screen_restored.png) | ![纯音乐模式与动态频谱](docs/images/screen_pure_music.png) |
-
-| 多语言与国风歌曲自适应 | 桌面迷你旋转黑胶悬浮球 |
-| :---: | :---: |
-| ![多语言播放效果](docs/images/screen_live_now.png) | 随手机放歌自动浮起，轻触无缝返回大屏看板 |
+<div align="center">
+  <img src="docs/images/screen_latest.png" width="92%" alt="Bluetooth Music Canvas 最新实机运行效果" style="border-radius: 12px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);" />
+  <p><i>（实机运行：拟物毛玻璃唱机循迹 + 古典乐智能语义排版 + 5频段动态律动频谱仪 + 纯音乐沉浸模式）</i></p>
+</div>
 
 ---
 
