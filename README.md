@@ -1,7 +1,13 @@
+<div align="center">
+
+<img src="docs/images/logo.png" width="128" height="128" alt="Bluetooth Music Canvas Logo" style="border-radius: 28px;" />
+
 # 🎵 Bluetooth Music Canvas (蓝牙音乐看板)
 
 > **极简、高颜值的 Android 蓝牙音频大屏看板 & 桌面黑胶悬浮球。**  
 > 手机连上蓝牙放歌，电视 / 车机 / 智慧屏秒变黑胶唱片大屏与全屏流光歌词幕布。
+
+</div>
 
 ---
 
