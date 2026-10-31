@@ -109,11 +109,11 @@
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            height: 34px;
-            padding: 0 14px;
+            height: 36px;
+            padding: 0 16px;
             background: rgba(255, 255, 255, 0.07);
             border: 1px solid rgba(255, 255, 255, 0.14);
-            border-radius: 17px;
+            border-radius: 18px;
             color: rgba(255, 255, 255, 0.85);
             font-size: 13px;
             font-weight: 600;
@@ -471,21 +471,15 @@
         }
 
         .vinyl-center-dot {
-            position: absolute;
-            width: 22px;
-            height: 22px;
-            border-radius: 50%;
-            background: radial-gradient(circle, #ffffff 0%, #d8d8d8 40%, #777777 90%, #333333 100%);
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.75), inset 0 1px 1px #ffffff;
-            z-index: 10;
+            display: none;
         }
 
         .tonearm-base {
             position: absolute;
             top: 2px;
             right: 22px;
-            width: 30px;
-            height: 30px;
+            width: 32px;
+            height: 32px;
             border-radius: 50%;
             background: radial-gradient(circle, #555 0%, #222 70%, #111 100%);
             box-shadow: 0 4px 10px rgba(0,0,0,0.7), inset 0 1px 1px rgba(255,255,255,0.4);
@@ -493,22 +487,25 @@
             z-index: 9;
         }
 
-        /* 真实黑胶唱臂：根据播放进度实时计算旋转角度，支持平滑物理走针 */
+        /* 真实黑胶唱臂：精工金属材质、高保真倒角与唱头，根据播放进度实时计算旋转角度 */
         .tonearm {
             position: absolute;
             top: 4px;
             right: 20px;
-            width: 70px;
-            height: 140px;
-            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 145"><path d="M26 0 A15 15 0 0 1 46 0 L41 95 L20 132 L9 126 L29 93 Z" fill="%23e2e2e2"/><path d="M34 10 L37 93 L27 91 Z" fill="%23ffffff" opacity="0.3"/><circle cx="16" cy="129" r="3" fill="%23ff416c"/></svg>');
-            background-repeat: no-repeat;
-            background-size: contain;
+            width: 72px;
+            height: 145px;
             transform-origin: 36px 9px;
             transform: rotate(-32deg);
             transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
             z-index: 10;
-            filter: drop-shadow(0 6px 8px rgba(0,0,0,0.6));
+            filter: drop-shadow(2px 6px 10px rgba(0,0,0,0.7));
             will-change: transform;
+        }
+
+        .tonearm svg {
+            width: 100%;
+            height: 100%;
+            display: block;
         }
 
         /* 紧凑而富有质感的控制底座 */
@@ -521,7 +518,7 @@
             background: rgba(255, 255, 255, 0.035);
             border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: 24px;
-            padding: 18px 20px 16px 20px;
+            padding: 16px 20px 15px 20px;
             box-sizing: border-box;
             backdrop-filter: blur(20px);
             box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
@@ -530,18 +527,18 @@
         .meta-container {
             width: 100%;
             text-align: center;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
         }
 
         .song-title {
-            font-size: 19px;
+            font-size: 17px;
             font-weight: 700;
             color: #ffffff;
             letter-spacing: 0.2px;
             text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
-            line-height: 1.35;
+            line-height: 1.36;
             display: -webkit-box;
-            -webkit-line-clamp: 2;
+            -webkit-line-clamp: 4;
             -webkit-box-orient: vertical;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -829,52 +826,55 @@
             padding-top: 4px;
         }
 
-        /* 全屏左下角：发烧级音频参数卡片（文字统一低调优雅排版） */
+        /* 全屏左下角：发烧级音频参数卡片（与四个角落及音量组件统一 36px 规格） */
         .audio-spec-card {
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            height: 30px;
-            padding: 0 14px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 15px;
-            backdrop-filter: blur(14px);
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-            font-size: 11.5px;
-            color: rgba(255, 255, 255, 0.75);
+            gap: 7px;
+            height: 36px;
+            padding: 0 16px;
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 18px;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+            font-size: 13px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.85);
             letter-spacing: 0.3px;
             font-variant-numeric: tabular-nums;
         }
 
         .spec-param {
-            font-weight: 500;
-            color: rgba(255, 255, 255, 0.75);
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.85);
         }
 
         .spec-slash, .spec-bullet {
-            color: rgba(255, 255, 255, 0.3);
+            color: rgba(255, 255, 255, 0.35);
         }
 
-        /* 全屏右下角：歌词源切换胶囊 */
+        /* 全屏右下角：歌词源切换胶囊（与四个角落及音量组件统一 36px 规格） */
         .source-tag {
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            height: 30px;
-            padding: 0 12px;
-            font-size: 12px;
-            color: rgba(255, 255, 255, 0.75);
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            border-radius: 15px;
-            letter-spacing: 0.4px;
+            gap: 7px;
+            height: 36px;
+            padding: 0 16px;
+            font-size: 13px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.85);
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 18px;
+            letter-spacing: 0.3px;
             cursor: pointer;
             outline: none;
             transition: all 0.2s ease;
             user-select: none;
             -webkit-tap-highlight-color: transparent;
-            backdrop-filter: blur(12px);
+            backdrop-filter: blur(16px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
         }
 
         .source-tag * {
@@ -928,8 +928,8 @@
             width: 36px;
             padding: 0;
             box-sizing: border-box;
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.14);
             border-radius: 18px;
             display: flex;
             flex-direction: column;
@@ -1149,10 +1149,54 @@
                                 </svg>
                             </div>
                         </div>
-                        <div class="vinyl-center-dot"></div>
                     </div>
                     <div class="tonearm-base"></div>
-                    <div class="tonearm" id="tonearm"></div>
+                    <div class="tonearm" id="tonearm">
+                        <svg viewBox="0 0 72 145">
+                            <defs>
+                                <linearGradient id="armTube" x1="0%" y1="0%" x2="100%" y2="0%">
+                                    <stop offset="0%" stop-color="#7a7e85"/>
+                                    <stop offset="25%" stop-color="#d4d9df"/>
+                                    <stop offset="50%" stop-color="#ffffff"/>
+                                    <stop offset="75%" stop-color="#b8bdc4"/>
+                                    <stop offset="100%" stop-color="#555960"/>
+                                </linearGradient>
+                                <linearGradient id="headshellGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop offset="0%" stop-color="#383c44"/>
+                                    <stop offset="50%" stop-color="#1e2025"/>
+                                    <stop offset="100%" stop-color="#0e1012"/>
+                                </linearGradient>
+                                <radialGradient id="pivotRing" cx="40%" cy="35%" r="65%">
+                                    <stop offset="0%" stop-color="#8a8f98"/>
+                                    <stop offset="50%" stop-color="#32363c"/>
+                                    <stop offset="100%" stop-color="#151618"/>
+                                </radialGradient>
+                            </defs>
+                            <!-- 顶部后方重锤/砝码 -->
+                            <rect x="31" y="-3" width="10" height="7" rx="2" fill="url(#armTube)" stroke="#444" stroke-width="0.5"/>
+                            <!-- 旋转枢轴轴承 -->
+                            <circle cx="36" cy="9" r="10.5" fill="url(#pivotRing)" stroke="#555960" stroke-width="1"/>
+                            <circle cx="36" cy="9" r="6.5" fill="#1e2024" stroke="#9aa0a6" stroke-width="0.6"/>
+                            <circle cx="36" cy="9" r="2.5" fill="#ffffff" opacity="0.9"/>
+                            <!-- 唱臂金属主管（细长圆管） -->
+                            <path d="M34 14 L38 14 L36.5 94 L33.5 94 Z" fill="url(#armTube)"/>
+                            <!-- 连接套筒环 -->
+                            <rect x="32" y="92" width="6" height="4" rx="1" fill="#222" stroke="#888" stroke-width="0.5"/>
+                            <!-- 弯折次臂 -->
+                            <path d="M35 94 L32.5 95 L16.5 125 L19 126 Z" fill="url(#armTube)"/>
+                            <!-- 唱头架 Headshell -->
+                            <path d="M22 123 L9 133 L12 143 L25 133 Z" fill="url(#headshellGrad)" stroke="#555a60" stroke-width="0.8" rx="1"/>
+                            <!-- 唱头高光脊线 -->
+                            <line x1="21" y1="124" x2="10.5" y2="133" stroke="#ffffff" stroke-width="0.7" opacity="0.6"/>
+                            <!-- 唱头铭牌金色饰条 -->
+                            <line x1="16" y1="135" x2="22" y2="130" stroke="#e5a93c" stroke-width="1.2" stroke-linecap="round"/>
+                            <!-- 指提手柄 Finger Lift -->
+                            <path d="M10 132 C6 130, 4 124, 3 121" fill="none" stroke="#c5c9cf" stroke-width="1.2" stroke-linecap="round"/>
+                            <!-- 唱针头与红宝石触点 -->
+                            <polygon points="11,142 14,144 12,147" fill="#d0d5db"/>
+                            <circle cx="12.5" cy="146.5" r="1.8" fill="#ff3b69"/>
+                        </svg>
+                    </div>
                 </div>
 
                 <div class="player-deck">
