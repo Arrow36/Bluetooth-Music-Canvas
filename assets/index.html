@@ -72,7 +72,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: radial-gradient(circle at 35% 50%, rgba(20, 24, 30, 0.22) 0%, rgba(10, 12, 16, 0.90) 100%);
+            background: radial-gradient(circle at 35% 50%, rgba(15, 18, 24, 0.15) 0%, rgba(11, 13, 16, 0.72) 100%);
         }
 
         .container {
@@ -84,34 +84,43 @@
             padding: 24px 36px;
         }
 
-        /* 左侧面板：黑胶唱机与播控 */
+        /* 左侧面板：黑胶唱机与播控一体化高阶设计 */
         .left-panel {
             width: 44%;
             height: 100%;
             display: flex;
             flex-direction: column;
-            justify-content: space-between;
+            justify-content: center;
             align-items: center;
-            padding-right: 28px;
-            border-right: 1px solid rgba(255, 255, 255, 0.08);
+            padding-right: 36px;
+            border-right: 1px solid rgba(255, 255, 255, 0.07);
+            gap: 22px;
         }
 
         .turntable-container {
             position: relative;
-            width: 280px;
-            height: 280px;
-            margin-top: 10px;
+            width: 290px;
+            height: 290px;
             display: flex;
             justify-content: center;
             align-items: center;
+            flex-shrink: 0;
         }
 
         .vinyl-record {
-            width: 260px;
-            height: 260px;
+            width: 270px;
+            height: 270px;
             border-radius: 50%;
-            background: radial-gradient(circle, #0a0a0a 0%, #151515 40%, #0a0a0a 41%, #1f1f1f 70%, #080808 100%);
-            box-shadow: 0 16px 36px rgba(0, 0, 0, 0.7), inset 0 0 0 2px rgba(255, 255, 255, 0.05);
+            background:
+                radial-gradient(circle, transparent 36%, rgba(255, 255, 255, 0.04) 37%, transparent 38%),
+                radial-gradient(circle, transparent 48%, rgba(255, 255, 255, 0.035) 49%, transparent 50%),
+                radial-gradient(circle, transparent 62%, rgba(255, 255, 255, 0.04) 63%, transparent 64%),
+                radial-gradient(circle, transparent 76%, rgba(255, 255, 255, 0.035) 77%, transparent 78%),
+                radial-gradient(circle, #0e1013 0%, #17191d 30%, #0d0f12 50%, #1a1d22 70%, #08090a 100%);
+            box-shadow:
+                0 22px 55px rgba(0, 0, 0, 0.75),
+                inset 0 0 0 2px rgba(255, 255, 255, 0.08),
+                inset 0 0 16px rgba(0, 0, 0, 0.9);
             display: flex;
             justify-content: center;
             align-items: center;
@@ -123,7 +132,10 @@
 
         .vinyl-record.playing {
             animation-play-state: running;
-            box-shadow: 0 20px 48px rgba(0, 0, 0, 0.8), 0 0 24px rgba(255, 255, 255, 0.12);
+            box-shadow:
+                0 26px 60px rgba(0, 0, 0, 0.82),
+                0 0 30px rgba(255, 255, 255, 0.12),
+                inset 0 0 0 2px rgba(255, 255, 255, 0.12);
         }
 
         @keyframes spinVinyl {
@@ -137,9 +149,11 @@
             height: 156px;
             border-radius: 50%;
             overflow: hidden;
-            border: 3px solid #111;
-            box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.8);
-            background: #181a20;
+            box-shadow:
+                0 0 0 4px #0d0f12,
+                0 0 0 5px rgba(255, 255, 255, 0.16),
+                inset 0 0 16px rgba(0, 0, 0, 0.7);
+            background: #14161b;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -172,54 +186,110 @@
 
         .vinyl-center-dot {
             position: absolute;
-            width: 20px;
-            height: 20px;
+            width: 22px;
+            height: 22px;
             border-radius: 50%;
-            background: #e0e0e0;
-            box-shadow: 0 0 6px rgba(0,0,0,0.8);
+            background: radial-gradient(circle, #ffffff 0%, #d8d8d8 40%, #777777 90%, #333333 100%);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.75), inset 0 1px 1px #ffffff;
             z-index: 10;
+        }
+
+        .tonearm-base {
+            position: absolute;
+            top: 2px;
+            right: 22px;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: radial-gradient(circle, #555 0%, #222 70%, #111 100%);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.7), inset 0 1px 1px rgba(255,255,255,0.4);
+            border: 2px solid rgba(255,255,255,0.15);
+            z-index: 9;
         }
 
         .tonearm {
             position: absolute;
-            top: -12px;
-            right: 16px;
-            width: 70px;
-            height: 140px;
-            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 70 140"><path d="M25 0 A15 15 0 0 1 45 0 L40 90 L20 125 L10 120 L28 88 Z" fill="%23d0d0d0"/></svg>');
+            top: 4px;
+            right: 20px;
+            width: 72px;
+            height: 145px;
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 145"><path d="M26 0 A15 15 0 0 1 46 0 L41 95 L20 132 L9 126 L29 93 Z" fill="%23e2e2e2"/><path d="M34 10 L37 93 L27 91 Z" fill="%23ffffff" opacity="0.3"/><circle cx="16" cy="129" r="3" fill="%23ff416c"/></svg>');
             background-repeat: no-repeat;
             background-size: contain;
-            transform-origin: 35px 8px;
+            transform-origin: 36px 9px;
             transform: rotate(-32deg);
             transition: transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
             z-index: 10;
+            filter: drop-shadow(0 6px 8px rgba(0,0,0,0.6));
         }
 
         .tonearm.playing {
             transform: rotate(-3deg);
         }
 
+        /* 紧凑而富有质感的控制底座 */
+        .player-deck {
+            width: 100%;
+            max-width: 360px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.035);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 24px;
+            padding: 16px 20px 14px 20px;
+            box-sizing: border-box;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+        }
+
+        .audio-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.55);
+            background: rgba(255, 255, 255, 0.06);
+            padding: 2px 10px;
+            border-radius: 10px;
+            margin-bottom: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .badge-dot {
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: #00d2ff;
+            box-shadow: 0 0 6px #00d2ff;
+        }
+
         .meta-container {
             width: 100%;
             text-align: center;
-            margin-top: 14px;
+            margin-bottom: 12px;
         }
 
         .song-title {
-            font-size: 24px;
+            font-size: 22px;
             font-weight: 700;
             color: #ffffff;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.3px;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+            line-height: 1.3;
         }
 
         .song-artist {
-            font-size: 15px;
+            font-size: 14px;
             font-weight: 400;
             color: rgba(255, 255, 255, 0.65);
-            margin-top: 6px;
+            margin-top: 4px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -229,19 +299,27 @@
             width: 100%;
             display: flex;
             align-items: center;
-            gap: 12px;
-            font-size: 13px;
+            gap: 10px;
+            font-size: 12px;
             color: rgba(255, 255, 255, 0.5);
-            margin-top: 10px;
+            margin-bottom: 12px;
+        }
+
+        .time-label {
+            font-variant-numeric: tabular-nums;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            min-width: 36px;
+            text-align: center;
         }
 
         .progress-bar-bg {
             flex: 1;
-            height: 4px;
-            background: rgba(255, 255, 255, 0.15);
-            border-radius: 2px;
+            height: 5px;
+            background: rgba(255, 255, 255, 0.12);
+            border-radius: 3px;
             position: relative;
-            overflow: hidden;
+            overflow: visible;
         }
 
         .progress-bar-fill {
@@ -251,53 +329,74 @@
             height: 100%;
             width: 0%;
             background: linear-gradient(90deg, #ff416c, #ff4b2b);
-            border-radius: 2px;
+            border-radius: 3px;
             transition: width 0.3s linear;
+        }
+
+        .progress-bar-thumb {
+            position: absolute;
+            right: -4px;
+            top: -2.5px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ffffff;
+            box-shadow: 0 0 8px rgba(255, 75, 43, 0.9);
         }
 
         .controls-row {
             display: flex;
             align-items: center;
-            gap: 24px;
-            margin-top: 8px;
-            margin-bottom: 6px;
+            justify-content: center;
+            gap: 20px;
+            width: 100%;
         }
 
         .btn-ctrl {
             background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.14);
             border-radius: 50%;
-            width: 48px;
-            height: 48px;
+            width: 44px;
+            height: 44px;
             display: flex;
             justify-content: center;
             align-items: center;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
             outline: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
         }
 
         .btn-ctrl:active {
             transform: scale(0.92);
-            background: rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.22);
         }
 
         .btn-ctrl svg {
-            width: 20px;
-            height: 20px;
+            width: 18px;
+            height: 18px;
             fill: #ffffff;
+            pointer-events: none;
         }
 
         .btn-main {
-            width: 58px;
-            height: 58px;
+            width: 54px;
+            height: 54px;
             background: #ffffff;
             border: none;
+            box-shadow: 0 6px 20px rgba(255, 255, 255, 0.28);
+        }
+
+        .btn-main:active {
+            transform: scale(0.92);
+            background: #e6e6e6;
+            box-shadow: 0 3px 12px rgba(255, 255, 255, 0.2);
         }
 
         .btn-main svg {
-            width: 26px;
-            height: 26px;
+            width: 24px;
+            height: 24px;
             fill: #0b0d10;
         }
 
@@ -357,26 +456,7 @@
             flex: 1;
             position: relative;
             overflow: hidden;
-            /* Removed -webkit-mask-image to prevent Mali GPU hardware compositor flickering */
-        }
-
-        .lyrics-fade-top, .lyrics-fade-bottom {
-            position: absolute;
-            left: 0;
-            right: 0;
-            height: 48px;
-            pointer-events: none;
-            z-index: 10;
-        }
-
-        .lyrics-fade-top {
-            top: 0;
-            background: linear-gradient(to bottom, #0b0d10 0%, rgba(11, 13, 16, 0.8) 40%, transparent 100%);
-        }
-
-        .lyrics-fade-bottom {
-            bottom: 0;
-            background: linear-gradient(to top, #0b0d10 0%, rgba(11, 13, 16, 0.8) 40%, transparent 100%);
+            /* 纯净透明视口，绝无任何黑色遮罩与 GPU 闪烁 */
         }
 
         .lyrics-footer {
@@ -432,56 +512,85 @@
         .lyrics-stream {
             position: absolute;
             width: 100%;
-            top: 40%;
-            transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+            top: 42%;
+            transition: transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
             text-align: left;
         }
 
+        /* 歌词文字自带透明渐变，完全不借助黑色背景遮罩 */
         .lyric-line {
             font-size: 20px;
             font-weight: 500;
             line-height: 2.3;
-            color: rgba(255, 255, 255, 0.35);
-            transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+            color: rgba(255, 255, 255, 0.4);
+            opacity: 0.15;
+            transition: all 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
             transform-origin: left center;
         }
 
         .lyric-line.active {
-            font-size: 28px;
+            font-size: 30px;
             font-weight: 700;
             color: #ffffff;
-            transform: scale(1.04);
-            text-shadow: 0 0 24px rgba(255, 255, 255, 0.6);
+            opacity: 1;
+            transform: scale(1.05);
+            text-shadow: 0 0 28px rgba(255, 255, 255, 0.75);
         }
 
-        .lyric-line.near {
-            color: rgba(255, 255, 255, 0.6);
+        .lyric-line.near-1 {
+            font-size: 22px;
+            color: rgba(255, 255, 255, 0.85);
+            opacity: 0.75;
+            transform: scale(1.0);
         }
 
-        /* 蓝牙实时单行车载歌词视口 */
+        .lyric-line.near-2 {
+            font-size: 20px;
+            color: rgba(255, 255, 255, 0.65);
+            opacity: 0.45;
+        }
+
+        .lyric-line.near-3 {
+            font-size: 19px;
+            color: rgba(255, 255, 255, 0.45);
+            opacity: 0.22;
+        }
+
+        .lyric-line.near-4 {
+            font-size: 18px;
+            color: rgba(255, 255, 255, 0.30);
+            opacity: 0.08;
+        }
+
+        .lyric-line.far {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* 蓝牙实时单行车载歌词视口：纯净大字居中靠上 */
         .live-stream-box {
             display: flex;
-            flex-direction: column;
             justify-content: center;
             align-items: center;
-            height: 300px;
+            padding-top: 10px;
+            padding-bottom: 20px;
             text-align: center;
-            padding: 0 20px;
+            padding-left: 20px;
+            padding-right: 20px;
+            width: 100%;
+            box-sizing: border-box;
         }
 
         .live-stream-lyric {
-            font-size: 32px;
+            font-size: 38px;
             font-weight: 700;
             color: #ffffff;
             line-height: 1.5;
-            text-shadow: 0 0 24px rgba(255, 255, 255, 0.7);
-            transition: all 0.3s ease;
-        }
-
-        .live-stream-sub {
-            font-size: 14px;
-            color: rgba(255, 255, 255, 0.5);
-            margin-top: 16px;
+            letter-spacing: 0.6px;
+            text-shadow: 0 4px 32px rgba(255, 255, 255, 0.85);
+            transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+            max-width: 92%;
+            word-break: break-word;
         }
 
         .empty-lyrics {
@@ -531,7 +640,7 @@
     </div>
 
     <div class="container">
-        <!-- 左侧面板 -->
+        <!-- 左侧面板：黑胶唱机与控制底座 -->
         <div class="left-panel">
             <div class="turntable-container">
                 <div class="vinyl-record" id="vinylRecord">
@@ -548,36 +657,46 @@
                     </div>
                     <div class="vinyl-center-dot"></div>
                 </div>
+                <div class="tonearm-base"></div>
                 <div class="tonearm" id="tonearm"></div>
             </div>
 
-            <div class="meta-container">
-                <div class="song-title" id="songTitle">等待播放蓝牙音乐...</div>
-                <div class="song-artist" id="songArtist">请在手机端播放任意音乐</div>
-            </div>
-
-            <div class="progress-box">
-                <span id="timeCurrent">00:00</span>
-                <div class="progress-bar-bg">
-                    <div class="progress-bar-fill" id="progressBar"></div>
+            <div class="player-deck">
+                <div class="audio-badge">
+                    <span class="badge-dot"></span>
+                    <span>A2DP HD AUDIO</span>
                 </div>
-                <span id="timeTotal">00:00</span>
-            </div>
 
-            <div class="controls-row">
-                <button class="btn-ctrl" onclick="triggerPrev()">
-                    <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
-                </button>
-                <button class="btn-ctrl btn-main" onclick="triggerPlayPause()">
-                    <svg id="playIcon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                </button>
-                <button class="btn-ctrl" onclick="triggerNext()">
-                    <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
-                </button>
+                <div class="meta-container">
+                    <div class="song-title" id="songTitle">等待播放蓝牙音乐...</div>
+                    <div class="song-artist" id="songArtist">请在手机端播放任意音乐</div>
+                </div>
+
+                <div class="progress-box">
+                    <span id="timeCurrent" class="time-label">00:00</span>
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" id="progressBar">
+                            <div class="progress-bar-thumb"></div>
+                        </div>
+                    </div>
+                    <span id="timeTotal" class="time-label">00:00</span>
+                </div>
+
+                <div class="controls-row">
+                    <button class="btn-ctrl" onclick="triggerPrev()" title="上一首">
+                        <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+                    </button>
+                    <button class="btn-ctrl btn-main" onclick="triggerPlayPause()" title="播放/暂停">
+                        <svg id="playIcon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                    </button>
+                    <button class="btn-ctrl" onclick="triggerNext()" title="下一首">
+                        <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+                    </button>
+                </div>
             </div>
         </div>
 
-        <!-- 右侧面板 -->
+        <!-- 右侧面板：透明渐隐滚动歌词 -->
         <div class="right-panel">
             <div class="lyrics-header">
                 <button class="btn-close" onclick="triggerExit(event)" title="返回桌面" aria-label="返回桌面">
@@ -586,7 +705,6 @@
             </div>
 
             <div class="lyrics-viewport" id="lyricsViewport">
-                <div class="lyrics-fade-top"></div>
                 <div class="lyrics-stream" id="lyricsStream">
                     <div class="empty-lyrics" id="emptyLyrics">
                         <div class="equalizer-wave">
@@ -599,7 +717,6 @@
                         <div id="emptyText">正在检索官方歌词与封面...</div>
                     </div>
                 </div>
-                <div class="lyrics-fade-bottom"></div>
             </div>
 
             <div class="lyrics-footer">
@@ -628,6 +745,7 @@
         let activeLyricIndex = -1;
         let currentCoverUrl = "";
         let lyricMode = 'official'; // 'official' | 'bluetooth'
+        let userExplicitMode = null; // 用户手动切换锁定模式
 
         // 歌曲元数据与歌词内存缓存表（避免返回桌面重新点击时重复请求与闪白）
         const songCache = {};
@@ -716,7 +834,7 @@
             hasOfficialLyrics = true;
             lyrics.forEach((item, index) => {
                 const div = document.createElement('div');
-                div.className = 'lyric-line';
+                div.className = 'lyric-line' + (index === 0 ? ' active' : (index <= 4 ? ` near near-${index}` : ' far'));
                 div.id = `line-${index}`;
                 div.textContent = item.text;
                 stream.appendChild(div);
@@ -725,11 +843,10 @@
 
         function showStreamLyric(text) {
             const stream = document.getElementById('lyricsStream');
-            stream.style.transform = 'translateY(0)';
+            stream.style.transform = 'translateY(-24px)';
             stream.innerHTML = `
                 <div class="live-stream-box">
                     <div class="live-stream-lyric">${text}</div>
-                    <div class="live-stream-sub">蓝牙车载实时单句歌词</div>
                 </div>`;
             updateStatusTag('车载蓝牙实时歌词', '#4a90e2');
         }
@@ -741,10 +858,12 @@
 
             if (lyricMode === 'official') {
                 lyricMode = 'bluetooth';
+                userExplicitMode = 'bluetooth';
                 const streamText = currentTrack.streamLyric || (cached && cached.streamLyric) || "当前蓝牙源暂未投送实时单句歌词";
                 showStreamLyric(streamText);
             } else {
                 lyricMode = 'official';
+                userExplicitMode = 'official';
                 if (hasOfficialLyrics && parsedOfficialLyrics.length > 0) {
                     renderLyrics(parsedOfficialLyrics);
                     updateStatusTag('已同步官方歌词', '#1db954');
@@ -778,7 +897,8 @@
                     songCache[trackKey].parsedLyrics = parsed;
                     parsedOfficialLyrics = parsed;
                     hasOfficialLyrics = true;
-                    if (lyricMode === 'official') {
+                    if (userExplicitMode !== 'bluetooth') {
+                        lyricMode = 'official';
                         renderLyrics(parsed);
                         updateStatusTag('已同步官方歌词', '#1db954');
                     }
@@ -818,6 +938,7 @@
                 hasOfficialLyrics = false;
                 parsedOfficialLyrics = [];
                 activeLyricIndex = -1;
+                userExplicitMode = null;
 
                 // 优先从内存缓存中秒开封面和歌词
                 const cached = songCache[trackKey];
@@ -828,18 +949,19 @@
                     if (cached.parsedLyrics && cached.parsedLyrics.length > 0) {
                         parsedOfficialLyrics = cached.parsedLyrics;
                         hasOfficialLyrics = true;
-                        if (lyricMode === 'official') {
-                            renderLyrics(parsedOfficialLyrics);
-                            updateStatusTag('已同步官方歌词', '#1db954');
-                        }
+                        lyricMode = 'official';
+                        renderLyrics(parsedOfficialLyrics);
+                        updateStatusTag('已同步官方歌词', '#1db954');
                     }
                 } else {
                     updateStatusTag('正在匹配官方歌词与封面...', '#f5a623');
                 }
             }
 
-            if (streamLyric && (lyricMode === 'bluetooth' || !hasOfficialLyrics)) {
-                showStreamLyric(streamLyric);
+            if (streamLyric) {
+                if (userExplicitMode === 'bluetooth' || (!userExplicitMode && !hasOfficialLyrics)) {
+                    showStreamLyric(streamLyric);
+                }
             }
         };
 
@@ -889,11 +1011,19 @@
 
                 if (targetIndex !== activeLyricIndex && targetIndex >= 0) {
                     activeLyricIndex = targetIndex;
-                    document.querySelectorAll('.lyric-line').forEach((el, idx) => {
-                        el.classList.remove('active', 'near');
-                        if (idx === targetIndex) el.classList.add('active');
-                        else if (Math.abs(idx - targetIndex) <= 2) el.classList.add('near');
-                    });
+                    const lines = document.querySelectorAll('.lyric-line');
+                    for (let idx = 0; idx < lines.length; idx++) {
+                        const el = lines[idx];
+                        const dist = Math.abs(idx - targetIndex);
+                        el.className = 'lyric-line';
+                        if (dist === 0) {
+                            el.classList.add('active');
+                        } else if (dist <= 4) {
+                            el.classList.add('near', `near-${dist}`);
+                        } else {
+                            el.classList.add('far');
+                        }
+                    }
 
                     const targetEl = document.getElementById(`line-${targetIndex}`);
                     if (targetEl) {

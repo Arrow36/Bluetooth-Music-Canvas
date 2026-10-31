@@ -168,11 +168,11 @@ public class MainActivity extends Activity {
 
         final String key = (title + " - " + artist).toLowerCase().trim();
         MetadataFetcher.CachedMeta cached = MetadataFetcher.getCached(title, artist);
-        if (cached != null) {
+        if (cached != null && (cached.coverUrl != null || cached.lyricsLrc != null)) {
             sCachedCoverUrl = cached.coverUrl != null ? cached.coverUrl : "";
             sCachedLyrics = cached.lyricsLrc != null ? cached.lyricsLrc : "";
             dispatchOnlineResult(sCachedCoverUrl, sCachedLyrics);
-        } else if (!key.isEmpty() && !key.equals(sLastFetchedKey)) {
+        } else if (!key.isEmpty() && (!key.equals(sLastFetchedKey) || (sCachedCoverUrl.isEmpty() && sCachedLyrics.isEmpty()))) {
             sLastFetchedKey = key;
             MetadataFetcher.fetch(title, artist, new MetadataFetcher.Callback() {
                 @Override
