@@ -293,8 +293,8 @@ public class MainActivity extends Activity {
         sCachedDuration = duration;
         sCachedStreamLyric = streamLyric;
 
-        final String key = (title + " - " + artist).toLowerCase().trim();
-        MetadataFetcher.CachedMeta cached = MetadataFetcher.getCached(title, artist);
+        final String key = (title + " - " + artist + (album != null && !album.isEmpty() ? " - " + album : "")).toLowerCase().trim();
+        MetadataFetcher.CachedMeta cached = MetadataFetcher.getCached(title, artist, album);
         if (cached != null && (cached.coverUrl != null || cached.lyricsLrc != null)) {
             sCachedCoverUrl = cached.coverUrl != null ? cached.coverUrl : "";
             sCachedLyrics = cached.lyricsLrc != null ? cached.lyricsLrc : "";
@@ -302,7 +302,7 @@ public class MainActivity extends Activity {
             dispatchOnlineResult(sCachedCoverUrl, sCachedLyrics, sCachedLyricSource);
         } else if (!key.isEmpty() && (!key.equals(sLastFetchedKey) || (sCachedCoverUrl.isEmpty() && sCachedLyrics.isEmpty()))) {
             sLastFetchedKey = key;
-            MetadataFetcher.fetch(title, artist, new MetadataFetcher.Callback() {
+            MetadataFetcher.fetch(title, artist, album, new MetadataFetcher.Callback() {
                 @Override
                 public void onResult(final String coverUrl, final String lyricsLrc, final String lyricSource) {
                     sCachedCoverUrl = coverUrl != null ? coverUrl : "";

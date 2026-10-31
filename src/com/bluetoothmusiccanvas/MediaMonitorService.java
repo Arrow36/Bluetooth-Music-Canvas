@@ -355,10 +355,10 @@ public class MediaMonitorService extends NotificationListenerService {
             updateFloatingViewContent();
         } else {
             // Fetch online cover for floating vinyl
-            final String key = (mRealTitle + " - " + mRealArtist).toLowerCase().trim();
+            final String key = (mRealTitle + " - " + mRealArtist + (mRealAlbum != null && !mRealAlbum.isEmpty() ? " - " + mRealAlbum : "")).toLowerCase().trim();
             if (!key.isEmpty() && !key.equals(mLastFetchedCoverKey)) {
                 mLastFetchedCoverKey = key;
-                MetadataFetcher.fetch(mRealTitle, mRealArtist, new MetadataFetcher.Callback() {
+                MetadataFetcher.fetch(mRealTitle, mRealArtist, mRealAlbum, new MetadataFetcher.Callback() {
                     @Override
                     public void onResult(final String coverUrl, final String lyricsLrc, final String lyricSource) {
                         if (coverUrl != null && !coverUrl.isEmpty()) {
