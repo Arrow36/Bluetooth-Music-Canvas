@@ -31,6 +31,50 @@ public class WebAppInterface {
     }
 
     @JavascriptInterface
+    public int getVolume() {
+        try {
+            android.media.AudioManager am = (android.media.AudioManager) mActivity.getSystemService(android.content.Context.AUDIO_SERVICE);
+            if (am != null) {
+                int max = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC);
+                int cur = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC);
+                if (max > 0) {
+                    return Math.round((cur * 100.0f) / max);
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return 50;
+    }
+
+    @JavascriptInterface
+    public int setVolumePercent(int percent) {
+        try {
+            android.media.AudioManager am = (android.media.AudioManager) mActivity.getSystemService(android.content.Context.AUDIO_SERVICE);
+            if (am != null) {
+                int max = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC);
+                int targetVol = Math.round((percent / 100.0f) * max);
+                targetVol = Math.max(0, Math.min(max, targetVol));
+                am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, targetVol, 0);
+                return Math.round((targetVol * 100.0f) / max);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return percent;
+    }
+
+    @JavascriptInterface
+    public void onIdleStateChanged(boolean isIdle) {
+        mActivity.onIdleStateChanged(isIdle);
+    }
+
+    @JavascriptInterface
+    public void onUserInteraction() {
+        mActivity.onUserInteraction();
+    }
+
+    @JavascriptInterface
     public void exitToHome() {
         android.util.Log.i("WebAppInterface", "exitToHome triggered from JS");
         mActivity.runOnUiThread(new Runnable() {

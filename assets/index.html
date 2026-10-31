@@ -856,6 +856,93 @@
             opacity: 0.6;
             margin-left: 2px;
         }
+
+        /* 10秒无操作后自动优雅渐隐顶栏与底栏 */
+        .top-bar, .bottom-bar {
+            transition: opacity 0.8s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+            opacity: 1;
+        }
+
+        body.idle .top-bar {
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(-8px);
+        }
+
+        body.idle .bottom-bar {
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(8px);
+        }
+
+        /* 右侧屏幕滑动调节音量 HUD 浮层 */
+        .volume-hud {
+            position: fixed;
+            right: 42px;
+            top: 50%;
+            transform: translateY(-50%) scale(0.92);
+            width: 52px;
+            padding: 18px 0;
+            background: rgba(18, 22, 28, 0.94);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            border-radius: 26px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(24px);
+            opacity: 0;
+            pointer-events: none;
+            z-index: 200;
+            transition: opacity 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        .volume-hud.show {
+            opacity: 1;
+            transform: translateY(-50%) scale(1);
+        }
+
+        .volume-icon {
+            width: 22px;
+            height: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            fill: #ffffff;
+        }
+
+        .volume-icon svg {
+            width: 100%;
+            height: 100%;
+            fill: currentColor;
+        }
+
+        .volume-track {
+            width: 6px;
+            height: 110px;
+            background: rgba(255, 255, 255, 0.14);
+            border-radius: 3px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .volume-fill {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: linear-gradient(to top, #00d2ff, #0072ff);
+            border-radius: 3px;
+            transition: height 0.08s linear;
+        }
+
+        .volume-text {
+            font-size: 11px;
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.9);
+            font-variant-numeric: tabular-nums;
+        }
     </style>
 </head>
 <body>
@@ -1008,6 +1095,17 @@
                 <span class="source-switch-icon">⇄</span>
             </button>
         </div>
+    </div>
+
+    <!-- 右侧屏幕滑动调节音量 HUD 浮层 -->
+    <div class="volume-hud" id="volumeHud">
+        <div class="volume-icon" id="volumeIcon">
+            <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+        </div>
+        <div class="volume-track">
+            <div class="volume-fill" id="volumeFill" style="height: 50%;"></div>
+        </div>
+        <span class="volume-text" id="volumeText">50%</span>
     </div>
 
     <script>
@@ -1450,6 +1548,121 @@
             if (e && e.stopPropagation) e.stopPropagation();
             if (window.AndroidApp) window.AndroidApp.exitToHome();
         }
+
+        // ===== 10秒无操作自动优雅渐隐顶栏、底栏与返回指示条 =====
+        let idleTimer = null;
+
+        function resetIdleTimer() {
+            if (document.body.classList.contains('idle')) {
+                document.body.classList.remove('idle');
+                if (window.AndroidApp && window.AndroidApp.onIdleStateChanged) {
+                    window.AndroidApp.onIdleStateChanged(false);
+                }
+            }
+            if (window.AndroidApp && window.AndroidApp.onUserInteraction) {
+                window.AndroidApp.onUserInteraction();
+            }
+
+            clearTimeout(idleTimer);
+            idleTimer = setTimeout(function() {
+                const dropdown = document.getElementById('deviceDropdown');
+                // 如果用户当前打开了详情浮层，暂不触发渐隐
+                if (!dropdown || !dropdown.classList.contains('show')) {
+                    document.body.classList.add('idle');
+                    if (window.AndroidApp && window.AndroidApp.onIdleStateChanged) {
+                        window.AndroidApp.onIdleStateChanged(true);
+                    }
+                } else {
+                    resetIdleTimer();
+                }
+            }, 10000);
+        }
+
+        ['pointerdown', 'touchstart', 'mousemove', 'click', 'keydown'].forEach(function(evt) {
+            document.addEventListener(evt, resetIdleTimer, { passive: true });
+        });
+        resetIdleTimer();
+
+        // ===== 右侧屏幕滑动调节系统音量交互识别 =====
+        // 映射规则：从屏幕正中间往上滑到顶（约半屏高度 400px）增加 25% 音量
+        let touchStartY = 0;
+        let touchStartX = 0;
+        let touchStartVolume = 50;
+        let isVolumeSwiping = false;
+        let volumeHideTimeout = null;
+
+        function updateVolumeUI(pct) {
+            const fill = document.getElementById('volumeFill');
+            const text = document.getElementById('volumeText');
+            const icon = document.getElementById('volumeIcon');
+            const hud = document.getElementById('volumeHud');
+            if (fill) fill.style.height = pct + '%';
+            if (text) text.textContent = pct + '%';
+            if (icon) {
+                if (pct === 0) {
+                    icon.innerHTML = '<svg viewBox="0 0 24 24"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>';
+                } else if (pct <= 40) {
+                    icon.innerHTML = '<svg viewBox="0 0 24 24"><path d="M7 9v6h4l5 5V4L11 9H7z"/></svg>';
+                } else {
+                    icon.innerHTML = '<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>';
+                }
+            }
+            if (hud) hud.classList.add('show');
+        }
+
+        document.addEventListener('touchstart', function(e) {
+            resetIdleTimer();
+            if (e.touches && e.touches.length === 1) {
+                const t = e.touches[0];
+                // 仅识别右侧屏幕（大于屏幕 44% 宽度，即右侧面板视口区）
+                if (t.clientX > window.innerWidth * 0.44) {
+                    touchStartX = t.clientX;
+                    touchStartY = t.clientY;
+                    touchStartVolume = window.AndroidApp && window.AndroidApp.getVolume ? window.AndroidApp.getVolume() : 50;
+                    isVolumeSwiping = false;
+                }
+            }
+        }, { passive: true });
+
+        document.addEventListener('touchmove', function(e) {
+            resetIdleTimer();
+            if (e.touches && e.touches.length === 1 && touchStartX > window.innerWidth * 0.44) {
+                const t = e.touches[0];
+                const deltaY = touchStartY - t.clientY; // 往上滑动为正
+                const deltaX = Math.abs(t.clientX - touchStartX);
+
+                // 纵向滑动意图识别，过滤微小抖动
+                if (Math.abs(deltaY) > 8 && Math.abs(deltaY) > deltaX) {
+                    isVolumeSwiping = true;
+                    if (e.cancelable) e.preventDefault();
+
+                    // 映射：从正中间往上滑到顶（约半屏高度 400px）增加 25% 音量
+                    const halfHeight = window.innerHeight * 0.5 || 400;
+                    const deltaPct = (deltaY / halfHeight) * 25.0;
+                    const targetPct = Math.max(0, Math.min(100, Math.round(touchStartVolume + deltaPct)));
+
+                    if (window.AndroidApp && window.AndroidApp.setVolumePercent) {
+                        window.AndroidApp.setVolumePercent(targetPct);
+                    }
+                    updateVolumeUI(targetPct);
+
+                    clearTimeout(volumeHideTimeout);
+                }
+            }
+        }, { passive: false });
+
+        document.addEventListener('touchend', function(e) {
+            resetIdleTimer();
+            if (isVolumeSwiping) {
+                isVolumeSwiping = false;
+                clearTimeout(volumeHideTimeout);
+                volumeHideTimeout = setTimeout(function() {
+                    const hud = document.getElementById('volumeHud');
+                    if (hud) hud.classList.remove('show');
+                }, 1200);
+            }
+            touchStartX = 0;
+        }, { passive: true });
     </script>
 </body>
 </html>

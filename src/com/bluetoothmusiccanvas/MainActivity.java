@@ -2,9 +2,12 @@ package com.bluetoothmusiccanvas;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.graphics.PixelFormat;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
 import android.webkit.WebChromeClient;
@@ -88,6 +91,73 @@ public class MainActivity extends Activity {
         });
 
         mWebView.loadUrl("file:///android_asset/index.html");
+        initEdgeCover();
+    }
+
+    private View mEdgeCoverView = null;
+    private WindowManager mCoverWindowManager = null;
+
+    private void initEdgeCover() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !android.provider.Settings.canDrawOverlays(this)) {
+                return;
+            }
+            mEdgeCoverView = new View(this);
+            android.graphics.drawable.GradientDrawable gd = new android.graphics.drawable.GradientDrawable();
+            gd.setColor(0xFF0B0D10);
+            gd.setCornerRadii(new float[]{0, 0, 16, 16, 16, 16, 0, 0});
+            mEdgeCoverView.setBackground(gd);
+            mEdgeCoverView.setAlpha(0.0f);
+
+            int layoutType = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                    ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                    : WindowManager.LayoutParams.TYPE_PHONE;
+
+            WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
+                    (int) (18 * getResources().getDisplayMetrics().density),
+                    (int) (110 * getResources().getDisplayMetrics().density),
+                    layoutType,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                            | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                            | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                    PixelFormat.TRANSLUCENT
+            );
+            lp.gravity = Gravity.START | Gravity.CENTER_VERTICAL;
+            lp.x = 0;
+            lp.y = 0;
+
+            mCoverWindowManager = (WindowManager) getApplicationContext().getSystemService(WINDOW_SERVICE);
+            if (mCoverWindowManager != null) {
+                mCoverWindowManager.addView(mEdgeCoverView, lp);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void onIdleStateChanged(final boolean isIdle) {
+        mHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                if (mEdgeCoverView != null) {
+                    mEdgeCoverView.animate()
+                            .alpha(isIdle ? 1.0f : 0.0f)
+                            .setDuration(isIdle ? 800 : 200)
+                            .start();
+                }
+            }
+        });
+    }
+
+    public void onUserInteraction() {
+        mHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                if (mEdgeCoverView != null && mEdgeCoverView.getAlpha() > 0.0f) {
+                    mEdgeCoverView.animate().alpha(0.0f).setDuration(200).start();
+                }
+            }
+        });
     }
 
     @Override
@@ -124,6 +194,12 @@ public class MainActivity extends Activity {
         sInstance = null;
         if (mWebView != null) {
             mWebView.destroy();
+        }
+        if (mEdgeCoverView != null && mCoverWindowManager != null) {
+            try {
+                mCoverWindowManager.removeView(mEdgeCoverView);
+            } catch (Exception ignored) {}
+            mEdgeCoverView = null;
         }
     }
 

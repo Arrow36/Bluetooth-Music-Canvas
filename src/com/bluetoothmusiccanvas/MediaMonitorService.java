@@ -81,7 +81,7 @@ public class MediaMonitorService extends NotificationListenerService {
 
     private static int sLastKnownBattery = -1;
 
-    private final BroadcastReceiver mBatteryReceiver = new BroadcastReceiver() {
+    private final BroadcastReceiver mBluetoothReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             if (intent == null) return;
@@ -98,6 +98,14 @@ public class MediaMonitorService extends NotificationListenerService {
                     if (MainActivity.sInstance != null) {
                         MainActivity.sInstance.dispatchBluetoothStatus(getBluetoothInfo(context));
                     }
+                }
+            } else if ("android.bluetooth.device.action.ACL_CONNECTED".equals(action)
+                    || "android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED".equals(action)
+                    || "android.bluetooth.adapter.action.CONNECTION_STATE_CHANGED".equals(action)) {
+                Log.i(TAG, "Bluetooth connected / connection state changed, resetting user dismissal");
+                mUserDismissed = false;
+                if (MainActivity.sInstance != null) {
+                    MainActivity.sInstance.dispatchBluetoothStatus(getBluetoothInfo(context));
                 }
             }
         }
@@ -153,7 +161,10 @@ public class MediaMonitorService extends NotificationListenerService {
         IntentFilter filter = new IntentFilter();
         filter.addAction("android.bluetooth.device.action.BATTERY_LEVEL_CHANGED");
         filter.addAction("org.codeaurora.intent.action.BATTERY_LEVEL_PARENT");
-        registerReceiver(mBatteryReceiver, filter);
+        filter.addAction("android.bluetooth.device.action.ACL_CONNECTED");
+        filter.addAction("android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED");
+        filter.addAction("android.bluetooth.adapter.action.CONNECTION_STATE_CHANGED");
+        registerReceiver(mBluetoothReceiver, filter);
 
         Log.i(TAG, "MediaMonitorService created");
     }
@@ -186,7 +197,7 @@ public class MediaMonitorService extends NotificationListenerService {
             mActiveController.unregisterCallback(mControllerCallback);
         }
         try {
-            unregisterReceiver(mBatteryReceiver);
+            unregisterReceiver(mBluetoothReceiver);
         } catch (Exception ignored) {}
     }
 
@@ -224,28 +235,24 @@ public class MediaMonitorService extends NotificationListenerService {
             mIsPlaying = true;
             mHandler.removeCallbacks(mAutoCloseRunnable);
 
-            // If user previously clicked "返回桌面", DO NOT force popup! Keep floating icon!
+            // Wake screen if sleeping
+            if (mWakeLock != null && !mWakeLock.isHeld()) {
+                mWakeLock.acquire(5000);
+            }
+
+            // Auto popup full screen canvas when playing music
             if (mUserDismissed) {
                 showFloatingView();
-                return;
-            }
-
-            // Otherwise, wake screen and launch full screen canvas
-            if (mWakeLock != null && !mWakeLock.isHeld()) {
-                mWakeLock.acquire(3000);
-            }
-
-            if (MainActivity.sInstance == null) {
+            } else {
+                hideFloatingView();
                 Intent i = new Intent(this, MainActivity.class);
-                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
                 startActivity(i);
             }
 
             if (MainActivity.sInstance != null) {
                 MainActivity.sInstance.dispatchPlaybackState(true, position, speed);
             }
-            hideFloatingView();
-
         } else if (playbackState == PlaybackState.STATE_PAUSED || playbackState == PlaybackState.STATE_STOPPED) {
             mIsPlaying = false;
             if (MainActivity.sInstance != null) {
@@ -271,6 +278,11 @@ public class MediaMonitorService extends NotificationListenerService {
         rawTitle = rawTitle.trim();
         rawArtist = rawArtist != null ? rawArtist.trim() : "";
         album = album != null ? album.trim() : "";
+
+        boolean isNewSong = !rawTitle.equals(mRealTitle) || (rawArtist != null && !rawArtist.equals(mRealArtist));
+        if (isNewSong) {
+            mUserDismissed = false;
+        }
 
         // Smart detection for "车载蓝牙歌词":
         // e.g. rawArtist="王菲/如愿 (电影《我和我的父辈》主题推广曲)", rawTitle="我愿活成你的愿"
@@ -609,6 +621,7 @@ public class MediaMonitorService extends NotificationListenerService {
     }
 
     public void hideFloatingView() {
+        mUserDismissed = false;
         mHandler.post(new Runnable() {
             @Override
             public void run() {
