@@ -2448,16 +2448,21 @@
         function showStreamLyric(text) {
             const stream = document.getElementById('lyricsStream');
             const emptyBox = document.getElementById('emptyLyrics');
+            const largeViz = document.getElementById('largeVisualizer');
+            if (largeViz) largeViz.style.display = 'none';
             if (emptyBox) emptyBox.style.display = 'none';
-            stream.style.transform = 'translateY(-24px)';
-            stream.textContent = '';
-            const box = document.createElement('div');
-            box.className = 'live-stream-box';
-            const lyric = document.createElement('div');
-            lyric.className = 'live-stream-lyric';
-            lyric.textContent = text || '';
-            box.appendChild(lyric);
-            stream.appendChild(box);
+            if (stream) {
+                stream.style.display = 'block';
+                stream.style.transform = 'translateY(-24px)';
+                stream.textContent = '';
+                const box = document.createElement('div');
+                box.className = 'live-stream-box';
+                const lyric = document.createElement('div');
+                lyric.className = 'live-stream-lyric';
+                lyric.textContent = text || '当前蓝牙源暂未投送歌词';
+                box.appendChild(lyric);
+                stream.appendChild(box);
+            }
             updateStatusTag('蓝牙实时歌词', '#4a90e2');
         }
 
@@ -2642,6 +2647,9 @@
             if (e && e.stopPropagation) e.stopPropagation();
             currentActiveSource = sourceId;
             userExplicitMode = (sourceId !== 'auto') ? sourceId : null;
+            if (currentTrack && sourceId !== 'visualizer') {
+                currentTrack.isVideo = false;
+            }
             try {
                 localStorage.setItem('preferred_lyric_source', sourceId);
             } catch (err) {}
