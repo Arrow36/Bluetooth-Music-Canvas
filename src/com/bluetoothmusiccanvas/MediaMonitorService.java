@@ -405,9 +405,8 @@ public class MediaMonitorService extends NotificationListenerService {
                     mStreamLyric = "";
                 }
             } else {
-                if (!isPlaceholderOrLyric) {
-                    mStreamLyric = "";
-                }
+                // 无斜杠的普通歌曲或视频曲目切换，彻底清空上一首歌的遗留歌词
+                mStreamLyric = "";
             }
 
             mUserDismissed = false;

@@ -2588,8 +2588,7 @@
             const artist = data.artist || "未知歌手";
             const album = data.album || "";
             const streamLyric = data.streamLyric || "";
-            const hasStreamLyric = !!(streamLyric && streamLyric.trim());
-            const isVideo = !hasStreamLyric && !!(data.isVideo || isVideoTrack(title, artist, album, data.duration));
+            const isVideo = !!(data.isVideo || isVideoTrack(title, artist, album, data.duration));
 
             const isNewSong = (currentTrack.title !== title || currentTrack.artist !== artist);
             currentTrack = data;

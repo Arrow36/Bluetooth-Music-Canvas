@@ -397,9 +397,7 @@ public class MainActivity extends Activity {
         sCachedDuration = duration;
         sCachedStreamLyric = streamLyric;
 
-        // 若收到了蓝牙动态歌词流（streamLyric），100% 确认是音乐 App 投送，直接免检排除视频！
-        final boolean hasStreamLyric = streamLyric != null && !streamLyric.trim().isEmpty();
-        final boolean isVideo = "蓝牙媒体音频".equals(title) || (!hasStreamLyric && MetadataFetcher.isVideoTrack(title, artist, album, duration));
+        final boolean isVideo = "蓝牙媒体音频".equals(title) || MetadataFetcher.isVideoTrack(title, artist, album, duration);
 
         if (isVideo) {
             // 视频模式：保留上一首音乐的有效封面，杜绝丑陋人像或空白默认图
