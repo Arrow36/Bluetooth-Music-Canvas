@@ -1702,6 +1702,100 @@
             return `${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
         }
 
+        function getVisualLength(str) {
+            if (!str) return 0;
+            let len = 0;
+            for (let i = 0; i < str.length; i++) {
+                len += str.charCodeAt(i) > 255 ? 2 : 1;
+            }
+            return len;
+        }
+
+        // 智能切分超长单行歌词：防止文字超出屏幕显示范围或折行导致行高破坏
+        function splitLongLyrics(items) {
+            if (!items || items.length === 0) return [];
+            const result = [];
+            const strongPuncts = [',', '，', ';', '；', '!', '！', '?', '？', '~', '、'];
+
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                const text = (item.text || '').trim();
+                const vlen = getVisualLength(text);
+
+                // 视觉宽度超出单行舒适阈值 (如中文 > 20字 或 西文 > 40字符) 自动智能分句
+                if (vlen > 40) {
+                    let p1 = '', p2 = '';
+
+                    // 1. 优先尝试双语 / 显式分隔符 (如 " // " 或 " / " 或 " | ")
+                    const explicitSep = text.match(/\s+(\/\/|\/|\|)\s+/);
+                    if (explicitSep && explicitSep.index > 3 && (explicitSep.index + explicitSep[0].length) < text.length - 3) {
+                        p1 = text.substring(0, explicitSep.index).trim();
+                        p2 = text.substring(explicitSep.index + explicitSep[0].length).trim();
+                    } else {
+                        const mid = Math.floor(text.length / 2);
+                        let bestPos = -1;
+                        let bestDist = 9999;
+
+                        // 2. 标点符号断句：寻找最靠近中心位置的强标点
+                        for (let j = 3; j < text.length - 3; j++) {
+                            if (strongPuncts.includes(text[j])) {
+                                const dist = Math.abs(j - mid);
+                                if (dist < bestDist) {
+                                    bestDist = dist;
+                                    bestPos = j;
+                                }
+                            }
+                        }
+
+                        // 3. 空格断句（英文/西文长句）：寻找最靠近中点的空格
+                        if (bestPos === -1) {
+                            for (let j = 4; j < text.length - 4; j++) {
+                                if (text[j] === ' ') {
+                                    const dist = Math.abs(j - mid);
+                                    if (dist < bestDist) {
+                                        bestDist = dist;
+                                        bestPos = j;
+                                    }
+                                }
+                            }
+                        }
+
+                        if (bestPos > 0) {
+                            if (text[bestPos] === ' ') {
+                                p1 = text.substring(0, bestPos).trim();
+                                p2 = text.substring(bestPos + 1).trim();
+                            } else {
+                                p1 = text.substring(0, bestPos + 1).trim();
+                                p2 = text.substring(bestPos + 1).trim();
+                            }
+                        } else {
+                            // 4. 无标点也无空格的超长中文长句，居中对半拆分
+                            p1 = text.substring(0, mid).trim();
+                            p2 = text.substring(mid).trim();
+                        }
+                    }
+
+                    if (p1 && p2) {
+                        const t1 = item.time;
+                        const nextItem = (i + 1 < items.length) ? items[i + 1] : null;
+                        const duration = (nextItem && nextItem.time > t1) ? (nextItem.time - t1) : 4000;
+                        const l1 = getVisualLength(p1);
+                        const l2 = getVisualLength(p2);
+                        // 按两句文本权重比例分配时间跨度，限制比例在 35% ~ 65% 之间避免过短过长
+                        const ratio = Math.max(0.35, Math.min(0.65, l1 / (l1 + l2)));
+                        const t2 = Math.round(t1 + duration * ratio);
+
+                        result.push({ time: t1, text: p1 });
+                        result.push({ time: t2, text: p2 });
+                        continue;
+                    }
+                }
+
+                result.push(item);
+            }
+            return result;
+        }
+
         function parseLRC(lrcText) {
             if (!lrcText) return [];
             const lines = lrcText.split('\n');
@@ -1722,7 +1816,7 @@
                 }
             }
             result.sort((a, b) => a.time - b.time);
-            return result;
+            return splitLongLyrics(result);
         }
 
                 // 智能优化歌名分行逻辑（尤其是古典音乐作品名、乐章、编号等）
@@ -1927,8 +2021,6 @@
             const emptyBox = document.getElementById('emptyLyrics');
             const emptyText = document.getElementById('emptyText');
             const largeViz = document.getElementById('largeVisualizer');
-            stream.innerHTML = '';
-            activeLyricIndex = -1;
             isManualScrolling = false;
             clearTimeout(manualScrollResumeTimer);
 
@@ -1943,6 +2035,7 @@
 
             if (!lyrics || lyrics.length === 0) {
                 hasOfficialLyrics = false;
+                activeLyricIndex = -1;
                 if (currentTrack.streamLyric) {
                     if (emptyBox) emptyBox.style.display = 'none';
                     if (stream) stream.style.display = 'block';
@@ -1950,26 +2043,55 @@
                 } else {
                     if (emptyBox) {
                         emptyBox.style.display = 'flex';
+                        emptyBox.style.transition = 'opacity 0.3s ease-in';
+                        emptyBox.style.opacity = '1';
                         if (emptyText) emptyText.textContent = '纯音乐，请欣赏';
                     }
-                    if (stream) stream.innerHTML = '';
+                    if (stream) {
+                        stream.innerHTML = '';
+                        stream.style.display = 'none';
+                    }
                     updateStatusTag('纯音乐', '#888888');
                 }
                 return;
             }
 
             hasOfficialLyrics = true;
-            if (emptyBox) emptyBox.style.display = 'none';
-            if (stream) stream.style.display = 'block';
+            activeLyricIndex = 0;
 
-            lyrics.forEach((item, index) => {
-                const div = document.createElement('div');
-                div.className = 'lyric-line' + (index === 0 ? ' active' : (index <= 4 ? ` near near-${index}` : ' far'));
-                div.id = `line-${index}`;
-                div.textContent = item.text;
-                stream.appendChild(div);
-            });
-            scrollToLyricIndex(0, false);
+            // 1. 提示框平滑淡出并隐藏 (0.25s)
+            if (emptyBox) {
+                emptyBox.style.transition = 'opacity 0.25s ease-out';
+                emptyBox.style.opacity = '0';
+                setTimeout(() => {
+                    if (hasOfficialLyrics && emptyBox) {
+                        emptyBox.style.display = 'none';
+                    }
+                }, 260);
+            }
+
+            // 2. 新歌词直接从第0行开始，平滑淡入展示 (0.35s)
+            if (stream) {
+                stream.innerHTML = '';
+                stream.style.display = 'block';
+                stream.style.transition = 'none';
+                stream.style.opacity = '0';
+                stream.style.transform = 'translateY(0px)';
+                currentTranslateY = 0;
+
+                lyrics.forEach((item, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'lyric-line' + (index === 0 ? ' active' : (index <= 4 ? ` near near-${index}` : ' far'));
+                    div.id = `line-${index}`;
+                    div.textContent = item.text;
+                    stream.appendChild(div);
+                });
+
+                // 强制重排后淡入新歌词
+                void stream.offsetWidth;
+                stream.style.transition = 'opacity 0.35s ease-in, transform 0.85s cubic-bezier(0.22, 1, 0.36, 1)';
+                stream.style.opacity = '1';
+            }
         }
 
         function showStreamLyric(text) {
@@ -2271,12 +2393,35 @@
             if (streamLyric) songCache[trackKey].streamLyric = streamLyric;
 
             if (isNewSong) {
+                // 1. 彻底重置播放时钟与进度，杜绝切歌后继承上一首歌末尾进度
+                lastPositionMs = 0;
+                lastSyncTime = performance.now();
+                activeLyricIndex = 0;
+                const progressBar = document.getElementById('progressBar');
+                if (progressBar) progressBar.style.width = '0%';
+                const timeCurrent = document.getElementById('timeCurrent');
+                if (timeCurrent) timeCurrent.textContent = '00:00';
+
+                // 2. 切歌过渡动画：淡出上一首歌词流，同时淡入检索提示
+                const stream = document.getElementById('lyricsStream');
                 const emptyBox = document.getElementById('emptyLyrics');
                 const emptyText = document.getElementById('emptyText');
-                if (emptyBox) {
-                    emptyBox.style.display = 'flex';
-                    if (emptyText) emptyText.textContent = '正在检索官方歌词与封面...';
+
+                if (stream) {
+                    stream.style.transition = 'opacity 0.25s ease-out';
+                    stream.style.opacity = '0';
                 }
+
+                if (emptyBox) {
+                    if (emptyText) emptyText.textContent = '正在检索官方歌词与封面...';
+                    emptyBox.style.display = 'flex';
+                    emptyBox.style.transition = 'none';
+                    emptyBox.style.opacity = '0';
+                    void emptyBox.offsetWidth;
+                    emptyBox.style.transition = 'opacity 0.3s ease-in';
+                    emptyBox.style.opacity = '1';
+                }
+
                 hasOfficialLyrics = false;
                 parsedOfficialLyrics = [];
                 activeLyricIndex = -1;
@@ -2381,11 +2526,13 @@
 
                 // 严格单调防抖迟滞锁：
                 // 严禁因手机蓝牙 AVRCP 传输延时微弱抖动导致 targetIndex 往回掉引发的歌词上下颠簸。
-                // 仅当用户手动拖动倒退超过 3 秒时才允许回退。
+                // 仅当用户手动拖动倒退超过 3 秒时才允许回退；新歌前3秒内允许重设回开头。
                 if (activeLyricIndex >= 0 && targetIndex < activeLyricIndex) {
-                    const activeTime = lyrics[activeLyricIndex] ? lyrics[activeLyricIndex].time : 0;
-                    if (currentPos > (activeTime - 3000)) {
-                        targetIndex = activeLyricIndex;
+                    if (currentPos >= 3000) {
+                        const activeTime = lyrics[activeLyricIndex] ? lyrics[activeLyricIndex].time : 0;
+                        if (currentPos > (activeTime - 3000)) {
+                            targetIndex = activeLyricIndex;
+                        }
                     }
                 }
 

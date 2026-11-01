@@ -226,18 +226,47 @@ public class MetadataFetcher {
 
     private static String cleanTitle(String s) {
         if (s == null) return "";
-        return s.replaceAll("\\s*[\\(（【\\[].*$", "").trim();
+        String t = s.trim();
+        // 1. 移除首尾包裹的书名号、引号等符号: 《...》, <...>, "...", '...', “...”, 「...」
+        t = t.replaceAll("^[《<“\"'「『\\s]+|[》>”\"'」』\\s]+$", "").trim();
+        // 2. 剥离副标题或常见标签，如 " - 伴奏", " - Instrumental", " - Live" 等
+        int dash = t.indexOf(" - ");
+        if (dash > 0) {
+            String part2 = t.substring(dash + 3).trim().toLowerCase();
+            if (part2.contains("伴奏") || part2.contains("instrumental") || part2.contains("live") || part2.contains("remix") || part2.contains("karaoke")) {
+                t = t.substring(0, dash).trim();
+            }
+        }
+        // 3. 剥离尾部括号中的版本说明，如 (Live), (Remix), [伴奏], （官方版）等
+        t = t.replaceAll("\\s*[\\(（【\\[].*$", "").trim();
+        return t;
     }
 
     private static String cleanArtist(String s) {
         if (s == null) return "";
-        String clean = s.replaceAll("\\s*[\\(（【\\[].*$", "").trim();
-        // If multiple artists separated by slash, take primary or replace with space
-        int slash = clean.indexOf('/');
-        if (slash > 0) {
-            clean = clean.substring(0, slash).trim();
+        String clean = s.replaceAll("^[《<“\"'「『\\s]+|[》>”\"'」』\\s]+$", "").trim();
+        clean = clean.replaceAll("\\s*[\\(（【\\[].*$", "").trim();
+        // 提取主要艺术家：按斜杠(/)、逗号(,)、顿号(、)、与符号(&)、feat.、ft.、with 分割
+        String[] parts = clean.split("\\s*[/,、&]\\s*|\\s+(?i:feat\\.|ft\\.|with)\\s+");
+        if (parts.length > 0 && !parts[0].trim().isEmpty()) {
+            return parts[0].trim();
         }
         return clean;
+    }
+
+    private static List<String> extractAllArtists(String s) {
+        List<String> list = new ArrayList<>();
+        if (s == null) return list;
+        String clean = s.replaceAll("^[《<“\"'「『\\s]+|[》>”\"'」』\\s]+$", "").trim();
+        clean = clean.replaceAll("\\s*[\\(（【\\[].*$", "").trim();
+        String[] parts = clean.split("\\s*[/,、&]\\s*|\\s+(?i:feat\\.|ft\\.|with)\\s+");
+        for (String p : parts) {
+            String item = p.trim();
+            if (!item.isEmpty() && !list.contains(item)) {
+                list.add(item);
+            }
+        }
+        return list;
     }
 
     private static int scoreCandidate(String candidateTitle, List<String> candidateArtists, String candidateAlbum,
@@ -246,20 +275,45 @@ public class MetadataFetcher {
         String cTitle = (candidateTitle != null) ? candidateTitle.toLowerCase().trim() : "";
         String rTitle = (reqTitle != null) ? reqTitle.toLowerCase().trim() : "";
 
-        // 1. Title match
-        if (cTitle.equals(rTitle)) {
-            score += 150;
-        } else if (cTitle.contains(rTitle) || rTitle.contains(cTitle)) {
-            score += 80;
+        // 去除空格与标点后的纯净字符串对比
+        String cClean = cTitle.replaceAll("[《》<>\"'“”、,，\\s]", "");
+        String rClean = rTitle.replaceAll("[《》<>\"'“”、,，\\s]", "");
+
+        // 1. 歌名匹配
+        if (cClean.equals(rClean)) {
+            score += 160;
+        } else if (cClean.contains(rClean) || rClean.contains(cClean)) {
+            score += 85;
         } else {
-            String cBase = cTitle.split("[:(]")[0].trim();
-            String rBase = rTitle.split("[:(]")[0].trim();
+            String cBase = cTitle.split("[:(（【\\[]")[0].trim();
+            String rBase = rTitle.split("[:(（【\\[]")[0].trim();
             if (!cBase.isEmpty() && !rBase.isEmpty() && (cBase.contains(rBase) || rBase.contains(cBase))) {
-                score += 40;
+                score += 50;
             }
         }
 
-        // 2. Classical movement & opus checks (critical for classical music with many movements)
+        // 2. 避免非用户请求的纯伴奏、卡拉OK或钢琴版
+        boolean reqIsInst = rTitle.contains("伴奏") || rTitle.contains("instrumental") || rTitle.contains("纯音乐") || rTitle.contains("karaoke");
+        boolean candIsInst = cTitle.contains("伴奏") || cTitle.contains("instrumental") || cTitle.contains("karaoke") || cTitle.contains("piano version");
+        if (!reqIsInst && candIsInst) {
+            score -= 75;
+        }
+
+        // 3. 避免翻唱（若未请求翻唱）
+        boolean reqIsCover = rTitle.contains("翻唱") || rTitle.contains("cover");
+        boolean candIsCover = cTitle.contains("翻唱") || cTitle.contains("cover");
+        if (!reqIsCover && candIsCover) {
+            score -= 60;
+        }
+
+        // 4. 原唱录音室版微弱优先于现场版（Live）
+        boolean reqIsLive = rTitle.contains("live") || rTitle.contains("现场") || rTitle.contains("演唱会");
+        boolean candIsLive = cTitle.contains("live") || cTitle.contains("现场") || cTitle.contains("演唱会");
+        if (!reqIsLive && candIsLive) {
+            score -= 20;
+        }
+
+        // 5. 古典音乐乐章与速度标记精确匹配（防止多乐章选错乐章）
         String[] classicalTokens = new String[]{
                 ": i.", ": ii.", ": iii.", ": iv.", "allegro", "andante", "adagio", "presto", "largo", "vivace", "menuetto", "rondo", "rondeau"
         };
@@ -268,32 +322,42 @@ public class MetadataFetcher {
                 if (cTitle.contains(tok)) {
                     score += 40;
                 } else {
-                    score -= 50; // Different movement in the same piece
+                    score -= 60; // 同一作品中的不同乐章，大幅降分
                 }
             }
         }
 
-        // 3. Artist match
+        // 6. 歌手匹配（兼容多歌手合作场景）
         if (reqArtist != null && !reqArtist.trim().isEmpty()) {
-            String rArt = reqArtist.toLowerCase();
+            List<String> reqArtistList = extractAllArtists(reqArtist);
             boolean anyMatched = false;
-            if (candidateArtists != null) {
+            if (candidateArtists != null && !candidateArtists.isEmpty()) {
                 for (String ca : candidateArtists) {
                     if (ca == null) continue;
                     String caLow = ca.toLowerCase().trim();
-                    if (!caLow.isEmpty() && (rArt.contains(caLow) || caLow.contains(rArt))) {
-                        score += 60;
-                        anyMatched = true;
+                    if (caLow.isEmpty()) continue;
+                    for (String ra : reqArtistList) {
+                        String raLow = ra.toLowerCase().trim();
+                        if (caLow.equals(raLow)) {
+                            score += 90;
+                            anyMatched = true;
+                            break;
+                        } else if (caLow.contains(raLow) || raLow.contains(caLow)) {
+                            score += 65;
+                            anyMatched = true;
+                            break;
+                        }
                     }
+                    if (anyMatched) break;
                 }
             }
             if (!anyMatched) {
-                // If candidate doesn't match any performer from requested artists, heavily penalize
+                // 若候选曲目不含任何请求中的歌手名，严厉惩罚
                 score -= 80;
             }
         }
 
-        // 4. Album match
+        // 7. 专辑匹配
         if (reqAlbum != null && !reqAlbum.trim().isEmpty()) {
             String rAlb = reqAlbum.toLowerCase().trim();
             String cAlb = (candidateAlbum != null) ? candidateAlbum.toLowerCase().trim() : "";
@@ -377,8 +441,10 @@ public class MetadataFetcher {
     private static String[] fetchFromKugou(String title, String artist, boolean needCover, boolean needLyric) {
         String[] out = new String[2]; // [0]=cover, [1]=lyrics
         try {
-            String q = URLEncoder.encode((title + " " + artist).trim(), "UTF-8");
-            String searchUrl = "http://mobilecdn.kugou.com/api/v3/search/song?keyword=" + q + "&page=1&pagesize=1";
+            String firstArtist = cleanArtist(artist);
+            String qText = (!firstArtist.isEmpty() ? (title + " " + firstArtist) : title).trim();
+            String q = URLEncoder.encode(qText, "UTF-8");
+            String searchUrl = "http://mobilecdn.kugou.com/api/v3/search/song?keyword=" + q + "&page=1&pagesize=5";
             String searchJson = httpGet(searchUrl, null);
             if (searchJson == null) return out;
 
@@ -388,8 +454,26 @@ public class MetadataFetcher {
             JSONArray info = data.optJSONArray("info");
             if (info == null || info.length() == 0) return out;
 
-            JSONObject song = info.getJSONObject(0);
-            String hash = song.optString("hash", "");
+            JSONObject bestSong = null;
+            int bestScore = -9999;
+            for (int i = 0; i < info.length(); i++) {
+                JSONObject song = info.getJSONObject(i);
+                String sName = song.optString("songname", "");
+                String singer = song.optString("singername", "");
+                String sAlb = song.optString("album_name", "");
+                List<String> sArtists = new ArrayList<>();
+                sArtists.add(singer);
+                int sc = scoreCandidate(sName, sArtists, sAlb, title, artist, "");
+                if (sc > bestScore) {
+                    bestScore = sc;
+                    bestSong = song;
+                }
+            }
+
+            if (bestSong == null || bestScore <= -50) {
+                bestSong = info.getJSONObject(0);
+            }
+            String hash = bestSong.optString("hash", "");
             if (hash.isEmpty()) return out;
 
             // 1. Cover
@@ -449,37 +533,79 @@ public class MetadataFetcher {
 
     private static String fetchFromQQ(String title, String artist) {
         try {
-            String q = URLEncoder.encode((title + " " + artist).trim(), "UTF-8");
-            String searchUrl = "https://c.y.qq.com/soso/fcgi-bin/client_search_cp?p=1&n=1&w=" + q + "&format=json";
+            String firstArtist = cleanArtist(artist);
+            List<String> queries = new ArrayList<>();
+            if (!firstArtist.isEmpty()) {
+                queries.add(title + " " + firstArtist);
+            }
+            if (!artist.isEmpty() && !artist.equalsIgnoreCase(firstArtist)) {
+                queries.add(title + " " + artist);
+            }
+            queries.add(title);
+
             Map<String, String> headers = new HashMap<>();
             headers.put("Referer", "https://y.qq.com/");
             headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
-            String searchJson = httpGetWithHeaders(searchUrl, headers);
-            if (searchJson == null) return null;
 
-            JSONObject sObj = new JSONObject(searchJson);
-            JSONObject data = sObj.optJSONObject("data");
-            if (data == null) return null;
-            JSONObject songObj = data.optJSONObject("song");
-            if (songObj == null) return null;
-            JSONArray list = songObj.optJSONArray("list");
-            if (list == null || list.length() == 0) return null;
+            JSONObject bestSong = null;
+            int bestScore = -9999;
 
-            JSONObject firstSong = list.getJSONObject(0);
-            String songmid = firstSong.optString("songmid", "");
-            if (songmid.isEmpty()) return null;
+            for (String qText : queries) {
+                if (qText == null || qText.trim().isEmpty()) continue;
+                String q = URLEncoder.encode(qText.trim(), "UTF-8");
+                String searchUrl = "https://c.y.qq.com/soso/fcgi-bin/client_search_cp?p=1&n=5&w=" + q + "&format=json";
+                String searchJson = httpGetWithHeaders(searchUrl, headers);
+                if (searchJson == null) continue;
 
-            String lrcUrl = "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid=" + songmid + "&format=json&nobase64=0";
-            String lrcJson = httpGetWithHeaders(lrcUrl, headers);
-            if (lrcJson == null) return null;
+                JSONObject sObj = new JSONObject(searchJson);
+                JSONObject data = sObj.optJSONObject("data");
+                if (data == null) continue;
+                JSONObject songObj = data.optJSONObject("song");
+                if (songObj == null) continue;
+                JSONArray list = songObj.optJSONArray("list");
+                if (list == null || list.length() == 0) continue;
 
-            JSONObject lObj = new JSONObject(lrcJson);
-            String lyricB64 = lObj.optString("lyric", "");
-            if (!lyricB64.isEmpty()) {
-                byte[] bytes = Base64.decode(lyricB64, Base64.DEFAULT);
-                String lrc = new String(bytes, "UTF-8");
-                Log.i(TAG, "QQ lyrics found (" + lrc.length() + " chars)");
-                return lrc;
+                for (int i = 0; i < list.length(); i++) {
+                    JSONObject song = list.getJSONObject(i);
+                    String sName = song.optString("songname", "");
+                    String sAlbum = song.optString("albumname", "");
+                    List<String> sArtists = new ArrayList<>();
+                    JSONArray singers = song.optJSONArray("singer");
+                    if (singers != null) {
+                        for (int k = 0; k < singers.length(); k++) {
+                            JSONObject sg = singers.getJSONObject(k);
+                            sArtists.add(sg.optString("name", ""));
+                        }
+                    }
+
+                    int sc = scoreCandidate(sName, sArtists, sAlbum, title, artist, "");
+                    if (sc > bestScore) {
+                        bestScore = sc;
+                        bestSong = song;
+                    }
+                }
+
+                if (bestScore >= 120) {
+                    break;
+                }
+            }
+
+            if (bestSong != null && bestScore > -50) {
+                String songmid = bestSong.optString("songmid", "");
+                if (!songmid.isEmpty()) {
+                    String lrcUrl = "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid=" + songmid + "&format=json&nobase64=0";
+                    String lrcJson = httpGetWithHeaders(lrcUrl, headers);
+                    if (lrcJson != null) {
+                        JSONObject lObj = new JSONObject(lrcJson);
+                        String lyricB64 = lObj.optString("lyric", "");
+                        if (!lyricB64.isEmpty()) {
+                            byte[] bytes = Base64.decode(lyricB64, Base64.DEFAULT);
+                            String lrc = new String(bytes, "UTF-8");
+                            Log.i(TAG, "QQ lyrics found (score " + bestScore + ", " + lrc.length() + " chars)");
+                            return lrc;
+                        }
+                    }
+                }
             }
         } catch (Exception e) {
             Log.w(TAG, "fetchFromQQ error: " + e.getMessage());
