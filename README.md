@@ -10,7 +10,7 @@
 [![Platform](https://img.shields.io/badge/Platform-Android%205.0%2B%20(API%2021~34)-brightgreen.svg)](https://developer.android.com)
 [![Architecture](https://img.shields.io/badge/Arch-Universal%20(armeabi--v7a%20%7C%20arm64--v8a%20%7C%20x86)-blue.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-orange.svg)](LICENSE)
-[![APK Size](https://img.shields.io/badge/APK%20Size-~430%20KB-success.svg)](BluetoothMusicCanvas.apk)
+[![APK Size](https://img.shields.io/badge/APK%20Size-~440%20KB-success.svg)](BluetoothMusicCanvas.apk)
 
 </div>
 
@@ -37,23 +37,33 @@
 - **多层级超清原画匹配**：原生多线程聚合检索（NetEase / Apple Music 600×600 / Kugou / QQ），无惧跨域与防盗链。
 - **古典乐长曲名智能分行排版**：智能识别作品编号与乐章号（如 `K. 285: I. Allegro`），将乐章号与速度标记紧密绑定防孤立折行，保证长曲名完整优雅显示。
 
-### 🎤 4. 毫秒级逐行滚动高亮歌词 & 纯音乐沉浸模式
-- **双模歌词自适应**：无缝支持官方 LRC 逐行滚动高亮（带近景景深渐隐）与车载蓝牙实时流歌词（AVRCP Stream Lyrics）。
+### 🎤 4. 毫秒级逐行滚动高亮歌词 & 权威时钟校准 (Sub-Second Lyric Sync)
+- **450ms 视觉预读与音频缓冲补偿**：针对人眼阅读提前量（300~500ms）及蓝牙 A2DP 缓冲延迟，内置智能时序前移补偿，完美消除人声已响歌词慢半拍的滞后感。
+- **AVRCP 蓝牙实时广播权威校准**：手机端每次推送新的一句动态歌词，立即作为最高优先级基准校准官方多行歌词进度与内部时钟，杜绝累积时钟漂移与副歌倒流。
+- **双模歌词自适应**：无缝支持官方多行 LRC 逐行滚动高亮（带近景景深渐隐）与车载蓝牙实时流歌词（AVRCP Stream Lyrics）。
 - **纯音乐沉浸式居中**：检测到纯音乐或无歌词曲目时，自动切换至视口居中显示的音浪与文字状态。
 
-### 🎈 5. 桌面迷你旋转黑胶悬浮球 (Mini Floating Vinyl Widget)
+### 🎬 5. 短视频与视频音轨智能识别模式 (Video Track & Audio Energy Sensing)
+- **底层硬件音频能量感知**：针对小红书等无 MediaSession 状态但有音频输出的短视频应用，通过底层 Audio Session 原生能量探测自动唤醒大屏“环境音/视频模式”，杜绝黑屏假死。
+- **智能视频音轨识别**：自动识别 B 站等长视频标题特征与音轨属性，智能屏蔽无效的歌词搜索与错误匹配，无缝切换至灵动 5 频段全动态律动音浪。
+- **封面记忆延续机制**：进入视频模式时自动继承并保留上一首音乐的高清艺术封面，避免生硬冷冰的默认占位图。
+
+### 🎈 6. 桌面迷你旋转黑胶悬浮球 (Mini Floating Vinyl Widget)
 - 应用退居后台时，在桌面常驻平滑旋转的微缩黑胶悬浮球，支持全屏幕任意拖拽，记忆上次悬浮坐标，轻触即刻秒级拉起全屏看板。
 
-### 🚀 6. 极度轻量与高能效 (Zero Heavy Dependencies)
-- 纯原生 Java 与硬件加速 WebView 打造，**无任何 NDK / `.so` 库**，整包大小仅 **~430KB**，内存占用 **< 30MB**，流畅运行于各类低配 Android TV 盒、投影仪与车机大屏。
+### 🚀 7. 极度轻量与高能效 (Zero Heavy Dependencies)
+- 纯原生 Java 与硬件加速 WebView 打造，**无任何 NDK / `.so` 库**，整包大小仅 **~440KB**，内存占用 **< 30MB**，流畅运行于各类低配 Android TV 盒、投影仪与车机大屏。
 
 ---
 
-## 📸 实机展示 (Screenshot)
+## 📸 实机展示 (Screenshots)
 
 <div align="center">
-  <img src="docs/images/screen_latest.png" width="92%" alt="Bluetooth Music Canvas 最新实机运行效果" style="border-radius: 12px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);" />
-  <p><i>（实机运行：拟物毛玻璃唱机循迹 + 古典乐智能语义排版 + 5频段动态律动频谱仪 + 纯音乐沉浸模式）</i></p>
+  <img src="docs/images/screen_latest.png" width="92%" alt="Bluetooth Music Canvas 音乐看板与高亮歌词" style="border-radius: 12px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);" />
+  <p><i>（实机运行 1：音乐模式 —— 拟物毛玻璃唱机循迹 + 高清微距黑胶 + 450ms 预读平滑高亮滚动歌词）</i></p>
+  <br/>
+  <img src="docs/images/screen_video_mode.png" width="92%" alt="Bluetooth Music Canvas 视频与环境音频模式" style="border-radius: 12px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);" />
+  <p><i>（实机运行 2：视频/环境音频模式 —— 智能音轨识别 + 延续高清封面 + 5频段 AGC 动态律动音浪）</i></p>
 </div>
 
 ---
