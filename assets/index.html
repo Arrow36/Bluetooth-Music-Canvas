@@ -109,13 +109,13 @@
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            height: 36px;
-            padding: 0 16px;
+            height: 38px;
+            padding: 0 18px;
             background: rgba(255, 255, 255, 0.07);
             border: 1px solid rgba(255, 255, 255, 0.14);
-            border-radius: 18px;
+            border-radius: 20px;
             color: rgba(255, 255, 255, 0.85);
-            font-size: 13px;
+            font-size: 13.5px;
             font-weight: 600;
             cursor: pointer;
             backdrop-filter: blur(16px);
@@ -123,6 +123,18 @@
             outline: none;
             user-select: none;
             -webkit-tap-highlight-color: transparent;
+            position: relative;
+        }
+
+        /* 触控命中热区扩展：在四周增加无形触控垫，杜绝电视触控点偏误触 */
+        .device-pill::after {
+            content: '';
+            position: absolute;
+            top: -16px;
+            bottom: -16px;
+            left: -20px;
+            right: -20px;
+            z-index: 1;
         }
 
         .device-pill:active, .device-pill.active {
@@ -293,8 +305,8 @@
         /* 顶部右侧：简约叉叉图标按钮（支持长按3秒充能进度环，视觉中心精准居中） */
         .btn-close {
             position: relative;
-            width: 36px;
-            height: 36px;
+            width: 38px;
+            height: 38px;
             box-sizing: border-box;
             border-radius: 50%;
             background: rgba(255, 255, 255, 0.08);
@@ -310,6 +322,16 @@
             margin: 0;
             user-select: none;
             -webkit-tap-highlight-color: transparent;
+        }
+
+        .btn-close::after {
+            content: '';
+            position: absolute;
+            top: -16px;
+            bottom: -16px;
+            left: -20px;
+            right: -20px;
+            z-index: 1;
         }
 
         .close-ring-svg {
@@ -918,14 +940,14 @@
             display: inline-flex;
             align-items: center;
             gap: 7px;
-            height: 36px;
-            padding: 0 16px;
-            font-size: 13px;
+            height: 38px;
+            padding: 0 18px;
+            font-size: 13.5px;
             font-weight: 600;
             color: rgba(255, 255, 255, 0.85);
             background: rgba(255, 255, 255, 0.07);
             border: 1px solid rgba(255, 255, 255, 0.14);
-            border-radius: 18px;
+            border-radius: 20px;
             letter-spacing: 0.3px;
             cursor: pointer;
             outline: none;
@@ -934,6 +956,18 @@
             -webkit-tap-highlight-color: transparent;
             backdrop-filter: blur(16px);
             box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+            position: relative;
+        }
+
+        /* 触控命中热区扩展：在四周增加无形触控垫，大幅提升右下角按钮触控容错率 */
+        .source-tag::after {
+            content: '';
+            position: absolute;
+            top: -16px;
+            bottom: -16px;
+            left: -20px;
+            right: -20px;
+            z-index: 1;
         }
 
         .source-tag * {
@@ -1408,7 +1442,6 @@
                             <div class="large-bar" id="lw7"></div>
                             <div class="large-bar" id="lw8"></div>
                         </div>
-                        <div class="large-wave-title">声波律动氛围</div>
                     </div>
                 </div>
             </div>
@@ -1960,6 +1993,7 @@
         function closeLyricMenu() {
             const menu = document.getElementById('lyricSourceMenu');
             if (menu) menu.classList.remove('show');
+            resetIdleTimer();
         }
 
         function updateMenuCheckmarks() {
@@ -2092,6 +2126,8 @@
             updateMenuCheckmarks();
 
             applyLyricSourceForCurrentTrack(sourceId, true);
+            // 切换歌词来源后，严格启动 6 秒自动淡出控件计时
+            resetIdleTimer();
         }
 
         // 接收来自 Android 原生层针对特定源的检索结果（完全静默化，不弹居中窗）
@@ -2541,7 +2577,7 @@
 
             const elapsed = now - tapDownTime;
             const dist = Math.hypot(x - tapDownX, y - tapDownY);
-            const isInteractive = target && target.closest && !!target.closest('button, .btn-ctrl, .vol-btn, .volume-widget, .source-tag, .device-pill, .device-dropdown, .lyric-source-menu, #closeBtn');
+            const isInteractive = target && target.closest && !!target.closest('button, .btn-ctrl, .vol-btn, .volume-widget, .source-tag, .device-pill, .device-dropdown, .lyric-source-menu, #closeBtn, .top-bar, .bottom-bar, .player-deck, .source-menu-item, .device-card-wrapper, .audio-spec-card');
 
             if (isTapCandidate && elapsed < 500 && dist < 20) {
                 isTapCandidate = false;
@@ -2549,6 +2585,10 @@
                 if (!isInteractive) {
                     if (document.body.classList.contains('idle')) {
                         setIdleState(false);
+                    } else if (isAnySecondaryMenuOpen()) {
+                        // 二级菜单展开时，点击空白处仅关闭二级菜单并恢复常规 6 秒自动隐藏倒计时，防止意外黑屏
+                        closeAllSecondaryMenus();
+                        resetIdleTimer();
                     } else {
                         setIdleState(true);
                     }
@@ -2602,7 +2642,7 @@
 
         // 点击屏幕空白处保底事件（兼容各种输入设备与电视遥控器）
         document.addEventListener('click', function(e) {
-            const isInteractive = e.target && e.target.closest && !!e.target.closest('button, .btn-ctrl, .vol-btn, .volume-widget, .source-tag, .device-pill, .device-dropdown, .lyric-source-menu, #closeBtn');
+            const isInteractive = e.target && e.target.closest && !!e.target.closest('button, .btn-ctrl, .vol-btn, .volume-widget, .source-tag, .device-pill, .device-dropdown, .lyric-source-menu, #closeBtn, .top-bar, .bottom-bar, .player-deck, .source-menu-item, .device-card-wrapper, .audio-spec-card');
             if (!isInteractive) {
                 const now = performance.now();
                 if (now - lastTapHandledTime < 600) return; // 过滤 300ms 移动端合成点击

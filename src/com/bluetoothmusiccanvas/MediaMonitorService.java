@@ -338,38 +338,29 @@ public class MediaMonitorService extends NotificationListenerService {
                 mDuration = duration;
             }
         } else {
-            // 新曲目载入：检查是否需要从 Artist 中的 "歌手 / 歌名" 还原真实歌名
+            // 新曲目载入：仅当 Title 确系车载蓝牙滚动歌词或纯音乐占位符时，才从 Artist 中的 "歌手 / 真实歌名" 还原
             if (candidateTitle != null && !candidateTitle.isEmpty() && performers != null && !performers.isEmpty()) {
-                boolean candidateLooksLikePiece = candidateTitle.contains("Concerto")
-                        || candidateTitle.contains("Symphony")
-                        || candidateTitle.contains("Sonata")
-                        || candidateTitle.contains("Op.")
-                        || candidateTitle.contains("No.")
-                        || candidateTitle.contains("K.")
-                        || candidateTitle.contains("BWV")
-                        || candidateTitle.contains("Major")
-                        || candidateTitle.contains("Minor")
-                        || candidateTitle.contains("Allegro")
-                        || candidateTitle.contains("Adagio")
-                        || candidateTitle.contains("Andante")
-                        || candidateTitle.length() > 25;
-
                 boolean titleMatchesCandidate = candidateTitle.equalsIgnoreCase(rawTitle)
                         || (!album.isEmpty() && (candidateTitle.equalsIgnoreCase(album) || album.toLowerCase().contains(candidateTitle.toLowerCase())));
 
-                if (isPlaceholderOrLyric || candidateLooksLikePiece || titleMatchesCandidate
-                        || (candidateTitle.length() > 1 && performers.length() > 1)) {
+                if (isPlaceholderOrLyric) {
+                    // Title 是歌词或占位文案，真实歌名在 Artist 的斜杠后
                     Log.i(TAG, "Restored inverted title from artist: [" + candidateTitle + "] performers=[" + performers + "]");
-                    if (isPlaceholderOrLyric || !titleMatchesCandidate) {
-                        mStreamLyric = rawTitle;
-                    } else {
-                        mStreamLyric = "";
-                    }
+                    mStreamLyric = rawTitle;
                     rawTitle = candidateTitle;
                     rawArtist = performers;
+                } else if (titleMatchesCandidate) {
+                    // Artist 中冗余包含了真实歌名（例如 "歌手 / 歌名" 但 Title 已经是真实歌名），清洗 Artist 字段
+                    rawArtist = performers;
+                    mStreamLyric = "";
+                } else {
+                    // 纯多艺术家歌曲（如 "艺术家1 / 艺术家2 / 艺术家3"），rawTitle 即真实歌名，保留完整多歌手列表
+                    mStreamLyric = "";
                 }
             } else {
-                mStreamLyric = "";
+                if (!isPlaceholderOrLyric) {
+                    mStreamLyric = "";
+                }
             }
 
             mUserDismissed = false;
