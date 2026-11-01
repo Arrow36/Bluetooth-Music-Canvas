@@ -2163,12 +2163,13 @@
             return false;
         }
 
-        // 蓝牙实时歌词与网络拉取官方歌词的二次校对验证（仅用于比对校验准确度，绝不干扰时间轴与播放行）
+        // 蓝牙实时歌词与网络拉取官方歌词的动态对齐与权威校准引擎
         let isOfficialLyricVerified = false;
         function crossCheckLyrics(streamLyric) {
             if (!streamLyric || !hasOfficialLyrics || !lyrics || lyrics.length === 0) return;
-            // 忽略纯音乐与占位文案
-            if (streamLyric.includes("纯音乐") || streamLyric.includes("请欣赏")) return;
+            if (currentTrack && currentTrack.isVideo) return;
+            // 忽略纯音乐与演职员占位文案
+            if (streamLyric.includes("纯音乐") || streamLyric.includes("请欣赏") || streamLyric.includes("作词") || streamLyric.includes("作曲")) return;
 
             // 纯净文本标准化（去除标点、符号、空格，统一小写）
             const sClean = streamLyric.toLowerCase().replace(/[^\w\u4e00-\u9fa5]/g, "");
@@ -2180,6 +2181,21 @@
 
                 if (lClean.includes(sClean) || sClean.includes(lClean)) {
                     isOfficialLyricVerified = true;
+                    // 蓝牙实时歌词权威校准：手机端当前正展示这句歌词，立即同步高亮行与时钟
+                    if (i > activeLyricIndex) {
+                        activeLyricIndex = i;
+                        if (!isManualScrolling) {
+                            updateLyricHighlight(activeLyricIndex);
+                            scrollToLyricIndex(activeLyricIndex, true);
+                        }
+                        if (isPlaying && lyrics[i].time > 0) {
+                            const curEstimated = lastPositionMs + (performance.now() - lastSyncTime);
+                            if (curEstimated < lyrics[i].time || Math.abs(curEstimated - lyrics[i].time) > 1500) {
+                                lastPositionMs = lyrics[i].time;
+                                lastSyncTime = performance.now();
+                            }
+                        }
+                    }
                     break;
                 }
             }
@@ -2763,9 +2779,13 @@
 
             // 官方歌词流处理
             if (lyricMode === 'official' && hasOfficialLyrics && lyrics && lyrics.length > 0) {
+                // 人眼预读习惯与蓝牙音频传输缓冲补偿（提前 450ms 响应，消除滞后感）
+                const LYRIC_ADVANCE_OFFSET_MS = 450;
+                const lyricPos = currentPos + LYRIC_ADVANCE_OFFSET_MS;
+
                 let targetIndex = -1;
                 for (let i = 0; i < lyrics.length; i++) {
-                    if (currentPos >= lyrics[i].time) {
+                    if (lyricPos >= lyrics[i].time) {
                         targetIndex = i;
                     } else {
                         break;
