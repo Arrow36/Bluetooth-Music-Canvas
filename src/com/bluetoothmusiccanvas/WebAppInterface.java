@@ -85,6 +85,24 @@ public class WebAppInterface {
     }
 
     @JavascriptInterface
+    public void requestLyricSource(final String source, final String title, final String artist, final String album) {
+        if ("bluetooth".equalsIgnoreCase(source) || "auto".equalsIgnoreCase(source)) {
+            return;
+        }
+        MetadataFetcher.fetchSpecificLyric(source, title, artist, album, new MetadataFetcher.Callback() {
+            @Override
+            public void onResult(String coverUrl, final String lyricsLrc, final String lyricSource) {
+                mActivity.runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        mActivity.dispatchSpecificLyricResult(source, lyricsLrc, lyricSource);
+                    }
+                });
+            }
+        });
+    }
+
+    @JavascriptInterface
     public void exitToHome() {
         android.util.Log.i("WebAppInterface", "exitToHome triggered from JS");
         mActivity.runOnUiThread(new Runnable() {

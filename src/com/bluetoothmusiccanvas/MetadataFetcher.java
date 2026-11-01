@@ -59,6 +59,40 @@ public class MetadataFetcher {
         fetch(rawTitle, rawArtist, "", callback);
     }
 
+    public static void fetchSpecificLyric(final String source, final String rawTitle, final String rawArtist, final String rawAlbum, final Callback callback) {
+        final String title = cleanTitle(rawTitle);
+        final String fullArtist = (rawArtist != null) ? rawArtist.trim() : "";
+        final String album = (rawAlbum != null) ? rawAlbum.trim() : "";
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String lyricsLrc = null;
+                String actualSource = "";
+                try {
+                    if ("netease".equalsIgnoreCase(source)) {
+                        String[] res = fetchFromNetEase(title, fullArtist, album);
+                        lyricsLrc = res[1];
+                        actualSource = "网易云音乐";
+                    } else if ("qq".equalsIgnoreCase(source)) {
+                        lyricsLrc = fetchFromQQ(title, fullArtist);
+                        actualSource = "QQ音乐";
+                    } else if ("kugou".equalsIgnoreCase(source)) {
+                        String[] res = fetchFromKugou(title, fullArtist, false, true);
+                        lyricsLrc = res[1];
+                        actualSource = "酷狗音乐";
+                    } else if ("lrclib".equalsIgnoreCase(source)) {
+                        lyricsLrc = fetchLyricsFromLRCLIB(title, fullArtist);
+                        actualSource = "LRCLIB";
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "fetchSpecificLyric error: " + e.getMessage());
+                }
+                callback.onResult(null, lyricsLrc, actualSource);
+            }
+        }).start();
+    }
+
     public static void fetch(final String rawTitle, final String rawArtist, final String rawAlbum, final Callback callback) {
         final String title = cleanTitle(rawTitle);
         final String fullArtist = (rawArtist != null) ? rawArtist.trim() : "";
@@ -411,6 +445,46 @@ public class MetadataFetcher {
             Log.w(TAG, "fetchFromKugou error: " + e.getMessage());
         }
         return out;
+    }
+
+    private static String fetchFromQQ(String title, String artist) {
+        try {
+            String q = URLEncoder.encode((title + " " + artist).trim(), "UTF-8");
+            String searchUrl = "https://c.y.qq.com/soso/fcgi-bin/client_search_cp?p=1&n=1&w=" + q + "&format=json";
+            Map<String, String> headers = new HashMap<>();
+            headers.put("Referer", "https://y.qq.com/");
+            headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+            String searchJson = httpGetWithHeaders(searchUrl, headers);
+            if (searchJson == null) return null;
+
+            JSONObject sObj = new JSONObject(searchJson);
+            JSONObject data = sObj.optJSONObject("data");
+            if (data == null) return null;
+            JSONObject songObj = data.optJSONObject("song");
+            if (songObj == null) return null;
+            JSONArray list = songObj.optJSONArray("list");
+            if (list == null || list.length() == 0) return null;
+
+            JSONObject firstSong = list.getJSONObject(0);
+            String songmid = firstSong.optString("songmid", "");
+            if (songmid.isEmpty()) return null;
+
+            String lrcUrl = "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid=" + songmid + "&format=json&nobase64=0";
+            String lrcJson = httpGetWithHeaders(lrcUrl, headers);
+            if (lrcJson == null) return null;
+
+            JSONObject lObj = new JSONObject(lrcJson);
+            String lyricB64 = lObj.optString("lyric", "");
+            if (!lyricB64.isEmpty()) {
+                byte[] bytes = Base64.decode(lyricB64, Base64.DEFAULT);
+                String lrc = new String(bytes, "UTF-8");
+                Log.i(TAG, "QQ lyrics found (" + lrc.length() + " chars)");
+                return lrc;
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "fetchFromQQ error: " + e.getMessage());
+        }
+        return null;
     }
 
     private static String[] fetchFromNetEase(String title, String artist, String album) {

@@ -332,6 +332,25 @@ public class MainActivity extends Activity {
         });
     }
 
+    public void dispatchSpecificLyricResult(final String source, final String lyricsLrc, final String lyricSource) {
+        mHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                if (mWebView != null && mPageLoaded) {
+                    try {
+                        JSONObject obj = new JSONObject();
+                        obj.put("source", source);
+                        obj.put("lyrics", lyricsLrc != null ? lyricsLrc : "");
+                        obj.put("lyricSource", lyricSource != null ? lyricSource : "");
+                        mWebView.evaluateJavascript("window.onSpecificLyricResult && window.onSpecificLyricResult(" + obj.toString() + ");", null);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        });
+    }
+
     public void dispatchMetadata(final String title, final String artist, final String album, final long duration, final String streamLyric) {
         sCachedTitle = title;
         sCachedArtist = artist;
