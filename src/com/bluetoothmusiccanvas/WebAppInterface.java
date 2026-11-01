@@ -89,13 +89,16 @@ public class WebAppInterface {
         if ("bluetooth".equalsIgnoreCase(source) || "auto".equalsIgnoreCase(source)) {
             return;
         }
+        final long generation = mActivity.getCurrentPlaybackGeneration();
+        final long reqId = mActivity.nextRequestId();
+        final String trackKey = MetadataFetcher.buildCacheKey(title, artist, album);
         MetadataFetcher.fetchSpecificLyric(source, title, artist, album, new MetadataFetcher.Callback() {
             @Override
             public void onResult(String coverUrl, final String lyricsLrc, final String lyricSource) {
                 mActivity.runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
-                        mActivity.dispatchSpecificLyricResult(source, lyricsLrc, lyricSource);
+                        mActivity.dispatchSpecificLyricResult(source, lyricsLrc, lyricSource, generation, trackKey, reqId);
                     }
                 });
             }

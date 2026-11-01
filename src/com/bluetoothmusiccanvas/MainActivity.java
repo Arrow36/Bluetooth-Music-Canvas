@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.database.ContentObserver;
 import android.media.AudioManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -24,6 +25,7 @@ import android.webkit.WebViewClient;
 import org.json.JSONObject;
 
 public class MainActivity extends Activity {
+    public static final String TAG = "MainActivity";
     public static MainActivity sInstance;
 
     private WebView mWebView;
@@ -81,8 +83,8 @@ public class MainActivity extends Activity {
         settings.setDomStorageEnabled(true);
         settings.setAllowFileAccess(true);
         settings.setAllowContentAccess(true);
-        settings.setAllowFileAccessFromFileURLs(true);
-        settings.setAllowUniversalAccessFromFileURLs(true);
+        settings.setAllowFileAccessFromFileURLs(false);
+        settings.setAllowUniversalAccessFromFileURLs(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
@@ -97,6 +99,11 @@ public class MainActivity extends Activity {
             }
         });
         mWebView.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                return true;
+            }
+
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
@@ -321,45 +328,41 @@ public class MainActivity extends Activity {
                 | View.SYSTEM_UI_FLAG_FULLSCREEN);
     }
 
-    public void dispatchOnlineResult(final String coverUrl, final String lyricsLrc, final String lyricSource) {
-        if ("蓝牙媒体音频".equals(sCachedTitle) && !"视频模式".equals(lyricSource)) {
-            if (coverUrl != null && !coverUrl.isEmpty()) {
-                sLastValidMusicCoverUrl = coverUrl;
-            }
-            return;
-        }
-        mHandler.post(new Runnable() {
-            @Override
-            public void run() {
-                if (mWebView != null && mPageLoaded) {
-                    try {
-                        JSONObject obj = new JSONObject();
-                        obj.put("coverUrl", coverUrl != null ? coverUrl : "");
-                        obj.put("lyrics", lyricsLrc != null ? lyricsLrc : "");
-                        obj.put("lyricSource", lyricSource != null ? lyricSource : "");
-                        mWebView.evaluateJavascript("window.onOnlineResult && window.onOnlineResult(" + obj.toString() + ");", null);
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                }
-            }
-        });
+    private long mCurrentPlaybackGeneration = 0;
+    private final java.util.concurrent.atomic.AtomicLong mRequestIdCounter = new java.util.concurrent.atomic.AtomicLong(0);
+
+    public long getCurrentPlaybackGeneration() {
+        return mCurrentPlaybackGeneration;
+    }
+
+    public long nextRequestId() {
+        return mRequestIdCounter.incrementAndGet();
     }
 
     public void dispatchSpecificLyricResult(final String source, final String lyricsLrc, final String lyricSource) {
+        dispatchSpecificLyricResult(source, lyricsLrc, lyricSource, mCurrentPlaybackGeneration,
+                MetadataFetcher.buildCacheKey(sCachedTitle, sCachedArtist, sCachedAlbum), 0);
+    }
+
+    public void dispatchSpecificLyricResult(final String source, final String lyricsLrc, final String lyricSource,
+                                           final long generation, final String trackKey, final long sourceRequestId) {
+        if (!mPageLoaded || mWebView == null) return;
+        if (isFinishing() || (Build.VERSION.SDK_INT >= 17 && isDestroyed())) return;
         mHandler.post(new Runnable() {
             @Override
             public void run() {
-                if (mWebView != null && mPageLoaded) {
-                    try {
-                        JSONObject obj = new JSONObject();
-                        obj.put("source", source);
-                        obj.put("lyrics", lyricsLrc != null ? lyricsLrc : "");
-                        obj.put("lyricSource", lyricSource != null ? lyricSource : "");
-                        mWebView.evaluateJavascript("window.onSpecificLyricResult && window.onSpecificLyricResult(" + obj.toString() + ");", null);
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
+                if (isFinishing() || (Build.VERSION.SDK_INT >= 17 && isDestroyed())) return;
+                try {
+                    JSONObject obj = new JSONObject();
+                    obj.put("source", source);
+                    obj.put("lyrics", lyricsLrc != null ? lyricsLrc : "");
+                    obj.put("lyricSource", lyricSource != null ? lyricSource : "");
+                    obj.put("generation", generation);
+                    obj.put("trackKey", trackKey != null ? trackKey : "");
+                    obj.put("sourceRequestId", sourceRequestId);
+                    mWebView.evaluateJavascript("window.onSpecificLyricResult && window.onSpecificLyricResult(" + obj.toString() + ");", null);
+                } catch (Exception e) {
+                    e.printStackTrace();
                 }
             }
         });
@@ -390,7 +393,15 @@ public class MainActivity extends Activity {
         if (!"蓝牙媒体音频".equals(title)) {
             sIsAmbientAudioMode = false;
         }
-        boolean isNewSong = (sCachedTitle == null || !sCachedTitle.equals(title) || sCachedArtist == null || !sCachedArtist.equals(artist));
+        final boolean isNewSong = (sCachedTitle == null || !sCachedTitle.equals(title) || sCachedArtist == null || !sCachedArtist.equals(artist));
+        final boolean isEnrichment = !isNewSong && (((sCachedAlbum == null || sCachedAlbum.isEmpty()) && album != null && !album.isEmpty()) || (sCachedDuration <= 0 && duration > 0));
+
+        if (isNewSong) {
+            mCurrentPlaybackGeneration++;
+        }
+        final long generation = mCurrentPlaybackGeneration;
+        final String trackKey = MetadataFetcher.buildCacheKey(title, artist, album);
+
         sCachedTitle = title;
         sCachedArtist = artist;
         sCachedAlbum = album;
@@ -399,44 +410,14 @@ public class MainActivity extends Activity {
 
         final boolean isVideo = "蓝牙媒体音频".equals(title) || MetadataFetcher.isVideoTrack(title, artist, album, duration);
 
-        if (isVideo) {
-            // 视频模式：保留上一首音乐的有效封面，杜绝丑陋人像或空白默认图
-            sCachedCoverUrl = sLastValidMusicCoverUrl;
-            sCachedLyrics = "";
-            sCachedLyricSource = "视频模式";
-            dispatchOnlineResult(sCachedCoverUrl, "", "视频模式");
-        } else {
-            final String key = (title + " - " + artist + (album != null && !album.isEmpty() ? " - " + album : "")).toLowerCase().trim();
-            MetadataFetcher.CachedMeta cached = MetadataFetcher.getCached(title, artist, album);
-            if (cached != null && (cached.coverUrl != null || cached.lyricsLrc != null)) {
-                sCachedCoverUrl = cached.coverUrl != null ? cached.coverUrl : "";
-                if (sCachedCoverUrl != null && !sCachedCoverUrl.isEmpty()) {
-                    sLastValidMusicCoverUrl = sCachedCoverUrl;
-                }
-                sCachedLyrics = cached.lyricsLrc != null ? cached.lyricsLrc : "";
-                sCachedLyricSource = cached.lyricSource != null ? cached.lyricSource : "";
-                dispatchOnlineResult(sCachedCoverUrl, sCachedLyrics, sCachedLyricSource);
-            } else if (isNewSong && !key.isEmpty() && (!key.equals(sLastFetchedKey) || (sCachedCoverUrl.isEmpty() && sCachedLyrics.isEmpty()))) {
-                sLastFetchedKey = key;
-                MetadataFetcher.fetch(title, artist, album, duration, new MetadataFetcher.Callback() {
-                    @Override
-                    public void onResult(final String coverUrl, final String lyricsLrc, final String lyricSource) {
-                        sCachedCoverUrl = coverUrl != null ? coverUrl : "";
-                        if (sCachedCoverUrl != null && !sCachedCoverUrl.isEmpty()) {
-                            sLastValidMusicCoverUrl = sCachedCoverUrl;
-                        }
-                        sCachedLyrics = lyricsLrc != null ? lyricsLrc : "";
-                        sCachedLyricSource = lyricSource != null ? lyricSource : "";
-                        dispatchOnlineResult(sCachedCoverUrl, sCachedLyrics, sCachedLyricSource);
-                    }
-                });
-            }
-        }
-
         if (!mPageLoaded || mWebView == null) return;
+        if (isFinishing() || (Build.VERSION.SDK_INT >= 17 && isDestroyed())) return;
+
+        // 1. 先向前端发布元数据快照，建立当前播放代次与身份
         mHandler.post(new Runnable() {
             @Override
             public void run() {
+                if (isFinishing() || (Build.VERSION.SDK_INT >= 17 && isDestroyed())) return;
                 try {
                     JSONObject obj = new JSONObject();
                     obj.put("title", title);
@@ -445,12 +426,89 @@ public class MainActivity extends Activity {
                     obj.put("duration", duration);
                     obj.put("streamLyric", streamLyric != null ? streamLyric : "");
                     obj.put("isVideo", isVideo);
+                    obj.put("generation", generation);
+                    obj.put("trackKey", trackKey);
+                    obj.put("isEnrichment", isEnrichment);
                     mWebView.evaluateJavascript("window.onMetadataChanged && window.onMetadataChanged(" + obj.toString() + ");", null);
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
             }
         });
+
+        // 2. 再分发或检索封面与歌词 (在 mHandler 串行队列中排在 onMetadataChanged 之后)
+        if (isVideo) {
+            sCachedCoverUrl = sLastValidMusicCoverUrl;
+            sCachedLyrics = "";
+            sCachedLyricSource = "视频模式";
+            dispatchOnlineResult(sCachedCoverUrl, "", "视频模式", generation, trackKey, 0, "video");
+        } else {
+            MetadataFetcher.CachedMeta cached = MetadataFetcher.getCached(title, artist, album);
+            if (cached != null && (cached.coverUrl != null || cached.lyricsLrc != null)) {
+                sCachedCoverUrl = cached.coverUrl != null ? cached.coverUrl : "";
+                if (sCachedCoverUrl != null && !sCachedCoverUrl.isEmpty()) {
+                    sLastValidMusicCoverUrl = sCachedCoverUrl;
+                }
+                sCachedLyrics = cached.lyricsLrc != null ? cached.lyricsLrc : "";
+                sCachedLyricSource = cached.lyricSource != null ? cached.lyricSource : "";
+                dispatchOnlineResult(sCachedCoverUrl, sCachedLyrics, sCachedLyricSource, generation, trackKey, 0, "auto");
+            } else if (isNewSong && !trackKey.isEmpty() && (!trackKey.equals(sLastFetchedKey) || (sCachedCoverUrl.isEmpty() && sCachedLyrics.isEmpty()))) {
+                sLastFetchedKey = trackKey;
+                final long reqId = mRequestIdCounter.incrementAndGet();
+                MetadataFetcher.fetch(title, artist, album, duration, new MetadataFetcher.Callback() {
+                    @Override
+                    public void onResult(final String coverUrl, final String lyricsLrc, final String lyricSource) {
+                        mHandler.post(new Runnable() {
+                            @Override
+                            public void run() {
+                                if (isFinishing() || (Build.VERSION.SDK_INT >= 17 && isDestroyed())) return;
+                                if (generation != mCurrentPlaybackGeneration) {
+                                    Log.d(TAG, "Discarded stale fetch callback for gen " + generation + " (current is " + mCurrentPlaybackGeneration + ")");
+                                    return;
+                                }
+                                sCachedCoverUrl = coverUrl != null ? coverUrl : "";
+                                if (sCachedCoverUrl != null && !sCachedCoverUrl.isEmpty()) {
+                                    sLastValidMusicCoverUrl = sCachedCoverUrl;
+                                }
+                                sCachedLyrics = lyricsLrc != null ? lyricsLrc : "";
+                                sCachedLyricSource = lyricSource != null ? lyricSource : "";
+                                dispatchOnlineResult(sCachedCoverUrl, sCachedLyrics, sCachedLyricSource, generation, trackKey, reqId, "auto");
+                            }
+                        });
+                    }
+                });
+            }
+        }
+    }
+
+    public void dispatchOnlineResult(final String coverUrl, final String lyrics, final String lyricSource,
+                                     final long generation, final String trackKey, final long sourceRequestId, final String source) {
+        if (!mPageLoaded || mWebView == null) return;
+        if (isFinishing() || (Build.VERSION.SDK_INT >= 17 && isDestroyed())) return;
+        mHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                if (isFinishing() || (Build.VERSION.SDK_INT >= 17 && isDestroyed())) return;
+                try {
+                    JSONObject obj = new JSONObject();
+                    obj.put("coverUrl", coverUrl != null ? coverUrl : "");
+                    obj.put("lyrics", lyrics != null ? lyrics : "");
+                    obj.put("lyricSource", lyricSource != null ? lyricSource : "");
+                    obj.put("generation", generation);
+                    obj.put("trackKey", trackKey != null ? trackKey : "");
+                    obj.put("sourceRequestId", sourceRequestId);
+                    obj.put("source", source != null ? source : "auto");
+                    mWebView.evaluateJavascript("window.onOnlineResult && window.onOnlineResult(" + obj.toString() + ");", null);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+    }
+
+    public void dispatchOnlineResult(final String coverUrl, final String lyrics, final String lyricSource) {
+        dispatchOnlineResult(coverUrl, lyrics, lyricSource, mCurrentPlaybackGeneration,
+                MetadataFetcher.buildCacheKey(sCachedTitle, sCachedArtist, sCachedAlbum), 0, "auto");
     }
 
     public void dispatchPlaybackState(final boolean isPlaying, final long position, final float speed) {

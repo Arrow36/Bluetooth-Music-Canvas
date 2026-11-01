@@ -1556,6 +1556,7 @@
         }, { passive: false });
 
         let currentTrack = { title: "", artist: "", album: "", duration: 0, streamLyric: "" };
+        window.currentTrack = currentTrack;
         let isPlaying = false;
         let lastPositionMs = 0;
         let lastSyncTime = performance.now();
@@ -1569,6 +1570,7 @@
         
         // 歌曲元数据与歌词内存缓存表（避免返回桌面重新点击时重复请求与闪白）
         const songCache = {};
+        window.songCache = songCache;
 
         function toggleDeviceInfo(e) {
             if (e && e.stopPropagation) e.stopPropagation();
@@ -1929,25 +1931,61 @@
         let manualScrollResumeTimer = null;
 
         function updateLyricHighlight(targetIndex, instant) {
+            const oldIndex = activeLyricIndex;
             const lines = document.querySelectorAll('.lyric-line');
-            for (let idx = 0; idx < lines.length; idx++) {
-                const el = lines[idx];
-                const dist = Math.abs(idx - targetIndex);
-                if (instant) {
-                    el.style.transition = 'none';
-                } else if (el.style.transition) {
-                    el.style.transition = '';
+            if (!lines || lines.length === 0) return;
+
+            if (oldIndex < 0 || oldIndex === targetIndex) {
+                // 首次高亮或全量初始化
+                for (let idx = 0; idx < lines.length; idx++) {
+                    const el = lines[idx];
+                    const dist = Math.abs(idx - targetIndex);
+                    if (instant) {
+                        el.style.transition = 'none';
+                    } else if (el.style.transition) {
+                        el.style.transition = '';
+                    }
+                    let newClass = 'lyric-line';
+                    if (dist === 0) {
+                        newClass += ' active';
+                    } else if (dist <= 4) {
+                        newClass += ` near near-${dist}`;
+                    } else {
+                        newClass += ' far';
+                    }
+                    el.className = newClass;
                 }
-                let newClass = 'lyric-line';
-                if (dist === 0) {
-                    newClass += ' active';
-                } else if (dist <= 4) {
-                    newClass += ` near near-${dist}`;
-                } else {
-                    newClass += ' far';
+            } else {
+                // 真正邻域并集：[oldIndex-4, oldIndex+4] ∪ [targetIndex-4, targetIndex+4]
+                const affectedIndices = new Set();
+                const total = lines.length;
+                for (let i = oldIndex - 4; i <= oldIndex + 4; i++) {
+                    if (i >= 0 && i < total) affectedIndices.add(i);
                 }
-                el.className = newClass;
+                for (let i = targetIndex - 4; i <= targetIndex + 4; i++) {
+                    if (i >= 0 && i < total) affectedIndices.add(i);
+                }
+                affectedIndices.forEach(idx => {
+                    const el = lines[idx];
+                    if (!el) return;
+                    const dist = Math.abs(idx - targetIndex);
+                    if (instant) {
+                        el.style.transition = 'none';
+                    } else if (el.style.transition) {
+                        el.style.transition = '';
+                    }
+                    let newClass = 'lyric-line';
+                    if (dist === 0) {
+                        newClass += ' active';
+                    } else if (dist <= 4) {
+                        newClass += ` near near-${dist}`;
+                    } else {
+                        newClass += ' far';
+                    }
+                    el.className = newClass;
+                });
             }
+            activeLyricIndex = targetIndex;
         }
 
         function scrollToLyricIndex(index, animated) {
@@ -2297,10 +2335,14 @@
             const emptyBox = document.getElementById('emptyLyrics');
             if (emptyBox) emptyBox.style.display = 'none';
             stream.style.transform = 'translateY(-24px)';
-            stream.innerHTML = `
-                <div class="live-stream-box">
-                    <div class="live-stream-lyric">${text}</div>
-                </div>`;
+            stream.textContent = '';
+            const box = document.createElement('div');
+            box.className = 'live-stream-box';
+            const lyric = document.createElement('div');
+            lyric.className = 'live-stream-lyric';
+            lyric.textContent = text || '';
+            box.appendChild(lyric);
+            stream.appendChild(box);
             updateStatusTag('蓝牙实时歌词', '#4a90e2');
         }
 
@@ -2330,6 +2372,16 @@
             if (s.includes('蓝牙') || s.includes('bluetooth') || s.includes('stream')) return SOURCE_META.bluetooth;
             return { name: src, color: '#31c27c', label: src, id: 'auto' };
         }
+
+        function getLyricSourceLabel(src) {
+            const meta = getSourceMeta(src);
+            return meta ? (meta.label || meta.name) : '官方歌词';
+        }
+
+        // 播放代次与请求序列号管理（根治切歌竞态、乱序到达与缓存污染）
+        let currentPlaybackGeneration = 0;
+        let lastSourceRequestId = {};
+        let currentSongKey = '';
 
         function toggleLyricMenu(e) {
             if (e && e.stopPropagation) e.stopPropagation();
@@ -2489,12 +2541,21 @@
         // 接收来自 Android 原生层针对特定源的检索结果（完全静默化，不弹居中窗）
         window.onSpecificLyricResult = function(data) {
             if (!data) return;
+            if (typeof data.generation === 'number' && data.generation !== currentPlaybackGeneration) {
+                return;
+            }
             const source = data.source;
+            if (source && typeof data.sourceRequestId === 'number') {
+                if (lastSourceRequestId[source] !== undefined && data.sourceRequestId < lastSourceRequestId[source]) {
+                    return;
+                }
+                lastSourceRequestId[source] = data.sourceRequestId;
+            }
             const rawLrc = data.lyrics;
             const lyricSource = data.lyricSource;
             const meta = SOURCE_META[source] || getSourceMeta(lyricSource);
 
-            const trackKey = (currentTrack.title + " - " + currentTrack.artist).toLowerCase().trim();
+            const trackKey = data.trackKey || currentSongKey || (currentTrack.title + " - " + currentTrack.artist).toLowerCase().trim();
             if (!songCache[trackKey]) songCache[trackKey] = {};
 
             if (rawLrc && rawLrc.trim().length > 0) {
@@ -2526,13 +2587,25 @@
         // 接收来自 Java 原生多源高速检索的网络封面与官方歌词 (iTunes, Kugou, LRCLIB)
         window.onOnlineResult = function(data) {
             if (!data) return;
+            if (typeof data.generation === 'number' && data.generation !== currentPlaybackGeneration) {
+                // 彻底丢弃非当前代次结果，防止切歌迟到回调污染！
+                return;
+            }
+            if (data.source && typeof data.sourceRequestId === 'number') {
+                if (lastSourceRequestId[data.source] !== undefined && data.sourceRequestId < lastSourceRequestId[data.source]) {
+                    // 彻底丢弃同源乱序到达的旧请求结果！
+                    return;
+                }
+                lastSourceRequestId[data.source] = data.sourceRequestId;
+            }
+
             // 核心保护：若当前曲目处于视频模式，严禁被滞后的旧音乐歌词渲染覆盖大号律动频谱
             if (currentTrack && currentTrack.isVideo) {
                 const stream = document.getElementById('lyricsStream');
                 const emptyBox = document.getElementById('emptyLyrics');
                 const largeViz = document.getElementById('largeVisualizer');
                 if (stream) {
-                    stream.innerHTML = '';
+                    stream.textContent = '';
                     stream.style.display = 'none';
                 }
                 if (emptyBox) emptyBox.style.display = 'none';
@@ -2546,7 +2619,7 @@
                 return;
             }
 
-            const trackKey = (currentTrack.title + " - " + currentTrack.artist).toLowerCase().trim();
+            const trackKey = data.trackKey || currentSongKey || (currentTrack.title + " - " + currentTrack.artist).toLowerCase().trim();
             if (!songCache[trackKey]) songCache[trackKey] = {};
 
             if (data.coverUrl) {
@@ -2567,9 +2640,9 @@
                 const parsed = parseLRC(data.lyrics);
                 if (parsed.length > 0) {
                     songCache[trackKey].parsedLyrics = parsed;
-                    // 仅当用户处于“自动推荐”模式时，才应用全局自动匹配歌词；
-                    // 若用户手动锁定了特定源（如 QQ音乐、网易云等），切歌时绝不被覆盖！
-                    if (currentActiveSource === 'auto') {
+                    // 仅当用户处于“自动推荐”模式或指定源与当前源匹配时，才更新全屏歌词展示；
+                    // 若用户手动锁定了特定源（如 QQ音乐、网易云等），而此为其他来源，切歌时绝不被覆盖！
+                    if (currentActiveSource === 'auto' || (data.source && data.source === currentActiveSource)) {
                         parsedOfficialLyrics = parsed;
                         hasOfficialLyrics = true;
                         lyricMode = 'official';
@@ -2606,8 +2679,36 @@
             const streamLyric = data.streamLyric || "";
             const isVideo = !!(data.isVideo || isVideoTrack(title, artist, album, data.duration));
 
+            if (data.isEnrichment) {
+                // 元数据补全（如只补充专辑或时长）：绝不能切歌、绝不能递增代次、绝不能重置时钟与歌词！
+                if (album && (!currentTrack.album || currentTrack.album === '')) {
+                    currentTrack.album = album;
+                    let artistAlbumText = (artist && artist !== "未知歌手" && !artist.toLowerCase().includes("bluetooth"))
+                        ? artist.replace(/\s*\/\s*/g, ' / ')
+                        : (isVideo ? "蓝牙音频播放" : "未知歌手");
+                    if (!title.toLowerCase().includes(album.toLowerCase()) && !album.toLowerCase().includes(title.toLowerCase())) {
+                        artistAlbumText = `${artistAlbumText} · ${album}`;
+                    }
+                    const songArtistEl = document.getElementById('songArtist');
+                    if (songArtistEl) songArtistEl.textContent = artistAlbumText;
+                }
+                if (data.duration && data.duration > 0) {
+                    currentTrack.duration = data.duration;
+                    durationMs = data.duration;
+                    const timeTotal = document.getElementById('timeTotal');
+                    if (timeTotal) timeTotal.textContent = formatTime(data.duration);
+                }
+                if (data.trackKey) currentSongKey = data.trackKey;
+                return;
+            }
+
+            currentPlaybackGeneration = (typeof data.generation === 'number') ? data.generation : (currentPlaybackGeneration + 1);
+            lastSourceRequestId = {};
+            currentSongKey = data.trackKey || (title + " - " + artist).toLowerCase().trim();
+
             const isNewSong = (currentTrack.title !== title || currentTrack.artist !== artist);
             currentTrack = data;
+            window.currentTrack = currentTrack;
 
             document.getElementById('songTitle').textContent = formatSongTitle(title);
             let artistAlbumText = (artist && artist !== "未知歌手" && !artist.toLowerCase().includes("bluetooth"))
@@ -2620,7 +2721,7 @@
             document.getElementById('songArtist').textContent = artistAlbumText;
             document.getElementById('timeTotal').textContent = formatTime(data.duration);
 
-            const trackKey = (title + " - " + artist).toLowerCase().trim();
+            const trackKey = currentSongKey;
             if (!songCache[trackKey]) songCache[trackKey] = {};
             if (streamLyric) songCache[trackKey].streamLyric = streamLyric;
 

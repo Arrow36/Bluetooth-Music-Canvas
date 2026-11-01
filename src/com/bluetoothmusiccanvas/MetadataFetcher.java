@@ -40,18 +40,32 @@ public class MetadataFetcher {
         void onResult(String coverUrl, String lyricsLrc, String lyricSource);
     }
 
+    public static String buildCacheKey(String rawTitle, String rawArtist, String rawAlbum) {
+        String title = normalizeTitleForCache(rawTitle);
+        String artist = normalizeArtistForCache(rawArtist);
+        String album = (rawAlbum != null) ? rawAlbum.trim().toLowerCase() : "";
+        return title + "\t" + artist + (album.isEmpty() ? "" : "\t" + album);
+    }
+
+    public static String normalizeTitleForCache(String s) {
+        if (s == null) return "";
+        return s.trim().replaceAll("^[《<“\"'「『\\s]+|[》>”\"'」』\\s]+$", "").toLowerCase();
+    }
+
+    public static String normalizeArtistForCache(String s) {
+        if (s == null) return "";
+        return s.trim().replaceAll("^[《<“\"'「『\\s]+|[》>”\"'」』\\s]+$", "").toLowerCase();
+    }
+
     public static CachedMeta getCached(String rawTitle, String rawArtist) {
         return getCached(rawTitle, rawArtist, "");
     }
 
     public static CachedMeta getCached(String rawTitle, String rawArtist, String rawAlbum) {
-        String title = cleanTitle(rawTitle);
-        String artist = cleanArtist(rawArtist);
-        String album = (rawAlbum != null) ? rawAlbum.trim() : "";
-        String key = (title + " - " + artist + (album.isEmpty() ? "" : " - " + album)).toLowerCase().trim();
+        String key = buildCacheKey(rawTitle, rawArtist, rawAlbum);
         CachedMeta m = sCache.get(key);
         if (m != null) return m;
-        String fallbackKey = (title + " - " + artist).toLowerCase().trim();
+        String fallbackKey = buildCacheKey(rawTitle, rawArtist, "");
         return sCache.get(fallbackKey);
     }
 
@@ -197,7 +211,7 @@ public class MetadataFetcher {
         final String title = cleanTitle(rawTitle);
         final String fullArtist = (rawArtist != null) ? rawArtist.trim() : "";
         final String album = (rawAlbum != null) ? rawAlbum.trim() : "";
-        final String key = (title + " - " + fullArtist + (album.isEmpty() ? "" : " - " + album)).toLowerCase().trim();
+        final String key = buildCacheKey(rawTitle, rawArtist, rawAlbum);
 
         if (title.isEmpty() || title.contains("纯音乐") || title.contains("请欣赏") || title.equals("未知歌曲") || title.equals("Not Provided")) {
             Log.i(TAG, "Skipping fetch for placeholder title: [" + title + "]");
@@ -315,7 +329,10 @@ public class MetadataFetcher {
                 }
 
                 if (!key.isEmpty() && (coverUrl != null || lyricsLrc != null)) {
-                    sCache.put(key, new CachedMeta(coverUrl, lyricsLrc, lyricSource));
+                    CachedMeta meta = new CachedMeta(coverUrl, lyricsLrc, lyricSource);
+                    sCache.put(key, meta);
+                    String fallbackKey = buildCacheKey(rawTitle, rawArtist, "");
+                    sCache.put(fallbackKey, meta);
                 }
 
                 Log.i(TAG, "Metadata fetch complete. Cover found=" + (coverUrl != null) + ", Lyrics found=" + (lyricsLrc != null) + " (" + lyricSource + ")");

@@ -76,6 +76,8 @@ public class MediaMonitorService extends NotificationListenerService {
     private String mStreamLyric = "";
     private long mDuration = 0;
     private long mCurrentPosition = 0;
+    private long mPlaybackGeneration = 0;
+    private String mLastMediaId = null;
 
     // Pattern for "车载蓝牙歌词" e.g. Artist: "王菲/如愿 (电影《我和我的父辈》主题推广曲)"
     private static final Pattern BT_LYRIC_PATTERN = Pattern.compile("^([^/]+)/([^\\(（]+)");
@@ -320,8 +322,13 @@ public class MediaMonitorService extends NotificationListenerService {
         // 国内网易云、QQ音乐、酷狗等主流播放器在开启“车载蓝牙歌词”时，统一规范为：
         // Title 字段：实时滚动投送动态歌词（或纯音乐占位文案）
         // Artist 字段：格式固定为 "歌手 / 真实歌名"（如 "polarrana/Full of You (Acoustic Version)"）
+        String mediaId = null;
+        try {
+            mediaId = metadata.getString(MediaMetadata.METADATA_KEY_MEDIA_ID);
+        } catch (Exception ignored) {}
+
         boolean isPlaceholderOrLyric = false;
-        if (rawTitle != null) {
+        if (rawTitle != null && !rawTitle.isEmpty()) {
             String lower = rawTitle.toLowerCase();
             // 1. 中英文常见占位符、演职员名单关键词
             if (rawTitle.contains("纯音乐") || rawTitle.contains("请欣赏") || rawTitle.contains("没有填词")
@@ -332,26 +339,11 @@ public class MediaMonitorService extends NotificationListenerService {
                     || lower.contains("composer") || lower.contains("lyricist") || lower.contains("instrumental")) {
                 isPlaceholderOrLyric = true;
             }
-            // 2. 标点符号特征（歌词行经常带中英文标点，而正规歌曲名极少带标点）
-            else if (rawTitle.contains("，") || rawTitle.contains("。") || rawTitle.contains("！")
+            // 2. 标点符号特征（整句歌词常带标点，且长度通常不少于12字）
+            else if ((rawTitle.contains("，") || rawTitle.contains("。") || rawTitle.contains("！")
                     || rawTitle.contains("？") || rawTitle.contains("~") || rawTitle.contains("…")
-                    || rawTitle.contains(",") || rawTitle.contains(".") || rawTitle.contains("!")
-                    || rawTitle.contains("?")) {
-                isPlaceholderOrLyric = true;
-            }
-            // 3. 常见中英文歌词主谓虚词、代词、时态动词（整句歌词特征）
-            else if (rawTitle.matches(".*[你我他她它的了在着不是爱想说说看听走去把让].*")
-                    || lower.matches("(?i).*\\b(you|me|my|we|us|our|i|it|the|is|was|are|were|to|for|in|on|that|this|with|and)\\b.*")) {
-                if (rawTitle.length() >= 5) {
-                    isPlaceholderOrLyric = true;
-                }
-            }
-            // 4. 长度差异特征：当前 rawTitle 显著长于 candidateTitle（一句歌词通常比歌名长得多）
-            else if (candidateTitle != null && rawTitle.length() >= candidateTitle.length() + 4) {
-                isPlaceholderOrLyric = true;
-            }
-            // 5. 包含空格的长词组（英文歌词或带空格中文歌词）
-            else if (rawTitle.trim().contains(" ") && rawTitle.length() >= 8) {
+                    || rawTitle.contains(",") || rawTitle.contains("!") || rawTitle.contains("?"))
+                    && rawTitle.length() >= 12) {
                 isPlaceholderOrLyric = true;
             }
         }
@@ -367,12 +359,10 @@ public class MediaMonitorService extends NotificationListenerService {
             }
         }
 
-        // 另一种情况：无斜杠但时长与歌手完全一致，只有Title在变
-        boolean isGeneralDynamicLyric = (mDuration > 0 && duration > 0 && duration == mDuration
-                && !rawArtist.isEmpty() && rawArtist.equals(mLastRawArtist)
-                && !rawTitle.equals(mRealTitle));
+        boolean isSameSongIdentity = !mRealTitle.isEmpty() && mRealTitle.equalsIgnoreCase(rawTitle)
+                && (mRealArtist.equalsIgnoreCase(rawArtist) || (performers != null && mRealArtist.equalsIgnoreCase(performers)));
 
-        if (isCarBluetoothStreamForSameSong || isGeneralDynamicLyric) {
+        if (isCarBluetoothStreamForSameSong) {
             // 同一首歌的实时歌词流更新：绝不更换歌名、绝不重新触发线上歌词搜索！
             if (!rawTitle.contains("纯音乐") && !rawTitle.contains("请欣赏")) {
                 mStreamLyric = rawTitle;
@@ -384,8 +374,19 @@ public class MediaMonitorService extends NotificationListenerService {
             if (duration > 0) {
                 mDuration = duration;
             }
+        } else if (isSameSongIdentity && (((mRealAlbum.isEmpty() && !album.isEmpty())) || (mDuration <= 0 && duration > 0))) {
+            // 元数据补全 (如专辑或时长延迟到达)，更新信息并通知界面，绝不递增代次
+            if (!album.isEmpty()) mRealAlbum = album;
+            if (duration > 0) mDuration = duration;
+            if (MainActivity.sInstance != null) {
+                MainActivity.sInstance.dispatchMetadata(mRealTitle, mRealArtist, mRealAlbum, mDuration, mStreamLyric);
+            }
+            return;
         } else {
-            // 新曲目载入：仅当 Title 确系车载蓝牙滚动歌词或纯音乐占位符时，才从 Artist 中的 "歌手 / 真实歌名" 还原
+            // 新曲目载入
+            mPlaybackGeneration++;
+            final long capturedGen = mPlaybackGeneration;
+
             if (candidateTitle != null && !candidateTitle.isEmpty() && performers != null && !performers.isEmpty()) {
                 boolean titleMatchesCandidate = candidateTitle.equalsIgnoreCase(rawTitle);
                 boolean albumConfirmsCandidate = (!album.isEmpty() && (candidateTitle.equalsIgnoreCase(album) || album.toLowerCase().contains(candidateTitle.toLowerCase())) && !rawTitle.equalsIgnoreCase(album));
@@ -401,7 +402,7 @@ public class MediaMonitorService extends NotificationListenerService {
                     rawTitle = candidateTitle;
                     rawArtist = performers;
                 } else {
-                    // 纯多艺术家歌曲（如 "艺术家1 / 艺术家2 / 艺术家3"），rawTitle 即真实歌名，保留完整多歌手列表
+                    // 纯多艺术家歌曲（如 "fun. / Janelle Monae"），rawTitle 即真实歌名，保留完整多歌手列表
                     mStreamLyric = "";
                 }
             } else {
@@ -415,7 +416,8 @@ public class MediaMonitorService extends NotificationListenerService {
             mRealArtist = rawArtist;
             mRealAlbum = album;
             mDuration = duration;
-            Log.i(TAG, "New song loaded: [" + mRealTitle + "] by [" + mRealArtist + "]");
+            mLastMediaId = mediaId;
+            Log.i(TAG, "New song loaded (gen " + capturedGen + "): [" + mRealTitle + "] by [" + mRealArtist + "]");
 
             // Check local album artwork first
             Bitmap localArt = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
@@ -429,7 +431,7 @@ public class MediaMonitorService extends NotificationListenerService {
                 updateFloatingViewContent();
             } else if (hasStream || !MetadataFetcher.isVideoTrack(mRealTitle, mRealArtist, mRealAlbum, mDuration)) {
                 // Fetch online cover for floating vinyl (skip for video tracks)
-                final String key = (mRealTitle + " - " + mRealArtist + (mRealAlbum != null && !mRealAlbum.isEmpty() ? " - " + mRealAlbum : "")).toLowerCase().trim();
+                final String key = MetadataFetcher.buildCacheKey(mRealTitle, mRealArtist, mRealAlbum);
                 if (!key.isEmpty() && !key.equals(mLastFetchedCoverKey)) {
                     mLastFetchedCoverKey = key;
                     MetadataFetcher.fetch(mRealTitle, mRealArtist, mRealAlbum, mDuration, new MetadataFetcher.Callback() {
@@ -445,12 +447,21 @@ public class MediaMonitorService extends NotificationListenerService {
                                             conn.setConnectTimeout(4000);
                                             conn.setReadTimeout(4000);
                                             InputStream is = conn.getInputStream();
-                                            Bitmap bmp = BitmapFactory.decodeStream(is);
+                                            final Bitmap bmp = BitmapFactory.decodeStream(is);
                                             is.close();
                                             if (bmp != null) {
-                                                mCurrentCoverBitmap = bmp;
-                                                mGeneratedVinylBitmap = null;
-                                                updateFloatingViewContent();
+                                                mHandler.post(new Runnable() {
+                                                    @Override
+                                                    public void run() {
+                                                        if (capturedGen == mPlaybackGeneration) {
+                                                            mCurrentCoverBitmap = bmp;
+                                                            mGeneratedVinylBitmap = null;
+                                                            updateFloatingViewContent();
+                                                        } else {
+                                                            Log.d(TAG, "Discarded stale floating cover for gen " + capturedGen + " (current is " + mPlaybackGeneration + ")");
+                                                        }
+                                                    }
+                                                });
                                             }
                                         } catch (Exception e) {
                                             Log.w(TAG, "Failed to load floating cover: " + e.getMessage());
