@@ -256,10 +256,12 @@ public class MainActivity extends Activity {
             if (mVisualizerHelper == null) {
                 mVisualizerHelper = new AudioVisualizerHelper(new AudioVisualizerHelper.OnWaveDataListener() {
                     @Override
-                    public void onFftBands(final float b0, final float b1, final float b2, final float b3, final float b4) {
+                    public void onFftBands(final float b0, final float b1, final float b2, final float b3, final float b4,
+                                           final float b5, final float b6, final float b7, final float b8) {
                         if (mWebView != null && mPageLoaded) {
                             mWebView.evaluateJavascript("window.onAudioSpectrum && window.onAudioSpectrum("
-                                    + b0 + "," + b1 + "," + b2 + "," + b3 + "," + b4 + ");", null);
+                                    + b0 + "," + b1 + "," + b2 + "," + b3 + "," + b4 + ","
+                                    + b5 + "," + b6 + "," + b7 + "," + b8 + ");", null);
                         }
                     }
                 });

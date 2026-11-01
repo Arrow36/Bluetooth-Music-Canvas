@@ -177,41 +177,7 @@
             fill: currentColor;
         }
 
-        .battery-widget {
-            display: flex;
-            align-items: center;
-            position: relative;
-        }
-
-        .battery-shell {
-            width: 22px;
-            height: 11px;
-            border: 1.5px solid rgba(255, 255, 255, 0.8);
-            border-radius: 3px;
-            padding: 1.5px;
-            box-sizing: border-box;
-            display: flex;
-            align-items: center;
-        }
-
-        .battery-level-bar {
-            height: 100%;
-            width: 100%;
-            background: #1db954;
-            border-radius: 1px;
-            transition: width 0.3s ease, background 0.3s ease;
-        }
-
-        .battery-tip {
-            width: 2px;
-            height: 5px;
-            background: rgba(255, 255, 255, 0.8);
-            border-radius: 0 1px 1px 0;
-            margin-left: 1px;
-        }
-
-        .battery-pct-text {
-            font-variant-numeric: tabular-nums;
+        .device-status-text {
             font-size: 12px;
             font-weight: 600;
             letter-spacing: 0.3px;
@@ -1321,32 +1287,22 @@
                     <span class="device-bt-icon">
                         <svg viewBox="0 0 24 24"><path d="M17.71 7.71L12 2h-1v7.59L6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 11 14.41V22h1l5.71-5.71-4.3-4.29 4.3-4.29zM13 5.83l1.88 1.88L13 9.59V5.83zm1.88 10.46L13 18.17v-3.76l1.88 1.88z"/></svg>
                     </span>
-                    <div class="battery-widget" id="batteryWidget" style="display: none;">
-                        <div class="battery-shell">
-                            <div class="battery-level-bar" id="batteryLevelBar" style="width: 100%;"></div>
-                        </div>
-                        <span class="battery-tip"></span>
-                    </div>
-                    <span class="battery-pct-text" id="batteryPctText">已连接</span>
+                    <span class="device-status-text" id="deviceStatusText">等待连接</span>
                 </button>
 
                 <!-- 浮层设备详情卡片 -->
                 <div class="device-dropdown" id="deviceDropdown">
                     <div class="device-dropdown-header">
                         <div class="device-name-row">
-                            <span class="device-status-dot"></span>
-                            <span class="device-name" id="dropdownDeviceName">XY</span>
+                            <span class="device-status-dot" id="dropdownStatusDot"></span>
+                            <span class="device-name" id="dropdownDeviceName">—</span>
                         </div>
-                        <span class="device-status-badge">已连接</span>
+                        <span class="device-status-badge" id="dropdownStatusBadge">等待连接</span>
                     </div>
                     <div class="device-dropdown-body">
                         <div class="spec-row">
                             <span class="spec-label">MAC 地址</span>
-                            <span class="spec-val-text" id="dropdownDeviceMac">C8:1F:E8:E2:CC:9D</span>
-                        </div>
-                        <div class="spec-row">
-                            <span class="spec-label">设备电量</span>
-                            <span class="spec-val-text" id="dropdownDeviceBat">手机未回传 (A2DP)</span>
+                            <span class="spec-val-text" id="dropdownDeviceMac">—</span>
                         </div>
                         <div class="spec-row">
                             <span class="spec-label">传输协议</span>
@@ -1675,40 +1631,43 @@
             console.log("Bluetooth status:", data);
             if (!data) return;
 
-            const text = document.getElementById('batteryPctText');
-            const dropBat = document.getElementById('dropdownDeviceBat');
-            const widget = document.getElementById('batteryWidget');
+            const statusText = document.getElementById('deviceStatusText');
+            const dropName = document.getElementById('dropdownDeviceName');
+            const dropMac = document.getElementById('dropdownDeviceMac');
+            const dropBadge = document.getElementById('dropdownStatusBadge');
+            const dropDot = document.getElementById('dropdownStatusDot');
 
-            if (data.batteryLevel !== undefined && data.batteryLevel >= 0) {
-                const pct = Math.min(100, Math.max(0, data.batteryLevel));
-                const bar = document.getElementById('batteryLevelBar');
-                if (widget) widget.style.display = 'flex';
-                if (bar) {
-                    bar.style.width = pct + '%';
-                    if (pct <= 20) {
-                        bar.style.background = '#ff4b2b';
-                    } else if (pct <= 40) {
-                        bar.style.background = '#f5a623';
-                    } else {
-                        bar.style.background = '#1db954';
-                    }
+            if (data.connected) {
+                if (statusText) statusText.textContent = '已连接';
+                if (dropBadge) {
+                    dropBadge.textContent = '已连接';
+                    dropBadge.style.background = 'rgba(76, 217, 100, 0.2)';
+                    dropBadge.style.color = '#4cd964';
                 }
-                if (text) text.textContent = pct + '%';
-                if (dropBat) dropBat.textContent = pct + '%';
+                if (dropDot) dropDot.style.background = '#4cd964';
+                if (dropName) dropName.textContent = data.deviceName || '已连接设备';
+                if (dropMac) dropMac.textContent = data.deviceAddress || '—';
+            } else if (data.connectionState === 'off') {
+                if (statusText) statusText.textContent = '蓝牙已关闭';
+                if (dropBadge) {
+                    dropBadge.textContent = '已关闭';
+                    dropBadge.style.background = 'rgba(255, 59, 48, 0.2)';
+                    dropBadge.style.color = '#ff3b30';
+                }
+                if (dropDot) dropDot.style.background = '#ff3b30';
+                if (dropName) dropName.textContent = '蓝牙已关闭';
+                if (dropMac) dropMac.textContent = '—';
             } else {
-                // 手机未通过 A2DP 回传电量（标准蓝牙车载协议限制）：不显示伪造电量，显示真实连接态
-                if (widget) widget.style.display = 'none';
-                if (text) text.textContent = '已连接';
-                if (dropBat) dropBat.textContent = '手机未回传 (A2DP协议限制)';
-            }
-
-            if (data.deviceName) {
-                const nameEl = document.getElementById('dropdownDeviceName');
-                if (nameEl) nameEl.textContent = data.deviceName;
-            }
-            if (data.deviceAddress) {
-                const macEl = document.getElementById('dropdownDeviceMac');
-                if (macEl) macEl.textContent = data.deviceAddress;
+                // 蓝牙已配对但未连接，或处于等待连接状态
+                if (statusText) statusText.textContent = '未连接';
+                if (dropBadge) {
+                    dropBadge.textContent = '未连接';
+                    dropBadge.style.background = 'rgba(255, 204, 0, 0.2)';
+                    dropBadge.style.color = '#ffcc00';
+                }
+                if (dropDot) dropDot.style.background = '#8e8e93';
+                if (dropName) dropName.textContent = (data.deviceName && data.deviceName !== '—') ? data.deviceName + ' (未连接)' : '—';
+                if (dropMac) dropMac.textContent = data.deviceAddress || '—';
             }
 
             // 更新左下角音频规格
@@ -1755,17 +1714,20 @@
             if (currentCoverUrl) {
                 img.onload = () => { img.style.opacity = '1'; };
                 img.onerror = () => {
-                    if (lastValidMusicCoverUrl && currentCoverUrl !== lastValidMusicCoverUrl) {
-                        setCoverImage(lastValidMusicCoverUrl);
-                    } else {
-                        img.style.opacity = '0';
-                    }
+                    img.style.opacity = '0';
                 };
                 img.src = currentCoverUrl;
-                bg.style.backgroundImage = `url('${currentCoverUrl}')`;
+                if (bg) {
+                    bg.style.backgroundImage = `url("${currentCoverUrl}")`;
+                    bg.style.opacity = '1';
+                }
             } else {
                 img.style.opacity = '0';
-                bg.style.backgroundImage = 'none';
+                img.src = '';
+                if (bg) {
+                    bg.style.backgroundImage = 'none';
+                    bg.style.opacity = '0.4';
+                }
             }
         }
 
@@ -1974,44 +1936,37 @@
             return waveBars;
         }
 
-        // Android 原生 Visualizer 实时回调：接收 5 个归一化频段 (0.05 ~ 1.0)
-        window.onAudioSpectrum = function(b0, b1, b2, b3, b4) {
+        // Android 原生 Visualizer 实时回调：接收 9 个真实物理频段 (0.08 ~ 1.0)
+        window.onAudioSpectrum = function(b0, b1, b2, b3, b4, b5, b6, b7, b8) {
             lastFftTime = performance.now();
-            if (!isPlaying) {
-                realSpectrum = [0.08, 0.08, 0.08, 0.08, 0.08];
-            } else {
-                realSpectrum = [
-                    Math.max(0.08, Math.min(1.0, b0 || 0)),
-                    Math.max(0.08, Math.min(1.0, b1 || 0)),
-                    Math.max(0.08, Math.min(1.0, b2 || 0)),
-                    Math.max(0.08, Math.min(1.0, b3 || 0)),
-                    Math.max(0.08, Math.min(1.0, b4 || 0))
-                ];
-            }
+            const s9 = isPlaying ? [
+                Math.max(0.08, Math.min(1.0, b0 || 0)),
+                Math.max(0.08, Math.min(1.0, b1 || 0)),
+                Math.max(0.08, Math.min(1.0, b2 || 0)),
+                Math.max(0.08, Math.min(1.0, b3 || 0)),
+                Math.max(0.08, Math.min(1.0, b4 || 0)),
+                Math.max(0.08, Math.min(1.0, b5 || b3 || 0)),
+                Math.max(0.08, Math.min(1.0, b6 || b4 || 0)),
+                Math.max(0.08, Math.min(1.0, b7 || b4 || 0)),
+                Math.max(0.08, Math.min(1.0, b8 || b4 || 0))
+            ] : [0.08, 0.08, 0.08, 0.08, 0.08, 0.08, 0.08, 0.08, 0.08];
+            realSpectrum = [s9[0], s9[2], s9[4], s9[6], s9[8]];
+
+            // 底部迷你5柱均衡器
             const bars = getEqualizerBars();
             if (bars.length >= 5) {
-                for (let i = 0; i < 5; i++) {
-                    bars[i].style.transform = `scaleY(${realSpectrum[i].toFixed(3)})`;
-                }
+                bars[0].style.transform = `scaleY(${s9[0].toFixed(3)})`;
+                bars[1].style.transform = `scaleY(${s9[2].toFixed(3)})`;
+                bars[2].style.transform = `scaleY(${s9[4].toFixed(3)})`;
+                bars[3].style.transform = `scaleY(${s9[6].toFixed(3)})`;
+                bars[4].style.transform = `scaleY(${s9[8].toFixed(3)})`;
             }
 
-            // 驱动大号律动频谱柱形 (9频段插值细腻动态)
+            // 驱动大号律动频谱柱形（真实 9 频段物理 FFT，无伪造插值）
             const lbars = getLargeWaveBars();
             if (lbars.length >= 9) {
-                const s = realSpectrum;
-                const l9 = [
-                    s[0],
-                    s[0] * 0.6 + s[1] * 0.4,
-                    s[1],
-                    s[1] * 0.5 + s[2] * 0.5,
-                    s[2],
-                    s[2] * 0.5 + s[3] * 0.5,
-                    s[3],
-                    s[3] * 0.4 + s[4] * 0.6,
-                    s[4]
-                ];
                 for (let i = 0; i < 9; i++) {
-                    lbars[i].style.transform = `scaleY(${l9[i].toFixed(3)})`;
+                    lbars[i].style.transform = `scaleY(${s9[i].toFixed(3)})`;
                 }
             }
         };

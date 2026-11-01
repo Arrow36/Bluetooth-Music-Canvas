@@ -13,14 +13,15 @@ public class AudioVisualizerHelper {
     private OnWaveDataListener mListener;
     private long mLastDispatchTime = 0;
 
-    // AGC (Automatic Gain Control) & Dynamic Range Peak Trackers for 5 bands
-    private final float[] mBandPeaks = new float[]{1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
-    private final float[] mBandSmooth = new float[]{0.08f, 0.08f, 0.08f, 0.08f, 0.08f};
+    // AGC (Automatic Gain Control) & Dynamic Range Peak Trackers for 9 bands
+    private final float[] mBandPeaks = new float[]{1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+    private final float[] mBandSmooth = new float[]{0.08f, 0.08f, 0.08f, 0.08f, 0.08f, 0.08f, 0.08f, 0.08f, 0.08f};
     private int mSilenceCount = 0;
     private int mActiveCount = 0;
 
     public interface OnWaveDataListener {
-        void onFftBands(float b0, float b1, float b2, float b3, float b4);
+        void onFftBands(float b0, float b1, float b2, float b3, float b4,
+                        float b5, float b6, float b7, float b8);
     }
 
     public AudioVisualizerHelper(OnWaveDataListener listener) {
@@ -98,28 +99,39 @@ public class AudioVisualizerHelper {
             mags[k] = (float) Math.hypot(r, i);
         }
 
-        // Physical frequency spectrum bands:
-        // 0: Sub-bass & Bass (20Hz - 250Hz)
-        // 1: Low-Mid (250Hz - 600Hz)
-        // 2: Midrange (600Hz - 2000Hz)
-        // 3: High-Mid (2000Hz - 6000Hz)
-        // 4: Treble & Air (6000Hz - 16000Hz)
-        float[] rawBands = new float[5];
-        rawBands[0] = avgFreq(mags, binWidth, 20f, 250f, n);
-        rawBands[1] = avgFreq(mags, binWidth, 250f, 600f, n);
-        rawBands[2] = avgFreq(mags, binWidth, 600f, 2000f, n);
-        rawBands[3] = avgFreq(mags, binWidth, 2000f, 6000f, n);
-        rawBands[4] = avgFreq(mags, binWidth, 6000f, 16000f, n);
+        // Physical frequency spectrum bands (9 authentic bands, no interpolation):
+        // 0: Sub-bass (20Hz - 60Hz)
+        // 1: Bass / Kick (60Hz - 150Hz)
+        // 2: Upper Bass (150Hz - 350Hz)
+        // 3: Low-Mid (350Hz - 700Hz)
+        // 4: Core Midrange / Vocal (700Hz - 1400Hz)
+        // 5: Upper-Mid (1400Hz - 2800Hz)
+        // 6: Presence (2800Hz - 5000Hz)
+        // 7: Brilliance (5000Hz - 9000Hz)
+        // 8: High Treble / Air (9000Hz - 16000Hz)
+        float[] rawBands = new float[9];
+        rawBands[0] = avgFreq(mags, binWidth, 20f, 60f, n);
+        rawBands[1] = avgFreq(mags, binWidth, 60f, 150f, n);
+        rawBands[2] = avgFreq(mags, binWidth, 150f, 350f, n);
+        rawBands[3] = avgFreq(mags, binWidth, 350f, 700f, n);
+        rawBands[4] = avgFreq(mags, binWidth, 700f, 1400f, n);
+        rawBands[5] = avgFreq(mags, binWidth, 1400f, 2800f, n);
+        rawBands[6] = avgFreq(mags, binWidth, 2800f, 5000f, n);
+        rawBands[7] = avgFreq(mags, binWidth, 5000f, 9000f, n);
+        rawBands[8] = avgFreq(mags, binWidth, 9000f, 16000f, n);
 
-        float totalEnergy = rawBands[0] + rawBands[1] + rawBands[2] + rawBands[3] + rawBands[4];
-        if (totalEnergy < 0.2f) {
+        float totalEnergy = 0f;
+        for (int i = 0; i < 9; i++) {
+            totalEnergy += rawBands[i];
+        }
+        if (totalEnergy < 0.25f) {
             // Signal is effectively silent or muted by hardware output
             mSilenceCount++;
             mActiveCount = 0;
 
             // Decay to resting baseline 0.08f so bars don't freeze on silence
             boolean hasDecayed = false;
-            for (int i = 0; i < 5; i++) {
+            for (int i = 0; i < 9; i++) {
                 if (mBandSmooth[i] > 0.081f) {
                     mBandSmooth[i] = mBandSmooth[i] * 0.5f;
                     hasDecayed = true;
@@ -128,16 +140,14 @@ public class AudioVisualizerHelper {
                 }
             }
             if (hasDecayed || mSilenceCount <= 3) {
-                final float b0 = mBandSmooth[0];
-                final float b1 = mBandSmooth[1];
-                final float b2 = mBandSmooth[2];
-                final float b3 = mBandSmooth[3];
-                final float b4 = mBandSmooth[4];
+                final float b0 = mBandSmooth[0], b1 = mBandSmooth[1], b2 = mBandSmooth[2];
+                final float b3 = mBandSmooth[3], b4 = mBandSmooth[4], b5 = mBandSmooth[5];
+                final float b6 = mBandSmooth[6], b7 = mBandSmooth[7], b8 = mBandSmooth[8];
                 mMainHandler.post(new Runnable() {
                     @Override
                     public void run() {
                         if (mListener != null) {
-                            mListener.onFftBands(b0, b1, b2, b3, b4);
+                            mListener.onFftBands(b0, b1, b2, b3, b4, b5, b6, b7, b8);
                         }
                     }
                 });
@@ -172,8 +182,8 @@ public class AudioVisualizerHelper {
 
         // AGC & Adaptive Peak Tracking:
         // Automatically normalizes relative loudness across frequency bands independent of volume slider!
-        final float[] outBands = new float[5];
-        for (int i = 0; i < 5; i++) {
+        final float[] outBands = new float[9];
+        for (int i = 0; i < 9; i++) {
             if (rawBands[i] > mBandPeaks[i]) {
                 mBandPeaks[i] = rawBands[i];
             } else {
@@ -190,7 +200,9 @@ public class AudioVisualizerHelper {
             @Override
             public void run() {
                 if (mListener != null) {
-                    mListener.onFftBands(outBands[0], outBands[1], outBands[2], outBands[3], outBands[4]);
+                    mListener.onFftBands(outBands[0], outBands[1], outBands[2],
+                            outBands[3], outBands[4], outBands[5],
+                            outBands[6], outBands[7], outBands[8]);
                 }
             }
         });

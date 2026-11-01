@@ -82,32 +82,19 @@ public class MediaMonitorService extends NotificationListenerService {
     // Pattern for "车载蓝牙歌词" e.g. Artist: "王菲/如愿 (电影《我和我的父辈》主题推广曲)"
     private static final Pattern BT_LYRIC_PATTERN = Pattern.compile("^([^/]+)/([^\\(（]+)");
 
-    private static int sLastKnownBattery = -1;
-
     private final BroadcastReceiver mBluetoothReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             if (intent == null) return;
             String action = intent.getAction();
-            if ("android.bluetooth.device.action.BATTERY_LEVEL_CHANGED".equals(action)
-                    || "org.codeaurora.intent.action.BATTERY_LEVEL_PARENT".equals(action)) {
-                int level = intent.getIntExtra("android.bluetooth.device.extra.BATTERY_LEVEL", -1);
-                if (level < 0) {
-                    level = intent.getIntExtra("level", -1);
-                }
-                if (level >= 0) {
-                    sLastKnownBattery = level;
-                    Log.i(TAG, "Bluetooth battery broadcast received: " + level + "%");
-                    MainActivity act = MainActivity.getInstance();
-                    if (act != null) {
-                        act.dispatchBluetoothStatus(getBluetoothInfo(context));
-                    }
-                }
-            } else if ("android.bluetooth.device.action.ACL_CONNECTED".equals(action)
+            if ("android.bluetooth.device.action.ACL_CONNECTED".equals(action)
+                    || "android.bluetooth.device.action.ACL_DISCONNECTED".equals(action)
                     || "android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED".equals(action)
                     || "android.bluetooth.adapter.action.CONNECTION_STATE_CHANGED".equals(action)) {
-                Log.i(TAG, "Bluetooth connected / connection state changed, resetting user dismissal");
-                mUserDismissed = false;
+                Log.i(TAG, "Bluetooth state changed (" + action + ")");
+                if ("android.bluetooth.device.action.ACL_CONNECTED".equals(action)) {
+                    mUserDismissed = false;
+                }
                 MainActivity act = MainActivity.getInstance();
                 if (act != null) {
                     act.dispatchBluetoothStatus(getBluetoothInfo(context));
@@ -172,9 +159,8 @@ public class MediaMonitorService extends NotificationListenerService {
         }
 
         IntentFilter filter = new IntentFilter();
-        filter.addAction("android.bluetooth.device.action.BATTERY_LEVEL_CHANGED");
-        filter.addAction("org.codeaurora.intent.action.BATTERY_LEVEL_PARENT");
         filter.addAction("android.bluetooth.device.action.ACL_CONNECTED");
+        filter.addAction("android.bluetooth.device.action.ACL_DISCONNECTED");
         filter.addAction("android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED");
         filter.addAction("android.bluetooth.adapter.action.CONNECTION_STATE_CHANGED");
         registerReceiver(mBluetoothReceiver, filter);
@@ -343,7 +329,7 @@ public class MediaMonitorService extends NotificationListenerService {
         if (act != null) {
             act.dispatchMetadata(mRealTitle, mRealArtist, mRealAlbum, mDuration, "");
             act.dispatchOnlineResult(MainActivity.sLastValidMusicCoverUrl, "", "视频模式");
-            act.dispatchPlaybackState(true, 0, 1.0f);
+            act.dispatchPlaybackState(mIsPlaying, 0, 1.0f);
         }
     }
 
@@ -494,53 +480,59 @@ public class MediaMonitorService extends NotificationListenerService {
     public static org.json.JSONObject getBluetoothInfo(Context context) {
         org.json.JSONObject obj = new org.json.JSONObject();
         try {
-            String name = "已连接设备";
-            String address = "未报告";
-            int battery = -1;
+            boolean isConnected = false;
+            String connectionState = "disconnected";
+            String name = "—";
+            String address = "—";
 
             android.bluetooth.BluetoothAdapter adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
-            if (adapter != null && adapter.isEnabled()) {
+            if (adapter == null || !adapter.isEnabled()) {
+                connectionState = "off";
+                name = "蓝牙已关闭";
+            } else {
                 java.util.Set<android.bluetooth.BluetoothDevice> bonded = adapter.getBondedDevices();
-                if (bonded != null) {
+                if (bonded != null && !bonded.isEmpty()) {
+                    String firstBondedName = null;
+                    String firstBondedAddress = null;
+
                     for (android.bluetooth.BluetoothDevice d : bonded) {
                         if (d != null) {
-                            boolean isConnected = false;
+                            if (firstBondedName == null) {
+                                firstBondedName = d.getName();
+                                firstBondedAddress = d.getAddress();
+                            }
+                            boolean connected = false;
                             try {
                                 java.lang.reflect.Method isConnectedMethod = d.getClass().getMethod("isConnected");
                                 Object res = isConnectedMethod.invoke(d);
                                 if (res instanceof Boolean && (Boolean) res) {
-                                    isConnected = true;
+                                    connected = true;
                                 }
                             } catch (Exception ignored) {}
 
-                            if (isConnected || bonded.size() == 1) {
-                                if (d.getName() != null && !d.getName().isEmpty()) {
-                                    name = d.getName();
-                                }
-                                if (d.getAddress() != null && !d.getAddress().isEmpty()) {
-                                    address = d.getAddress();
-                                }
-                                try {
-                                    java.lang.reflect.Method getBattery = d.getClass().getMethod("getBatteryLevel");
-                                    Integer bat = (Integer) getBattery.invoke(d);
-                                    if (bat != null && bat >= 0) {
-                                        battery = bat;
-                                    }
-                                } catch (Exception ignored) {}
-                                if (isConnected) break;
+                            if (connected) {
+                                isConnected = true;
+                                connectionState = "connected";
+                                name = d.getName() != null ? d.getName() : "已连接设备";
+                                address = d.getAddress() != null ? d.getAddress() : "—";
+                                break;
                             }
                         }
+                    }
+
+                    if (!isConnected && firstBondedName != null) {
+                        // 设备已配对但尚未建立连接链路
+                        connectionState = "disconnected";
+                        name = firstBondedName;
+                        address = firstBondedAddress != null ? firstBondedAddress : "—";
                     }
                 }
             }
 
-            if (battery < 0 && sLastKnownBattery >= 0) {
-                battery = sLastKnownBattery;
-            }
-
+            obj.put("connected", isConnected);
+            obj.put("connectionState", connectionState);
             obj.put("deviceName", name);
             obj.put("deviceAddress", address);
-            obj.put("batteryLevel", battery);
             obj.put("codec", "A2DP");
             obj.put("sampleRate", "蓝牙音频");
             obj.put("bitDepth", "");
