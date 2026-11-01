@@ -245,6 +245,7 @@ async function runTests() {
         assert(document.getElementById('line-96').classList.contains('near-4'), "Line 96 is near-4");
         assert(document.getElementById('line-104').classList.contains('near-4'), "Line 104 is near-4");
         assert(document.getElementById('line-105').classList.contains('far'), "Line 105 is far");
+        assert(window.renderedLyricIndex === 100, "renderedLyricIndex tracks current active position 100");
     }
 
     console.log("\n==================================================");

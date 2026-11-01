@@ -1537,6 +1537,7 @@
         let parsedOfficialLyrics = [];
         let hasOfficialLyrics = false;
         let activeLyricIndex = -1;
+        let renderedLyricIndex = -1;
         let currentCoverUrl = "";
         let lastValidMusicCoverUrl = "";
         let lyricMode = 'official'; // 'official' | 'bluetooth'
@@ -1558,6 +1559,11 @@
         Object.defineProperty(window, 'activeLyricIndex', {
             get: () => activeLyricIndex,
             set: (v) => { activeLyricIndex = v; },
+            configurable: true
+        });
+        Object.defineProperty(window, 'renderedLyricIndex', {
+            get: () => renderedLyricIndex,
+            set: (v) => { renderedLyricIndex = v; },
             configurable: true
         });
         Object.defineProperty(window, 'hasOfficialLyrics', {
@@ -1980,11 +1986,11 @@
         let manualScrollResumeTimer = null;
 
         function updateLyricHighlight(targetIndex, instant) {
-            const oldIndex = activeLyricIndex;
+            const oldIndex = renderedLyricIndex;
             const lines = document.querySelectorAll('.lyric-line');
             if (!lines || lines.length === 0) return;
 
-            if (oldIndex < 0 || oldIndex === targetIndex) {
+            if (oldIndex < 0 || (instant && oldIndex === targetIndex)) {
                 // 首次高亮或全量初始化
                 for (let idx = 0; idx < lines.length; idx++) {
                     const el = lines[idx];
@@ -2004,7 +2010,7 @@
                     }
                     el.className = newClass;
                 }
-            } else {
+            } else if (oldIndex !== targetIndex) {
                 // 真正邻域并集：[oldIndex-4, oldIndex+4] ∪ [targetIndex-4, targetIndex+4]
                 const affectedIndices = new Set();
                 const total = lines.length;
@@ -2034,6 +2040,7 @@
                     el.className = newClass;
                 });
             }
+            renderedLyricIndex = targetIndex;
             activeLyricIndex = targetIndex;
         }
 
@@ -2273,6 +2280,7 @@
             if (isPureMusic) {
                 hasOfficialLyrics = false;
                 activeLyricIndex = -1;
+                renderedLyricIndex = -1;
                 if (currentTrack.streamLyric && !currentTrack.streamLyric.includes("纯音乐") && !currentTrack.streamLyric.includes("请欣赏")) {
                     if (emptyBox) emptyBox.style.display = 'none';
                     if (largeViz) largeViz.style.display = 'none';
@@ -2293,6 +2301,7 @@
 
             hasOfficialLyrics = true;
             activeLyricIndex = 0;
+            renderedLyricIndex = -1;
 
             // 1. 提示框与大号频谱平滑隐藏
             if (largeViz) largeViz.style.display = 'none';
@@ -2740,6 +2749,7 @@
                 hasOfficialLyrics = false;
                 parsedOfficialLyrics = [];
                 activeLyricIndex = -1;
+                renderedLyricIndex = -1;
                 const stream = document.getElementById('lyricsStream');
                 const emptyBox = document.getElementById('emptyLyrics');
                 const largeViz = document.getElementById('largeVisualizer');
@@ -2763,6 +2773,7 @@
                 lastPositionMs = 0;
                 lastSyncTime = performance.now();
                 activeLyricIndex = 0;
+                renderedLyricIndex = -1;
                 const progressBar = document.getElementById('progressBar');
                 if (progressBar) progressBar.style.width = '0%';
                 const timeCurrent = document.getElementById('timeCurrent');
@@ -2794,6 +2805,7 @@
                 hasOfficialLyrics = false;
                 parsedOfficialLyrics = [];
                 activeLyricIndex = -1;
+                renderedLyricIndex = -1;
 
                 // 核心：严格保持用户手动选定的歌词源偏好，切歌时不回退为默认
                 updateMenuCheckmarks();
