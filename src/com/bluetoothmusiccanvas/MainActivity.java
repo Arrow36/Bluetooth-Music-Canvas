@@ -27,6 +27,15 @@ import org.json.JSONObject;
 public class MainActivity extends Activity {
     public static final String TAG = "MainActivity";
     public static MainActivity sInstance;
+    private static java.lang.ref.WeakReference<MainActivity> sInstanceRef = new java.lang.ref.WeakReference<>(null);
+
+    public static MainActivity getInstance() {
+        MainActivity act = sInstanceRef.get();
+        if (act != null && !act.isFinishing() && !act.isDestroyed()) {
+            return act;
+        }
+        return null;
+    }
 
     private WebView mWebView;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
@@ -60,6 +69,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         sInstance = this;
+        sInstanceRef = new java.lang.ref.WeakReference<>(this);
 
         // Dismiss floating mini view if active
         if (MediaMonitorService.sInstance != null) {
@@ -295,7 +305,11 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        sInstance = null;
+        mHandler.removeCallbacksAndMessages(null);
+        if (sInstance == this) {
+            sInstance = null;
+        }
+        sInstanceRef.clear();
         if (mVisualizerHelper != null) {
             mVisualizerHelper.stop();
             mVisualizerHelper = null;

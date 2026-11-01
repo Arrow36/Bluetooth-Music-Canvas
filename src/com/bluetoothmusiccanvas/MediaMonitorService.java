@@ -98,8 +98,9 @@ public class MediaMonitorService extends NotificationListenerService {
                 if (level >= 0) {
                     sLastKnownBattery = level;
                     Log.i(TAG, "Bluetooth battery broadcast received: " + level + "%");
-                    if (MainActivity.sInstance != null) {
-                        MainActivity.sInstance.dispatchBluetoothStatus(getBluetoothInfo(context));
+                    MainActivity act = MainActivity.getInstance();
+                    if (act != null) {
+                        act.dispatchBluetoothStatus(getBluetoothInfo(context));
                     }
                 }
             } else if ("android.bluetooth.device.action.ACL_CONNECTED".equals(action)
@@ -107,8 +108,9 @@ public class MediaMonitorService extends NotificationListenerService {
                     || "android.bluetooth.adapter.action.CONNECTION_STATE_CHANGED".equals(action)) {
                 Log.i(TAG, "Bluetooth connected / connection state changed, resetting user dismissal");
                 mUserDismissed = false;
-                if (MainActivity.sInstance != null) {
-                    MainActivity.sInstance.dispatchBluetoothStatus(getBluetoothInfo(context));
+                MainActivity act = MainActivity.getInstance();
+                if (act != null) {
+                    act.dispatchBluetoothStatus(getBluetoothInfo(context));
                 }
             }
         }
@@ -120,8 +122,9 @@ public class MediaMonitorService extends NotificationListenerService {
             if (!mIsPlaying) {
                 Log.i(TAG, "Music paused for > 10s, auto-dismissing");
                 hideFloatingView();
-                if (MainActivity.sInstance != null) {
-                    MainActivity.sInstance.finish();
+                MainActivity act = MainActivity.getInstance();
+                if (act != null) {
+                    act.finish();
                 }
             }
         }
@@ -268,21 +271,23 @@ public class MediaMonitorService extends NotificationListenerService {
                 showFloatingView();
             } else {
                 hideFloatingView();
-                if (MainActivity.sInstance == null) {
+                if (MainActivity.getInstance() == null) {
                     Intent i = new Intent(this, MainActivity.class);
                     i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
                     startActivity(i);
                 }
             }
 
-            if (MainActivity.sInstance != null) {
-                MainActivity.sInstance.dispatchPlaybackState(true, estimatedPos, speed);
+            MainActivity act = MainActivity.getInstance();
+            if (act != null) {
+                act.dispatchPlaybackState(true, estimatedPos, speed);
             }
         } else if (playbackState == PlaybackState.STATE_PAUSED || playbackState == PlaybackState.STATE_STOPPED) {
             mIsPlaying = false;
             mHandler.removeCallbacks(mAutoCloseRunnable);
-            if (MainActivity.sInstance != null) {
-                MainActivity.sInstance.dispatchPlaybackState(false, estimatedPos, speed);
+            MainActivity act = MainActivity.getInstance();
+            if (act != null) {
+                act.dispatchPlaybackState(false, estimatedPos, speed);
             }
             // 用户体验优化：暂停音乐后，保留当前全屏界面，不自动退出
         }
@@ -298,10 +303,11 @@ public class MediaMonitorService extends NotificationListenerService {
         mLastRawArtist = "";
         // 保留之前的有效封面 Bitmap，在视频模式不置为 null
         updateFloatingViewContent();
-        if (MainActivity.sInstance != null) {
-            MainActivity.sInstance.dispatchMetadata(mRealTitle, mRealArtist, mRealAlbum, mDuration, "");
-            MainActivity.sInstance.dispatchOnlineResult(MainActivity.sLastValidMusicCoverUrl, "", "视频模式");
-            MainActivity.sInstance.dispatchPlaybackState(true, 0, 1.0f);
+        MainActivity act = MainActivity.getInstance();
+        if (act != null) {
+            act.dispatchMetadata(mRealTitle, mRealArtist, mRealAlbum, mDuration, "");
+            act.dispatchOnlineResult(MainActivity.sLastValidMusicCoverUrl, "", "视频模式");
+            act.dispatchPlaybackState(true, 0, 1.0f);
         }
     }
 
@@ -398,8 +404,9 @@ public class MediaMonitorService extends NotificationListenerService {
             // 元数据补全 (如专辑或时长延迟到达)，更新信息并通知界面，绝不递增代次
             if (!album.isEmpty()) mRealAlbum = album;
             if (duration > 0) mDuration = duration;
-            if (MainActivity.sInstance != null) {
-                MainActivity.sInstance.dispatchMetadata(mRealTitle, mRealArtist, mRealAlbum, mDuration, mStreamLyric);
+            MainActivity act = MainActivity.getInstance();
+            if (act != null) {
+                act.dispatchMetadata(mRealTitle, mRealArtist, mRealAlbum, mDuration, mStreamLyric);
             }
             return;
         } else {
@@ -498,8 +505,9 @@ public class MediaMonitorService extends NotificationListenerService {
 
         updateFloatingViewContent();
 
-        if (MainActivity.sInstance != null) {
-            MainActivity.sInstance.dispatchMetadata(mRealTitle, mRealArtist, mRealAlbum, mDuration, mStreamLyric);
+        MainActivity act = MainActivity.getInstance();
+        if (act != null) {
+            act.dispatchMetadata(mRealTitle, mRealArtist, mRealAlbum, mDuration, mStreamLyric);
         }
     }
 

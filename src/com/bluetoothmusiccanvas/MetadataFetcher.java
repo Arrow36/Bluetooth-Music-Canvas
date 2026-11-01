@@ -12,9 +12,15 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class MetadataFetcher {
     private static final String TAG = "BTMusicFetcher";
@@ -33,8 +39,27 @@ public class MetadataFetcher {
         }
     }
 
-    private static final java.util.concurrent.ConcurrentHashMap<String, CachedMeta> sCache =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final int MAX_CACHE_ENTRIES = 50;
+    private static final Map<String, CachedMeta> sCache = Collections.synchronizedMap(
+        new LinkedHashMap<String, CachedMeta>(64, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<String, CachedMeta> eldest) {
+                return size() > MAX_CACHE_ENTRIES;
+            }
+        }
+    );
+
+    private static final ExecutorService sThreadPool = Executors.newFixedThreadPool(4, new ThreadFactory() {
+        private final AtomicInteger count = new AtomicInteger(1);
+        @Override
+        public Thread newThread(Runnable r) {
+            Thread t = new Thread(r, "MetaFetchPool-" + count.getAndIncrement());
+            t.setDaemon(true);
+            return t;
+        }
+    });
+
+    private static final Map<String, List<Callback>> sInFlightRequests = new HashMap<>();
 
     public interface Callback {
         void onResult(String coverUrl, String lyricsLrc, String lyricSource);
@@ -69,6 +94,16 @@ public class MetadataFetcher {
         return sCache.get(fallbackKey);
     }
 
+    public static void putInCache(String rawTitle, String rawArtist, String rawAlbum, CachedMeta meta) {
+        if (meta == null) return;
+        String key = buildCacheKey(rawTitle, rawArtist, rawAlbum);
+        sCache.put(key, meta);
+        if (rawAlbum != null && !rawAlbum.trim().isEmpty()) {
+            String fallbackKey = buildCacheKey(rawTitle, rawArtist, "");
+            sCache.put(fallbackKey, meta);
+        }
+    }
+
     public static void fetch(final String rawTitle, final String rawArtist, final Callback callback) {
         fetch(rawTitle, rawArtist, "", callback);
     }
@@ -78,7 +113,7 @@ public class MetadataFetcher {
         final String fullArtist = (rawArtist != null) ? rawArtist.trim() : "";
         final String album = (rawAlbum != null) ? rawAlbum.trim() : "";
 
-        new Thread(new Runnable() {
+        sThreadPool.execute(new Runnable() {
             @Override
             public void run() {
                 String lyricsLrc = null;
@@ -102,9 +137,11 @@ public class MetadataFetcher {
                 } catch (Exception e) {
                     Log.w(TAG, "fetchSpecificLyric error: " + e.getMessage());
                 }
-                callback.onResult(null, lyricsLrc, actualSource);
+                if (callback != null) {
+                    callback.onResult(null, lyricsLrc, actualSource);
+                }
             }
-        }).start();
+        });
     }
 
     public static boolean isVideoTrack(String rawTitle, String rawArtist, String rawAlbum, long duration) {
@@ -204,7 +241,7 @@ public class MetadataFetcher {
     public static void fetch(final String rawTitle, final String rawArtist, final String rawAlbum, final long duration, final Callback callback) {
         if (isVideoTrack(rawTitle, rawArtist, rawAlbum, duration)) {
             Log.i(TAG, "Skipping fetch for video track: [" + rawTitle + "]");
-            callback.onResult(null, null, "");
+            if (callback != null) callback.onResult(null, null, "");
             return;
         }
 
@@ -215,18 +252,31 @@ public class MetadataFetcher {
 
         if (title.isEmpty() || title.contains("纯音乐") || title.contains("请欣赏") || title.equals("未知歌曲") || title.equals("Not Provided")) {
             Log.i(TAG, "Skipping fetch for placeholder title: [" + title + "]");
-            callback.onResult(null, null, "");
+            if (callback != null) callback.onResult(null, null, "");
             return;
         }
 
-        if (!key.isEmpty() && sCache.containsKey(key)) {
-            CachedMeta cached = sCache.get(key);
+        CachedMeta cached = getCached(rawTitle, rawArtist, rawAlbum);
+        if (cached != null) {
             Log.i(TAG, "Instant cache hit for key: [" + key + "], source: " + cached.lyricSource);
-            callback.onResult(cached.coverUrl, cached.lyricsLrc, cached.lyricSource);
+            if (callback != null) callback.onResult(cached.coverUrl, cached.lyricsLrc, cached.lyricSource);
             return;
         }
 
-        new Thread(new Runnable() {
+        // Network request deduplication in-flight
+        final String inFlightKey = key + "\t" + duration;
+        synchronized (sInFlightRequests) {
+            List<Callback> list = sInFlightRequests.get(inFlightKey);
+            if (list != null) {
+                if (callback != null) list.add(callback);
+                return;
+            }
+            list = new ArrayList<>();
+            if (callback != null) list.add(callback);
+            sInFlightRequests.put(inFlightKey, list);
+        }
+
+        sThreadPool.execute(new Runnable() {
             @Override
             public void run() {
                 Log.i(TAG, "Starting metadata fetch for title: [" + title + "], artist: [" + fullArtist + "], album: [" + album + "]");
@@ -330,15 +380,26 @@ public class MetadataFetcher {
 
                 if (!key.isEmpty() && (coverUrl != null || lyricsLrc != null)) {
                     CachedMeta meta = new CachedMeta(coverUrl, lyricsLrc, lyricSource);
-                    sCache.put(key, meta);
-                    String fallbackKey = buildCacheKey(rawTitle, rawArtist, "");
-                    sCache.put(fallbackKey, meta);
+                    putInCache(rawTitle, rawArtist, rawAlbum, meta);
                 }
 
                 Log.i(TAG, "Metadata fetch complete. Cover found=" + (coverUrl != null) + ", Lyrics found=" + (lyricsLrc != null) + " (" + lyricSource + ")");
-                callback.onResult(coverUrl, lyricsLrc, lyricSource);
+
+                List<Callback> callbacks;
+                synchronized (sInFlightRequests) {
+                    callbacks = sInFlightRequests.remove(inFlightKey);
+                }
+                if (callbacks != null) {
+                    for (Callback cb : callbacks) {
+                        try {
+                            cb.onResult(coverUrl, lyricsLrc, lyricSource);
+                        } catch (Exception e) {
+                            Log.w(TAG, "Callback error: " + e.getMessage());
+                        }
+                    }
+                }
             }
-        }).start();
+        });
     }
 
     private static String cleanTitle(String s) {

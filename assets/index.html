@@ -41,6 +41,19 @@
             touch-action: none !important;
         }
 
+        /* 低配图形降级模式 (针对低端电视盒与老旧车机，禁用高消耗的 backdrop-filter 模糊与 GPU 重合运算) */
+        body.perf-mode, body.perf-mode * {
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+        }
+        body.perf-mode .ambient-bg {
+            filter: none !important;
+            opacity: 0.15 !important;
+        }
+        body.perf-mode .lyrics-stream {
+            contain: content;
+        }
+
         /* 动态全屏氛围背景约束容器 */
         .ambient-wrapper {
             position: absolute;
@@ -1343,6 +1356,10 @@
                             <span class="spec-label">音频通道</span>
                             <span class="spec-val-text">SINK (无线立体声)</span>
                         </div>
+                        <div class="spec-row" style="margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.08); cursor: pointer;" onclick="togglePerfMode(event)" title="点击切换流畅模式">
+                            <span class="spec-label">低配流畅模式</span>
+                            <span class="spec-val-text" id="perfModeStatus">已关闭</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1629,6 +1646,29 @@
         document.addEventListener('pointerdown', handleOutsideDismiss);
         document.addEventListener('touchstart', handleOutsideDismiss, { passive: true });
         document.addEventListener('click', handleOutsideDismiss);
+
+        // 低配流畅模式切换 (禁用 backdrop-filter 毛玻璃，提升低端芯片帧率)
+        function togglePerfMode(e) {
+            if (e && e.stopPropagation) e.stopPropagation();
+            const isPerf = document.body.classList.toggle('perf-mode');
+            try {
+                localStorage.setItem('canvas_perf_mode', isPerf ? '1' : '0');
+            } catch (err) {}
+            const statusEl = document.getElementById('perfModeStatus');
+            if (statusEl) statusEl.textContent = isPerf ? '已开启 (禁用毛玻璃)' : '已关闭';
+        }
+        window.togglePerfMode = togglePerfMode;
+
+        (function initPerfMode() {
+            try {
+                const saved = localStorage.getItem('canvas_perf_mode');
+                if (saved === '1') {
+                    document.body.classList.add('perf-mode');
+                    const statusEl = document.getElementById('perfModeStatus');
+                    if (statusEl) statusEl.textContent = '已开启 (禁用毛玻璃)';
+                }
+            } catch (err) {}
+        })();
 
         // 接收来自 Java 原生层的蓝牙设备状态与音频协议数据
         window.onBluetoothStatusChanged = function(data) {
