@@ -1,21 +1,30 @@
 {
   "name": "bluetooth-music-canvas",
-  "version": "1.0.0",
-  "description": "<div align=\"center\">",
+  "version": "1.1.0",
+  "description": "极简、高颜值的 Android 蓝牙音频大屏看板 & 桌面黑胶悬浮球",
   "main": "index.js",
   "directories": {
     "doc": "docs"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node tests/test_phase1.js && node tests/test_phase2.js"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Arrow36/Bluetooth-Music-Canvas.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "android",
+    "bluetooth",
+    "a2dp",
+    "music-player",
+    "vinyl",
+    "lyrics-sync",
+    "android-tv",
+    "canvas"
+  ],
+  "author": "Arrow36",
+  "license": "MIT",
   "type": "commonjs",
   "bugs": {
     "url": "https://github.com/Arrow36/Bluetooth-Music-Canvas/issues"
