@@ -16,6 +16,8 @@ public class AudioVisualizerHelper {
     // AGC (Automatic Gain Control) & Dynamic Range Peak Trackers for 5 bands
     private final float[] mBandPeaks = new float[]{1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
     private final float[] mBandSmooth = new float[]{0.08f, 0.08f, 0.08f, 0.08f, 0.08f};
+    private int mSilenceCount = 0;
+    private int mActiveCount = 0;
 
     public interface OnWaveDataListener {
         void onFftBands(float b0, float b1, float b2, float b3, float b4);
@@ -108,7 +110,33 @@ public class AudioVisualizerHelper {
         float totalEnergy = rawBands[0] + rawBands[1] + rawBands[2] + rawBands[3] + rawBands[4];
         if (totalEnergy < 0.2f) {
             // Signal is effectively silent or muted by hardware output
+            mSilenceCount++;
+            mActiveCount = 0;
+            if (mSilenceCount == 45) { // ~1.5s 持续静音
+                mMainHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (MainActivity.sInstance != null && MainActivity.sCachedIsPlaying && MainActivity.sCachedTitle != null && MainActivity.sCachedTitle.contains("蓝牙媒体音频")) {
+                            MainActivity.sInstance.dispatchPlaybackState(false, 0, 0f);
+                        }
+                    }
+                });
+            }
             return;
+        }
+
+        mSilenceCount = 0;
+        mActiveCount++;
+        if (mActiveCount >= 3) {
+            // 扬声器已持续输出真实音频（覆盖小红书、抖音等未推 MediaSession 状态的视频流）
+            mMainHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    if (MainActivity.sInstance != null && !MainActivity.sCachedIsPlaying) {
+                        MainActivity.sInstance.dispatchPlaybackState(true, 0, 1.0f);
+                    }
+                }
+            });
         }
 
         // AGC & Adaptive Peak Tracking:

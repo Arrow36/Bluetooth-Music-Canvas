@@ -29,17 +29,17 @@ public class MainActivity extends Activity {
     private boolean mPageLoaded = false;
     private AudioVisualizerHelper mVisualizerHelper;
 
-    private static String sCachedTitle = "";
-    private static String sCachedArtist = "";
-    private static String sCachedAlbum = "";
-    private static long sCachedDuration = 0;
-    private static String sCachedStreamLyric = "";
-    private static String sCachedCoverUrl = "";
-    private static String sCachedLyrics = "";
-    private static String sCachedLyricSource = "";
-    private static boolean sCachedIsPlaying = false;
-    private static long sCachedPosition = 0;
-    private static String sLastFetchedKey = "";
+    public static String sCachedTitle = "";
+    public static String sCachedArtist = "";
+    public static String sCachedAlbum = "";
+    public static long sCachedDuration = 0;
+    public static String sCachedStreamLyric = "";
+    public static String sCachedCoverUrl = "";
+    public static String sCachedLyrics = "";
+    public static String sCachedLyricSource = "";
+    public static boolean sCachedIsPlaying = false;
+    public static long sCachedPosition = 0;
+    public static String sLastFetchedKey = "";
 
     private final BroadcastReceiver mVolumeReceiver = new BroadcastReceiver() {
         @Override
@@ -258,7 +258,7 @@ public class MainActivity extends Activity {
         if (MediaMonitorService.sInstance != null) {
             MediaMonitorService.sInstance.hideFloatingView();
         }
-        if (mVisualizerHelper != null && sCachedIsPlaying) {
+        if (mVisualizerHelper != null) {
             mVisualizerHelper.start();
         }
         hideSystemUI();
@@ -313,7 +313,7 @@ public class MainActivity extends Activity {
                 | View.SYSTEM_UI_FLAG_FULLSCREEN);
     }
 
-    private void dispatchOnlineResult(final String coverUrl, final String lyricsLrc, final String lyricSource) {
+    public void dispatchOnlineResult(final String coverUrl, final String lyricsLrc, final String lyricSource) {
         mHandler.post(new Runnable() {
             @Override
             public void run() {
@@ -415,12 +415,8 @@ public class MainActivity extends Activity {
         sCachedIsPlaying = isPlaying;
         sCachedPosition = position;
 
-        if (mVisualizerHelper != null && stateChanged) {
-            if (isPlaying) {
-                mVisualizerHelper.start();
-            } else {
-                mVisualizerHelper.stop();
-            }
+        if (mVisualizerHelper != null && isPlaying) {
+            mVisualizerHelper.start();
         }
 
         if (!mPageLoaded || mWebView == null) return;

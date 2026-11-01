@@ -266,14 +266,36 @@ public class MediaMonitorService extends NotificationListenerService {
         }
     }
 
+    private void onNoMetadataAudio() {
+        Log.i(TAG, "Audio stream active with no track metadata (video/app stream, e.g. xhs/tiktok)");
+        mStreamLyric = "";
+        mRealTitle = "蓝牙媒体音频";
+        mRealArtist = "视频 / 媒体声音";
+        mRealAlbum = "";
+        mDuration = 0;
+        mLastRawArtist = "";
+        mCurrentCoverBitmap = null;
+        mGeneratedVinylBitmap = null;
+        updateFloatingViewContent();
+        if (MainActivity.sInstance != null) {
+            MainActivity.sInstance.dispatchMetadata(mRealTitle, mRealArtist, mRealAlbum, mDuration, "");
+            MainActivity.sInstance.dispatchOnlineResult("", "", "视频模式");
+            MainActivity.sInstance.dispatchPlaybackState(true, 0, 1.0f);
+        }
+    }
+
     private void handleMetadata(MediaMetadata metadata) {
-        if (metadata == null) return;
+        if (metadata == null) {
+            onNoMetadataAudio();
+            return;
+        }
         String rawTitle = metadata.getString(MediaMetadata.METADATA_KEY_TITLE);
         String rawArtist = metadata.getString(MediaMetadata.METADATA_KEY_ARTIST);
         String album = metadata.getString(MediaMetadata.METADATA_KEY_ALBUM);
         long duration = metadata.getLong(MediaMetadata.METADATA_KEY_DURATION);
 
-        if (rawTitle == null || "Not Provided".equalsIgnoreCase(rawTitle.trim())) {
+        if (rawTitle == null || rawTitle.trim().isEmpty() || "Not Provided".equalsIgnoreCase(rawTitle.trim())) {
+            onNoMetadataAudio();
             return;
         }
 
@@ -281,40 +303,58 @@ public class MediaMonitorService extends NotificationListenerService {
         rawArtist = rawArtist != null ? rawArtist.trim() : "";
         album = album != null ? album.trim() : "";
 
-        // 智能检测古典乐与车载蓝牙 AVRCP 歌词投送中的元数据倒置与占位符：
-        // 国内网易云、QQ音乐、酷狗等主流播放器在开启“车载蓝牙歌词”时，统一规范为：
-        // Title 字段：实时滚动投送动态歌词（或纯音乐占位文案）
-        // Artist 字段：格式固定为 "歌手 / 真实歌名"（如 "林忆莲 / 至少还有你"）
-        boolean isPlaceholderOrLyric = rawTitle.contains("纯音乐")
-                || rawTitle.contains("请欣赏")
-                || rawTitle.contains("没有填词")
-                || rawTitle.contains("享受音乐")
-                || rawTitle.contains("作词")
-                || rawTitle.contains("作曲")
-                || rawTitle.contains("编曲")
-                || rawTitle.contains("制作")
-                || rawTitle.contains("监制")
-                || rawTitle.contains("混音")
-                || rawTitle.contains("母带")
-                || rawTitle.contains("录音")
-                || rawTitle.contains("出品")
-                || rawTitle.contains("原唱")
-                || rawTitle.toLowerCase().contains("producer")
-                || rawTitle.toLowerCase().contains("composer")
-                || rawTitle.toLowerCase().contains("lyricist")
-                || rawTitle.contains("，")
-                || rawTitle.contains("。")
-                || rawTitle.contains("！")
-                || rawTitle.contains("？")
-                || rawTitle.contains("~")
-                || rawTitle.contains("…");
-
         String candidateTitle = null;
         String performers = null;
         int lastSlash = rawArtist.lastIndexOf('/');
         if (lastSlash > 0) {
             candidateTitle = rawArtist.substring(lastSlash + 1).trim();
             performers = rawArtist.substring(0, lastSlash).trim();
+        } else {
+            int lastDash = rawArtist.lastIndexOf(" - ");
+            if (lastDash > 0) {
+                candidateTitle = rawArtist.substring(lastDash + 3).trim();
+                performers = rawArtist.substring(0, lastDash).trim();
+            }
+        }
+
+        // 智能检测古典乐与车载蓝牙 AVRCP 歌词投送中的元数据倒置与占位符：
+        // 国内网易云、QQ音乐、酷狗等主流播放器在开启“车载蓝牙歌词”时，统一规范为：
+        // Title 字段：实时滚动投送动态歌词（或纯音乐占位文案）
+        // Artist 字段：格式固定为 "歌手 / 真实歌名"（如 "polarrana/Full of You (Acoustic Version)"）
+        boolean isPlaceholderOrLyric = false;
+        if (rawTitle != null) {
+            String lower = rawTitle.toLowerCase();
+            // 1. 中英文常见占位符、演职员名单关键词
+            if (rawTitle.contains("纯音乐") || rawTitle.contains("请欣赏") || rawTitle.contains("没有填词")
+                    || rawTitle.contains("享受音乐") || rawTitle.contains("作词") || rawTitle.contains("作曲")
+                    || rawTitle.contains("编曲") || rawTitle.contains("制作") || rawTitle.contains("监制")
+                    || rawTitle.contains("混音") || rawTitle.contains("母带") || rawTitle.contains("录音")
+                    || rawTitle.contains("出品") || rawTitle.contains("原唱") || lower.contains("producer")
+                    || lower.contains("composer") || lower.contains("lyricist") || lower.contains("instrumental")) {
+                isPlaceholderOrLyric = true;
+            }
+            // 2. 标点符号特征（歌词行经常带中英文标点，而正规歌曲名极少带标点）
+            else if (rawTitle.contains("，") || rawTitle.contains("。") || rawTitle.contains("！")
+                    || rawTitle.contains("？") || rawTitle.contains("~") || rawTitle.contains("…")
+                    || rawTitle.contains(",") || rawTitle.contains(".") || rawTitle.contains("!")
+                    || rawTitle.contains("?")) {
+                isPlaceholderOrLyric = true;
+            }
+            // 3. 常见中英文歌词主谓虚词、代词、时态动词（整句歌词特征）
+            else if (rawTitle.matches(".*[你我他她它的了在着不是爱想说说看听走去把让].*")
+                    || lower.matches("(?i).*\\b(you|me|my|we|us|our|i|it|the|is|was|are|were|to|for|in|on|that|this|with|and)\\b.*")) {
+                if (rawTitle.length() >= 5) {
+                    isPlaceholderOrLyric = true;
+                }
+            }
+            // 4. 长度差异特征：当前 rawTitle 显著长于 candidateTitle（一句歌词通常比歌名长得多）
+            else if (candidateTitle != null && rawTitle.length() >= candidateTitle.length() + 4) {
+                isPlaceholderOrLyric = true;
+            }
+            // 5. 包含空格的长词组（英文歌词或带空格中文歌词）
+            else if (rawTitle.trim().contains(" ") && rawTitle.length() >= 8) {
+                isPlaceholderOrLyric = true;
+            }
         }
 
         // 判断当前包是否属于“同一首歌的车载蓝牙动态歌词更新”
@@ -351,16 +391,16 @@ public class MediaMonitorService extends NotificationListenerService {
                 boolean titleMatchesCandidate = candidateTitle.equalsIgnoreCase(rawTitle);
                 boolean albumConfirmsCandidate = (!album.isEmpty() && (candidateTitle.equalsIgnoreCase(album) || album.toLowerCase().contains(candidateTitle.toLowerCase())) && !rawTitle.equalsIgnoreCase(album));
 
-                if (isPlaceholderOrLyric || albumConfirmsCandidate) {
-                    // Title 是歌词或占位文案，真实歌名在 Artist 的斜杠后
-                    Log.i(TAG, "Restored inverted title from artist: [" + candidateTitle + "] performers=[" + performers + "]");
-                    mStreamLyric = rawTitle;
-                    rawTitle = candidateTitle;
-                    rawArtist = performers;
-                } else if (titleMatchesCandidate) {
+                if (titleMatchesCandidate) {
                     // Artist 中冗余包含了真实歌名（例如 "歌手 / 歌名" 但 Title 已经是真实歌名），清洗 Artist 字段
                     rawArtist = performers;
                     mStreamLyric = "";
+                } else if (isPlaceholderOrLyric || albumConfirmsCandidate) {
+                    // Title 是歌词或占位文案，真实歌名在 Artist 的斜杠后
+                    Log.i(TAG, "Restored inverted title from artist: [" + candidateTitle + "] performers=[" + performers + "] streamLyric=[" + rawTitle + "]");
+                    mStreamLyric = rawTitle;
+                    rawTitle = candidateTitle;
+                    rawArtist = performers;
                 } else {
                     // 纯多艺术家歌曲（如 "艺术家1 / 艺术家2 / 艺术家3"），rawTitle 即真实歌名，保留完整多歌手列表
                     mStreamLyric = "";
