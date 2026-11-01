@@ -86,12 +86,17 @@ public class WebAppInterface {
 
     @JavascriptInterface
     public void requestLyricSource(final String source, final String title, final String artist, final String album) {
+        requestLyricSource(source, title, artist, album, -1);
+    }
+
+    @JavascriptInterface
+    public void requestLyricSource(final String source, final String title, final String artist, final String album, final long clientGeneration) {
         if ("bluetooth".equalsIgnoreCase(source) || "auto".equalsIgnoreCase(source)) {
             return;
         }
-        final long generation = mActivity.getCurrentPlaybackGeneration();
+        final long generation = (clientGeneration > 0) ? clientGeneration : mActivity.getCurrentPlaybackGeneration();
         final long reqId = mActivity.nextRequestId();
-        final String trackKey = MetadataFetcher.buildCacheKey(title, artist, album);
+        final String trackKey = SongIdentity.buildCacheKey(title, artist, album);
         MetadataFetcher.fetchSpecificLyric(source, title, artist, album, new MetadataFetcher.Callback() {
             @Override
             public void onResult(String coverUrl, final String lyricsLrc, final String lyricSource) {

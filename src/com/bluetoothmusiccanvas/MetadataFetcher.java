@@ -66,20 +66,15 @@ public class MetadataFetcher {
     }
 
     public static String buildCacheKey(String rawTitle, String rawArtist, String rawAlbum) {
-        String title = normalizeTitleForCache(rawTitle);
-        String artist = normalizeArtistForCache(rawArtist);
-        String album = (rawAlbum != null) ? rawAlbum.trim().toLowerCase() : "";
-        return title + "\t" + artist + (album.isEmpty() ? "" : "\t" + album);
+        return SongIdentity.buildCacheKey(rawTitle, rawArtist, rawAlbum);
     }
 
     public static String normalizeTitleForCache(String s) {
-        if (s == null) return "";
-        return s.trim().replaceAll("^[《<“\"'「『\\s]+|[》>”\"'」』\\s]+$", "").toLowerCase();
+        return SongIdentity.normalizeForCache(s);
     }
 
     public static String normalizeArtistForCache(String s) {
-        if (s == null) return "";
-        return s.trim().replaceAll("^[《<“\"'「『\\s]+|[》>”\"'」』\\s]+$", "").toLowerCase();
+        return SongIdentity.normalizeForCache(s);
     }
 
     public static CachedMeta getCached(String rawTitle, String rawArtist) {
@@ -87,21 +82,20 @@ public class MetadataFetcher {
     }
 
     public static CachedMeta getCached(String rawTitle, String rawArtist, String rawAlbum) {
-        String key = buildCacheKey(rawTitle, rawArtist, rawAlbum);
+        String key = SongIdentity.buildCacheKey(rawTitle, rawArtist, rawAlbum);
         CachedMeta m = sCache.get(key);
         if (m != null) return m;
-        String fallbackKey = buildCacheKey(rawTitle, rawArtist, "");
-        return sCache.get(fallbackKey);
+        // If an explicit album was requested, do NOT cross-pollinate with a fallback from another album
+        if (rawAlbum == null || rawAlbum.trim().isEmpty()) {
+            return sCache.get(key);
+        }
+        return null;
     }
 
     public static void putInCache(String rawTitle, String rawArtist, String rawAlbum, CachedMeta meta) {
         if (meta == null) return;
-        String key = buildCacheKey(rawTitle, rawArtist, rawAlbum);
+        String key = SongIdentity.buildCacheKey(rawTitle, rawArtist, rawAlbum);
         sCache.put(key, meta);
-        if (rawAlbum != null && !rawAlbum.trim().isEmpty()) {
-            String fallbackKey = buildCacheKey(rawTitle, rawArtist, "");
-            sCache.put(fallbackKey, meta);
-        }
     }
 
     public static void fetch(final String rawTitle, final String rawArtist, final Callback callback) {

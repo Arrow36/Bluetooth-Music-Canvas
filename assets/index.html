@@ -2517,7 +2517,7 @@
         }
 
         function applyLyricSourceForCurrentTrack(sourceId, isUserTriggered) {
-            const trackKey = (currentTrack.title + " - " + currentTrack.artist).toLowerCase().trim();
+            const trackKey = currentSongKey || (currentTrack && currentTrack.trackKey) || ((currentTrack ? currentTrack.title : '') + '\t' + (currentTrack ? currentTrack.artist : '')).toLowerCase().trim();
             if (!songCache[trackKey]) songCache[trackKey] = {};
             const cached = songCache[trackKey];
 
@@ -2593,7 +2593,8 @@
                     sourceId,
                     currentTrack.title || "",
                     currentTrack.artist || "",
-                    currentTrack.album || ""
+                    currentTrack.album || "",
+                    currentPlaybackGeneration
                 );
             }
         }
@@ -2633,7 +2634,7 @@
             const lyricSource = data.lyricSource;
             const meta = SOURCE_META[source] || getSourceMeta(lyricSource);
 
-            const trackKey = data.trackKey || currentSongKey || (currentTrack.title + " - " + currentTrack.artist).toLowerCase().trim();
+            const trackKey = data.trackKey || currentSongKey || ((currentTrack ? currentTrack.title : '') + '\t' + (currentTrack ? currentTrack.artist : '')).toLowerCase().trim();
             if (!songCache[trackKey]) songCache[trackKey] = {};
 
             if (rawLrc && rawLrc.trim().length > 0) {
@@ -2697,7 +2698,7 @@
                 return;
             }
 
-            const trackKey = data.trackKey || currentSongKey || (currentTrack.title + " - " + currentTrack.artist).toLowerCase().trim();
+            const trackKey = data.trackKey || currentSongKey || ((currentTrack ? currentTrack.title : '') + '\t' + (currentTrack ? currentTrack.artist : '')).toLowerCase().trim();
             if (!songCache[trackKey]) songCache[trackKey] = {};
 
             if (data.coverUrl) {
@@ -2780,11 +2781,12 @@
                 return;
             }
 
-            currentPlaybackGeneration = (typeof data.generation === 'number') ? data.generation : (currentPlaybackGeneration + 1);
-            lastSourceRequestId = {};
-            currentSongKey = data.trackKey || (title + " - " + artist).toLowerCase().trim();
-
             const isNewSong = (currentTrack.title !== title || currentTrack.artist !== artist);
+            if (isNewSong) {
+                lastSourceRequestId = {};
+            }
+            currentPlaybackGeneration = (typeof data.generation === 'number') ? data.generation : (currentPlaybackGeneration + 1);
+            currentSongKey = data.trackKey || (songCache[(title + " - " + artist).toLowerCase().trim()] ? (title + " - " + artist).toLowerCase().trim() : (title + "\t" + artist + (album ? "\t" + album : "")).toLowerCase().trim());
             currentTrack = data;
             window.currentTrack = currentTrack;
 

@@ -27,9 +27,15 @@ def main():
     bin_tests = ROOT / "bin_tests"
     bin_tests.mkdir(exist_ok=True)
 
+    android_jar = Path("C:/Users/Kiriko/.gemini/antigravity/scratch/android.jar")
+    cp_sep = ';' if sys.platform == 'win32' else ':'
+    base_cp = f"src{cp_sep}tests"
+    if android_jar.exists():
+        base_cp = f"{android_jar}{cp_sep}{base_cp}"
+
     javac_cmd = [
         "javac", "-encoding", "UTF-8",
-        "-cp", f"src{';' if sys.platform == 'win32' else ':'}tests",
+        "-cp", base_cp,
         str(ROOT / "src" / "com" / "bluetoothmusiccanvas" / "SongIdentity.java"),
         str(ROOT / "src" / "com" / "bluetoothmusiccanvas" / "MetadataNormalizer.java"),
         str(ROOT / "src" / "com" / "bluetoothmusiccanvas" / "MediaStateStore.java"),
@@ -42,7 +48,7 @@ def main():
 
     java_cmd = [
         "java", "-ea",
-        "-cp", f"{bin_tests}{';' if sys.platform == 'win32' else ':'}tests",
+        "-cp", f"{bin_tests}{cp_sep}tests",
         "tests.TestMediaStateStore"
     ]
     if subprocess.call(java_cmd) != 0:
