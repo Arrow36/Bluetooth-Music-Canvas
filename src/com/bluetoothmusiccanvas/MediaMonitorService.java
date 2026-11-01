@@ -232,7 +232,27 @@ public class MediaMonitorService extends NotificationListenerService {
         int playbackState = state.getState();
         long position = state.getPosition();
         float speed = state.getPlaybackSpeed();
-        mCurrentPosition = position;
+        if (Float.isNaN(speed) || Float.isInfinite(speed) || speed <= 0f) {
+            speed = 1.0f;
+        }
+
+        long now = android.os.SystemClock.elapsedRealtime();
+        long updateTime = state.getLastPositionUpdateTime();
+        long estimatedPos = position;
+
+        // Only extrapolate if state is playing, position is known (>= 0), updateTime is valid and in the past
+        if (playbackState == PlaybackState.STATE_PLAYING && position >= 0 && updateTime > 0 && now >= updateTime) {
+            estimatedPos += (long) ((now - updateTime) * speed);
+        }
+
+        // Clamp bounds: lower bound 0 if position is valid, upper bound mDuration only if mDuration > 0
+        if (estimatedPos < 0) {
+            estimatedPos = 0;
+        }
+        if (mDuration > 0 && estimatedPos > mDuration) {
+            estimatedPos = mDuration;
+        }
+        mCurrentPosition = estimatedPos;
 
         if (playbackState == PlaybackState.STATE_PLAYING) {
             mIsPlaying = true;
@@ -256,13 +276,13 @@ public class MediaMonitorService extends NotificationListenerService {
             }
 
             if (MainActivity.sInstance != null) {
-                MainActivity.sInstance.dispatchPlaybackState(true, position, speed);
+                MainActivity.sInstance.dispatchPlaybackState(true, estimatedPos, speed);
             }
         } else if (playbackState == PlaybackState.STATE_PAUSED || playbackState == PlaybackState.STATE_STOPPED) {
             mIsPlaying = false;
             mHandler.removeCallbacks(mAutoCloseRunnable);
             if (MainActivity.sInstance != null) {
-                MainActivity.sInstance.dispatchPlaybackState(false, position, speed);
+                MainActivity.sInstance.dispatchPlaybackState(false, estimatedPos, speed);
             }
             // 用户体验优化：暂停音乐后，保留当前全屏界面，不自动退出
         }
@@ -416,6 +436,7 @@ public class MediaMonitorService extends NotificationListenerService {
             mRealArtist = rawArtist;
             mRealAlbum = album;
             mDuration = duration;
+            mCurrentPosition = 0;
             mLastMediaId = mediaId;
             Log.i(TAG, "New song loaded (gen " + capturedGen + "): [" + mRealTitle + "] by [" + mRealArtist + "]");
 
@@ -494,8 +515,8 @@ public class MediaMonitorService extends NotificationListenerService {
     public static org.json.JSONObject getBluetoothInfo(Context context) {
         org.json.JSONObject obj = new org.json.JSONObject();
         try {
-            String name = "XY";
-            String address = "C8:1F:E8:E2:CC:9D";
+            String name = "已连接设备";
+            String address = "未报告";
             int battery = -1;
 
             android.bluetooth.BluetoothAdapter adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
@@ -504,20 +525,31 @@ public class MediaMonitorService extends NotificationListenerService {
                 if (bonded != null) {
                     for (android.bluetooth.BluetoothDevice d : bonded) {
                         if (d != null) {
-                            if (d.getName() != null && !d.getName().isEmpty()) {
-                                name = d.getName();
-                            }
-                            if (d.getAddress() != null && !d.getAddress().isEmpty()) {
-                                address = d.getAddress();
-                            }
+                            boolean isConnected = false;
                             try {
-                                java.lang.reflect.Method getBattery = d.getClass().getMethod("getBatteryLevel");
-                                Integer bat = (Integer) getBattery.invoke(d);
-                                if (bat != null && bat >= 0) {
-                                    battery = bat;
+                                java.lang.reflect.Method isConnectedMethod = d.getClass().getMethod("isConnected");
+                                Object res = isConnectedMethod.invoke(d);
+                                if (res instanceof Boolean && (Boolean) res) {
+                                    isConnected = true;
                                 }
                             } catch (Exception ignored) {}
-                            break;
+
+                            if (isConnected || bonded.size() == 1) {
+                                if (d.getName() != null && !d.getName().isEmpty()) {
+                                    name = d.getName();
+                                }
+                                if (d.getAddress() != null && !d.getAddress().isEmpty()) {
+                                    address = d.getAddress();
+                                }
+                                try {
+                                    java.lang.reflect.Method getBattery = d.getClass().getMethod("getBatteryLevel");
+                                    Integer bat = (Integer) getBattery.invoke(d);
+                                    if (bat != null && bat >= 0) {
+                                        battery = bat;
+                                    }
+                                } catch (Exception ignored) {}
+                                if (isConnected) break;
+                            }
                         }
                     }
                 }
@@ -528,12 +560,12 @@ public class MediaMonitorService extends NotificationListenerService {
             }
 
             obj.put("deviceName", name);
-            obj.put("deviceAddress", address.isEmpty() ? "C8:1F:E8:E2:CC:9D" : address);
-            obj.put("batteryLevel", battery); // If phone doesn't report battery over A2DP, value is -1
-            obj.put("codec", "AAC");
-            obj.put("sampleRate", "48 kHz");
-            obj.put("bitDepth", "24-Bit");
-            obj.put("channels", "双声道立体声");
+            obj.put("deviceAddress", address);
+            obj.put("batteryLevel", battery);
+            obj.put("codec", "A2DP");
+            obj.put("sampleRate", "蓝牙音频");
+            obj.put("bitDepth", "");
+            obj.put("channels", "立体声");
         } catch (Exception e) {
             e.printStackTrace();
         }

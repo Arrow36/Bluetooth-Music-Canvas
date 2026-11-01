@@ -1468,13 +1468,13 @@
         <!-- 底部全宽栏：左下角音频硬件规格，右下角歌词源切换 -->
         <div class="bottom-bar">
             <div class="audio-spec-card">
-                <span class="spec-param" id="specCodec">AAC</span>
+                <span class="spec-param" id="specCodec">A2DP</span>
                 <span class="spec-slash">/</span>
-                <span class="spec-param" id="specRate">48 kHz</span>
-                <span class="spec-slash">/</span>
-                <span class="spec-param" id="specBits">24-Bit</span>
+                <span class="spec-param" id="specRate">蓝牙音频</span>
+                <span class="spec-slash" id="specBitsSlash" style="display: none;">/</span>
+                <span class="spec-param" id="specBits" style="display: none;"></span>
                 <span class="spec-bullet">·</span>
-                <span class="spec-param" id="specChannels">双声道立体声</span>
+                <span class="spec-param" id="specChannels">立体声</span>
             </div>
 
             <button class="source-tag" id="statusTag" onclick="toggleLyricMenu(event)" title="点击切换歌词源">
@@ -1572,6 +1572,32 @@
         const songCache = {};
         window.songCache = songCache;
 
+        Object.defineProperty(window, 'lastPositionMs', {
+            get: () => lastPositionMs,
+            set: (v) => { lastPositionMs = v; },
+            configurable: true
+        });
+        Object.defineProperty(window, 'lastSyncTime', {
+            get: () => lastSyncTime,
+            set: (v) => { lastSyncTime = v; },
+            configurable: true
+        });
+        Object.defineProperty(window, 'activeLyricIndex', {
+            get: () => activeLyricIndex,
+            set: (v) => { activeLyricIndex = v; },
+            configurable: true
+        });
+        Object.defineProperty(window, 'hasOfficialLyrics', {
+            get: () => hasOfficialLyrics,
+            set: (v) => { hasOfficialLyrics = v; },
+            configurable: true
+        });
+        Object.defineProperty(window, 'lyrics', {
+            get: () => lyrics,
+            set: (v) => { lyrics = v; },
+            configurable: true
+        });
+
         function toggleDeviceInfo(e) {
             if (e && e.stopPropagation) e.stopPropagation();
             closeLyricMenu();
@@ -1654,9 +1680,17 @@
                 const el = document.getElementById('specRate');
                 if (el) el.textContent = data.sampleRate;
             }
-            if (data.bitDepth) {
-                const el = document.getElementById('specBits');
-                if (el) el.textContent = data.bitDepth;
+            const bitsEl = document.getElementById('specBits');
+            const bitsSlash = document.getElementById('specBitsSlash');
+            if (bitsEl) {
+                if (data.bitDepth && data.bitDepth.trim() !== '') {
+                    bitsEl.textContent = data.bitDepth;
+                    bitsEl.style.display = 'inline';
+                    if (bitsSlash) bitsSlash.style.display = 'inline';
+                } else {
+                    bitsEl.style.display = 'none';
+                    if (bitsSlash) bitsSlash.style.display = 'none';
+                }
             }
             if (data.channels) {
                 const el = document.getElementById('specChannels');
@@ -1814,24 +1848,44 @@
             if (!lrcText) return [];
             const lines = lrcText.split('\n');
             const result = [];
-            const timeReg = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/g;
+            let globalOffsetMs = 0;
+
+            // 1. 提取全局时间偏移标签 [offset: +/-xxx]
+            const offsetReg = /\[offset:\s*([+-]?\d+)\]/i;
+            for (const line of lines) {
+                const offMatch = line.match(offsetReg);
+                if (offMatch) {
+                    globalOffsetMs = parseInt(offMatch[1], 10) || 0;
+                    break;
+                }
+            }
+
+            // 2. 支持无小数 [mm:ss]、变长小数 [mm:ss.s] / [mm:ss.xx] / [mm:ss.xxx] 以及分秒毫秒
+            const timeReg = /\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]/g;
 
             for (const line of lines) {
+                // 忽略非歌词的元数据标签行，如 [ti:], [ar:], [al:], [by:], [offset:]
+                if (/^\[(ti|ar|al|by|offset|length):/i.test(line.trim())) continue;
+
                 const matches = [...line.matchAll(timeReg)];
+                if (matches.length === 0) continue;
                 const text = line.replace(timeReg, '').trim();
                 if (!text) continue;
 
                 for (const match of matches) {
-                    const m = parseInt(match[1]);
-                    const s = parseInt(match[2]);
-                    const ms = parseInt(match[3].padEnd(3, '0').slice(0, 3));
-                    const totalTime = m * 60000 + s * 1000 + ms;
+                    const m = parseInt(match[1], 10);
+                    const s = parseInt(match[2], 10);
+                    const fracStr = match[3] || '0';
+                    const ms = parseInt(fracStr.padEnd(3, '0').slice(0, 3), 10);
+                    let totalTime = m * 60000 + s * 1000 + ms + globalOffsetMs;
+                    if (totalTime < 0) totalTime = 0;
                     result.push({ time: totalTime, text: text });
                 }
             }
             result.sort((a, b) => a.time - b.time);
             return splitLongLyrics(result);
         }
+        window.parseLRC = parseLRC;
 
         // 智能优化歌名分行逻辑（古典作品乐章绑定、括号副标题语义换行、破折号断句、防末尾寡字）
         function formatSongTitle(rawTitle) {
@@ -2201,7 +2255,7 @@
             return false;
         }
 
-        // 蓝牙实时歌词与网络拉取官方歌词的动态对齐与权威校准引擎
+        // 蓝牙实时歌词与网络拉取官方歌词的双层时间窗口与权威校准引擎
         let isOfficialLyricVerified = false;
         function crossCheckLyrics(streamLyric) {
             if (!streamLyric || !hasOfficialLyrics || !lyrics || lyrics.length === 0) return;
@@ -2213,31 +2267,50 @@
             const sClean = streamLyric.toLowerCase().replace(/[^\w\u4e00-\u9fa5]/g, "");
             if (sClean.length < 2) return;
 
-            for (let i = 0; i < lyrics.length; i++) {
-                const lClean = (lyrics[i].text || "").toLowerCase().replace(/[^\w\u4e00-\u9fa5]/g, "");
-                if (!lClean) continue;
+            const curEstimated = lastPositionMs + (isPlaying ? (performance.now() - lastSyncTime) * playbackSpeed : 0);
 
-                if (lClean.includes(sClean) || sClean.includes(lClean)) {
-                    isOfficialLyricVerified = true;
-                    // 蓝牙实时歌词权威校准：手机端当前正展示这句歌词，立即同步高亮行与时钟
-                    if (i > activeLyricIndex) {
-                        activeLyricIndex = i;
-                        if (!isManualScrolling) {
-                            updateLyricHighlight(activeLyricIndex);
-                            scrollToLyricIndex(activeLyricIndex, true);
-                        }
-                        if (isPlaying && lyrics[i].time > 0) {
-                            const curEstimated = lastPositionMs + (performance.now() - lastSyncTime);
-                            if (curEstimated < lyrics[i].time || Math.abs(curEstimated - lyrics[i].time) > 1500) {
-                                lastPositionMs = lyrics[i].time;
-                                lastSyncTime = performance.now();
-                            }
+            // 第一层（优先窗口）：在当前估计进度前后 ±15 秒窗口内匹配，解决重复副歌句子总是命中第一遍的 bug
+            const WINDOW_MS = 15000;
+            let matchedIndex = -1;
+
+            for (let i = 0; i < lyrics.length; i++) {
+                const lTime = lyrics[i].time;
+                if (lTime >= curEstimated - WINDOW_MS && lTime <= curEstimated + WINDOW_MS) {
+                    const lClean = (lyrics[i].text || "").toLowerCase().replace(/[^\w\u4e00-\u9fa5]/g, "");
+                    if (lClean && (lClean.includes(sClean) || sClean.includes(lClean))) {
+                        matchedIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            // 第二层（全局兜底窗口）：如果优先窗口未命中，并且当前发生了大幅偏移或未定位
+            if (matchedIndex < 0) {
+                for (let i = 0; i < lyrics.length; i++) {
+                    const lClean = (lyrics[i].text || "").toLowerCase().replace(/[^\w\u4e00-\u9fa5]/g, "");
+                    if (lClean && (lClean.includes(sClean) || sClean.includes(lClean))) {
+                        // 选取与当前进度绝对距离最近的一个候选行，防止无条件跳回第 0 行
+                        if (matchedIndex < 0 || Math.abs(lyrics[i].time - curEstimated) < Math.abs(lyrics[matchedIndex].time - curEstimated)) {
+                            matchedIndex = i;
                         }
                     }
-                    break;
+                }
+            }
+
+            if (matchedIndex >= 0) {
+                isOfficialLyricVerified = true;
+                activeLyricIndex = matchedIndex;
+                if (!isManualScrolling) {
+                    updateLyricHighlight(activeLyricIndex);
+                    scrollToLyricIndex(activeLyricIndex, true);
+                }
+                if (isPlaying && lyrics[matchedIndex].time > 0) {
+                    lastPositionMs = lyrics[matchedIndex].time;
+                    lastSyncTime = performance.now();
                 }
             }
         }
+        window.crossCheckLyrics = crossCheckLyrics;
 
         function renderLyrics(lrcArray) {
             lyrics = lrcArray;
@@ -2826,13 +2899,22 @@
             }
         };
 
+        let playbackSpeed = 1.0;
+        window.playbackSpeed = playbackSpeed;
         let manualPlaybackLockUntil = 0;
         let manualTargetPlayState = null;
 
         window.onPlaybackStateChanged = function(data) {
             if (!data) return;
-            lastPositionMs = data.position || 0;
-            lastSyncTime = performance.now();
+            const pos = (typeof data.position === 'number') ? data.position : 0;
+            if (pos >= 0) {
+                lastPositionMs = pos;
+                lastSyncTime = performance.now();
+            }
+            const incomingSpeed = (typeof data.speed === 'number' && Number.isFinite(data.speed) && data.speed > 0) ? data.speed : 1.0;
+            playbackSpeed = incomingSpeed;
+            window.playbackSpeed = playbackSpeed;
+
             const incomingPlaying = !!data.isPlaying;
 
             // 针对手动点击播控的防抖保护窗口（1.5秒）：
@@ -2852,8 +2934,12 @@
         function updateTimeline() {
             let currentPos = lastPositionMs;
             if (isPlaying) {
-                const delta = performance.now() - lastSyncTime;
+                const delta = (performance.now() - lastSyncTime) * playbackSpeed;
                 currentPos += delta;
+            }
+            if (currentPos < 0) currentPos = 0;
+            if (currentTrack.duration > 0 && currentPos > currentTrack.duration) {
+                currentPos = currentTrack.duration;
             }
 
             // 更新播放进度条
@@ -2924,16 +3010,8 @@
                 } else {
                     const timeSinceFft = performance.now() - lastFftTime;
                     if (timeSinceFft > 250) {
-                        const t = currentPos / 1000.0;
-                        const b0 = 0.20 + 0.65 * Math.pow(Math.max(0, Math.sin(t * 3.8)), 2.5) + 0.15 * Math.sin(t * 1.5);
-                        const b1 = 0.25 + 0.55 * Math.pow(Math.max(0, Math.sin(t * 3.8 + 0.8)), 2.0) + 0.20 * Math.sin(t * 5.2);
-                        const b2 = 0.30 + 0.60 * Math.pow(Math.max(0, Math.sin(t * 3.8 + 1.6)), 2.0) + 0.15 * Math.sin(t * 7.1);
-                        const b3 = 0.22 + 0.50 * Math.pow(Math.max(0, Math.sin(t * 3.8 + 2.4)), 2.0) + 0.25 * Math.sin(t * 9.3);
-                        const b4 = 0.15 + 0.45 * Math.pow(Math.max(0, Math.sin(t * 3.8 + 3.2)), 2.2) + 0.20 * Math.sin(t * 11.0);
-                        const simBands = [b0, b1, b2, b3, b4];
                         for (let i = 0; i < 5; i++) {
-                            const s = Math.max(0.08, Math.min(1.0, simBands[i]));
-                            bars[i].style.transform = `scaleY(${s.toFixed(3)})`;
+                            bars[i].style.transform = 'scaleY(0.08)';
                         }
                     }
                 }

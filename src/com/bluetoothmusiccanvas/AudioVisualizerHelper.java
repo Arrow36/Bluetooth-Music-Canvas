@@ -38,8 +38,8 @@ public class AudioVisualizerHelper {
             // Audio session 0 captures the system audio output mix
             mVisualizer = new Visualizer(0);
             int[] range = Visualizer.getCaptureSizeRange();
-            int captureSize = Math.max(128, range[0]);
-            if (captureSize > 256) captureSize = 256;
+            int captureSize = Math.min(1024, range[1]);
+            captureSize = Math.max(range[0], captureSize);
             mVisualizer.setCaptureSize(captureSize);
 
             int rate = Visualizer.getMaxCaptureRate();
@@ -52,7 +52,7 @@ public class AudioVisualizerHelper {
 
                 @Override
                 public void onFftDataCapture(Visualizer visualizer, byte[] fft, int samplingRate) {
-                    processFft(fft);
+                    processFft(fft, samplingRate);
                 }
             }, targetRate, false, true);
 
@@ -78,14 +78,18 @@ public class AudioVisualizerHelper {
         }
     }
 
-    private void processFft(byte[] fft) {
+    private void processFft(byte[] fft, int samplingRate) {
         if (fft == null || fft.length < 16) return;
 
         long now = System.currentTimeMillis();
         if (now - mLastDispatchTime < 35) return;
         mLastDispatchTime = now;
 
+        float fs = samplingRate > 0 ? (samplingRate / 1000.0f) : 48000.0f;
         int n = fft.length / 2;
+        int fftSize = fft.length;
+        float binWidth = fs / fftSize; // Hz per bin
+
         float[] mags = new float[n];
         mags[0] = Math.abs(fft[0]);
         for (int k = 1; k < n; k++) {
@@ -94,24 +98,51 @@ public class AudioVisualizerHelper {
             mags[k] = (float) Math.hypot(r, i);
         }
 
-        // Group into 5 frequency spectrum bands:
-        // 0: Sub-bass & Bass (bins 1..3)
-        // 1: Low-Mid (bins 4..7)
-        // 2: Midrange (bins 8..15)
-        // 3: High-Mid (bins 16..27)
-        // 4: Treble & Air (bins 28..n-1)
+        // Physical frequency spectrum bands:
+        // 0: Sub-bass & Bass (20Hz - 250Hz)
+        // 1: Low-Mid (250Hz - 600Hz)
+        // 2: Midrange (600Hz - 2000Hz)
+        // 3: High-Mid (2000Hz - 6000Hz)
+        // 4: Treble & Air (6000Hz - 16000Hz)
         float[] rawBands = new float[5];
-        rawBands[0] = avg(mags, 1, 3);
-        rawBands[1] = avg(mags, 4, 7);
-        rawBands[2] = avg(mags, 8, 15);
-        rawBands[3] = avg(mags, 16, 27);
-        rawBands[4] = avg(mags, 28, n - 1);
+        rawBands[0] = avgFreq(mags, binWidth, 20f, 250f, n);
+        rawBands[1] = avgFreq(mags, binWidth, 250f, 600f, n);
+        rawBands[2] = avgFreq(mags, binWidth, 600f, 2000f, n);
+        rawBands[3] = avgFreq(mags, binWidth, 2000f, 6000f, n);
+        rawBands[4] = avgFreq(mags, binWidth, 6000f, 16000f, n);
 
         float totalEnergy = rawBands[0] + rawBands[1] + rawBands[2] + rawBands[3] + rawBands[4];
         if (totalEnergy < 0.2f) {
             // Signal is effectively silent or muted by hardware output
             mSilenceCount++;
             mActiveCount = 0;
+
+            // Decay to resting baseline 0.08f so bars don't freeze on silence
+            boolean hasDecayed = false;
+            for (int i = 0; i < 5; i++) {
+                if (mBandSmooth[i] > 0.081f) {
+                    mBandSmooth[i] = mBandSmooth[i] * 0.5f;
+                    hasDecayed = true;
+                } else {
+                    mBandSmooth[i] = 0.08f;
+                }
+            }
+            if (hasDecayed || mSilenceCount <= 3) {
+                final float b0 = mBandSmooth[0];
+                final float b1 = mBandSmooth[1];
+                final float b2 = mBandSmooth[2];
+                final float b3 = mBandSmooth[3];
+                final float b4 = mBandSmooth[4];
+                mMainHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (mListener != null) {
+                            mListener.onFftBands(b0, b1, b2, b3, b4);
+                        }
+                    }
+                });
+            }
+
             if (mSilenceCount == 45) { // ~1.5s 持续静音
                 mMainHandler.post(new Runnable() {
                     @Override
@@ -172,6 +203,14 @@ public class AudioVisualizerHelper {
         float sum = 0;
         for (int i = s; i <= e; i++) sum += arr[i];
         return sum / (e - s + 1);
+    }
+
+    private static float avgFreq(float[] mags, float binWidth, float startFreq, float endFreq, int n) {
+        if (binWidth <= 0 || n <= 1) return 0f;
+        int startBin = Math.max(1, Math.min(n - 1, Math.round(startFreq / binWidth)));
+        int endBin = Math.max(1, Math.min(n - 1, Math.round(endFreq / binWidth)));
+        if (startBin > endBin) endBin = startBin;
+        return avg(mags, startBin, endBin);
     }
 
     private static float clamp(float v, float min, float max) {

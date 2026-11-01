@@ -237,9 +237,11 @@ public class MainActivity extends Activity {
 
     public void initVisualizer() {
         try {
-            if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, 101);
-                return;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, 101);
+                    return;
+                }
             }
             if (mVisualizerHelper == null) {
                 mVisualizerHelper = new AudioVisualizerHelper(new AudioVisualizerHelper.OnWaveDataListener() {
