@@ -559,14 +559,17 @@
             color: #ffffff;
             letter-spacing: 0.3px;
             text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
-            line-height: 1.32;
+            line-height: 1.34;
             display: -webkit-box;
             -webkit-line-clamp: 4;
             -webkit-box-orient: vertical;
             overflow: hidden;
             text-overflow: ellipsis;
-            word-break: normal;
+            word-break: break-word;
             overflow-wrap: break-word;
+            line-break: strict;
+            text-wrap: balance;
+            white-space: pre-line;
         }
 
         .song-artist {
@@ -1821,17 +1824,40 @@
             return splitLongLyrics(result);
         }
 
-                // 智能优化歌名分行逻辑（尤其是古典音乐作品名、乐章、编号等）
+        // 智能优化歌名分行逻辑（古典作品乐章绑定、括号副标题语义换行、破折号断句、防末尾寡字）
         function formatSongTitle(rawTitle) {
             if (!rawTitle) return "";
             // 1. 标准化标点符号与其后空格：确保冒号后有空格（如 "K. 285:I. Allegro" -> "K. 285: I. Allegro"）
             let t = rawTitle.replace(/:([^\s])/g, ': $1');
-            // 2. 乐章罗马数字（I. / II. / III. / IV. 等）与后方速度标记之间绑定不换行空格（&nbsp; /  ），
+            // 2. 乐章罗马数字（I. / II. / III. / IV. 等）与后方速度标记之间绑定不换行空格（\u00A0），
             //    确保 "I." 和 "Allegro" 绝对保持在同一行，绝不孤立分行
             t = t.replace(/\b([IVXLCDM]+\.)\s+/gi, '$1\u00A0');
             // 3. 作品编号前缀（Op. / K. / BWV / Hob. / No.）与其编号之间绑定不换行空格
             t = t.replace(/\b(Op\.|K\.|BWV|Hob\.|No\.)\s*(\d+)/gi, '$1\u00A0$2');
-            return t;
+            // 4. 合作歌手标识词绑定（feat. / ft. / with）
+            t = t.replace(/\b(feat\.|ft\.|with)\s+/gi, '$1\u00A0');
+
+            // 5. 智能语义断句分行（副标题、影视原声括号、版本说明、破折号断句）
+            // 当歌名总字符数较长 (>= 12 个字符) 且包含括号或破折号时，在断句处引入语义换行 \n
+            if (t.length >= 12) {
+                // 括号副标题前插入换行（如 "好不容易 (电视剧《华灯初上》片尾曲)" -> "好不容易\n(电视剧《华灯初上》片尾曲)"）
+                // 仅当括号前已有至少 2 个字符的主歌名时断句，避免标题以括号开头时首行空行
+                t = t.replace(/^(.{2,}?)\s*([\(（【\[])(?=[^\)）\]】]{2,}[\)）\]】])/u, '$1\n$2');
+
+                // 破折号副标题前插入换行（如 "青花瓷 - 伴奏" -> "青花瓷\n- 伴奏"）
+                if (!t.includes('\n')) {
+                    t = t.replace(/^(.{2,}?)\s+([—–\-]\s+.+)$/u, '$1\n$2');
+                }
+            }
+
+            // 6. 避免行末孤字（排版寡字）：对分行后的每一行，将最后两个中文字符以 \u00A0 绑定
+            const lines = t.split('\n');
+            for (let i = 0; i < lines.length; i++) {
+                let line = lines[i];
+                line = line.replace(/([\u4e00-\u9fa5])([\u4e00-\u9fa5])$/, '$1\u00A0$2');
+                lines[i] = line;
+            }
+            return lines.join('\n');
         }
 
         
@@ -2028,29 +2054,113 @@
         document.addEventListener('DOMContentLoaded', initLyricsDragGesture);
         setTimeout(initLyricsDragGesture, 200);
 
-        // 智能判断歌词是否为纯音乐占位文案（如“纯音乐，请欣赏”、“没有填词”等）或本身就无歌词
+        // 智能判断歌词是否为纯音乐（覆盖“作词：... 作曲：... 纯音乐，请欣赏”、无填词、或纯制作演职员信息）
         function isPureMusicLyric(lrcArray) {
             if (!lrcArray || lrcArray.length === 0) return true;
-            const placeholderKeywords = [
-                "纯音乐", "请欣赏", "没有填词", "暂无歌词", "享受音乐",
-                "instrumental", "no lyrics", "pure music", "作词 : 纯音乐", "作词:纯音乐", "作词：纯音乐"
-            ];
-            let realLines = 0;
+
+            const creditRegex = /^(作词|作曲|编曲|制作|监制|混音|母带|录音|吉他|贝斯|鼓|键盘|钢琴|弦乐|和声|文案|企划|统筹|出品|发行|原唱|词|曲|op|sp|written by|composed by|arranged by|produced by|mixed by|mastered by|recorded by|lyrics by|music by)[:：\s]/i;
+            const pureMusicRegex = /(纯音乐|请欣赏|没有填词|暂无歌词|无歌词|享受音乐|instrumental|no lyrics|pure music)/i;
+
+            let realSingingLines = 0;
+            let hasPureMusicMarker = false;
+
             for (const item of lrcArray) {
-                const text = (item.text || "").trim().toLowerCase();
+                const text = (item.text || "").trim();
                 if (!text) continue;
-                let isPlace = false;
-                for (const kw of placeholderKeywords) {
-                    if (text.includes(kw.toLowerCase())) {
-                        isPlace = true;
-                        break;
-                    }
+
+                if (pureMusicRegex.test(text)) {
+                    hasPureMusicMarker = true;
+                    continue;
                 }
-                if (!isPlace) {
-                    realLines++;
+
+                if (creditRegex.test(text)) {
+                    // 演职员名单/制作信息行，非歌词唱词
+                    continue;
+                }
+
+                // 属于实际唱词
+                realSingingLines++;
+            }
+
+            // 1. 若出现了明确的纯音乐占位文案，只要实际唱词行 <= 2，即确认为纯音乐
+            if (hasPureMusicMarker && realSingingLines <= 2) {
+                return true;
+            }
+
+            // 2. 若全篇只包含作词/作曲等演职员信息而无任何实际唱词，也归为纯音乐
+            if (realSingingLines === 0) {
+                return true;
+            }
+
+            return false;
+        }
+
+        // 智能识别视频音轨（如 B站、YouTube、抖音、快手等视频应用发出的视频音频）
+        function isVideoTrack(title, artist, album, duration) {
+            if (!title) return false;
+            const t = (title || "").trim();
+            const a = (artist || "").trim().toLowerCase();
+            const alb = (album || "").trim().toLowerCase();
+            const lowerTitle = t.toLowerCase();
+
+            // 1. 明确的视频平台 / UP主特征（最高优先级判定为视频）
+            if (a.includes("bilibili") || a.includes("b站") || a.includes("哔哩哔哩")
+                || a.includes("youtube") || a.includes("douyin") || a.includes("抖音")
+                || a.includes("kuaishou") || a.includes("快手") || a.includes("tiktok")
+                || a.includes("tencent video") || a.includes("iqiyi") || a.includes("youku")
+                || a.includes("up主") || a.includes("官方频道")) {
+                return true;
+            }
+
+            // 2. 强保护：若拥有非空的真实专辑名（且非视频平台名），优先视为正规音乐，绝不误判为视频
+            if (alb && !alb.includes("bilibili") && !alb.includes("youtube")
+                && !alb.includes("douyin") && !alb.includes("tiktok") && !alb.includes("快手")) {
+                return false;
+            }
+
+            // 3. 强保护：古典音乐与器乐作品特征（绝不误判为视频）
+            if (lowerTitle.includes("sonata") || lowerTitle.includes("奏鸣曲")
+                || lowerTitle.includes("symphony") || lowerTitle.includes("交响")
+                || lowerTitle.includes("concerto") || lowerTitle.includes("协奏")
+                || lowerTitle.includes("nocturne") || lowerTitle.includes("夜曲")
+                || lowerTitle.includes("prelude") || lowerTitle.includes("前奏曲")
+                || lowerTitle.includes("etude") || lowerTitle.includes("练习曲")
+                || lowerTitle.includes("rhapsody") || lowerTitle.includes("狂想曲")
+                || lowerTitle.includes("suite") || lowerTitle.includes("组曲")
+                || lowerTitle.includes("waltz") || lowerTitle.includes("圆舞曲")
+                || lowerTitle.includes("serenade") || lowerTitle.includes("小夜曲")
+                || lowerTitle.includes("op.") || lowerTitle.includes("bwv")
+                || lowerTitle.includes("k.") || lowerTitle.includes("hob.")
+                || lowerTitle.includes("rv ") || lowerTitle.includes("d.")
+                || lowerTitle.includes("乐章") || lowerTitle.includes("andante")
+                || lowerTitle.includes("allegro") || lowerTitle.includes("adagio")) {
+                return false;
+            }
+
+            // 4. 视频特有集数/期数/分集（例如：第2集、第10期、第5话、第3回），严格限定“集期话回季篇”
+            if (/第\s*\d+\s*[集期话回季篇]/.test(t)) return true;
+
+            // 5. 常见视频关键词
+            const videoKeywords = [
+                "vlog", "解说", "实况", "测评", "评测", "开箱", "预告片", "官方预告", "直播回放",
+                "切片", "鬼畜", "短剧", "通关攻略", "游戏实况", "录播", "二创",
+                "reaction", "gameplay", "walkthrough", "speedrun", "trailer", "teaser", "livestream"
+            ];
+            for (const kw of videoKeywords) {
+                if (lowerTitle.includes(kw)) return true;
+            }
+
+            // 6. 视频特有括号标签（如 【4K】、【解说】、【实况】、【测评】、【自制】、【熟肉】、【生肉】）
+            if (/【(4k|1080p|解说|实况|测评|评测|开箱|自制|熟肉|生肉|合集|日常|vlog|切片|录播|二创|鬼畜|短剧)/i.test(t)) return true;
+
+            // 7. 视频长句标题特征：无专辑且长标题带有设问/感叹
+            if (!alb && (t.length >= 22 || !a || a === "未知歌手")) {
+                if (/[？?！!…]/.test(t) || t.includes("如何看待") || t.includes("为什么") || t.includes("一口气看完") || t.includes("大结局")) {
+                    return true;
                 }
             }
-            return realLines === 0;
+
+            return false;
         }
 
         // 蓝牙实时歌词与网络拉取官方歌词的二次校对验证（仅用于比对校验准确度，绝不干扰时间轴与播放行）
@@ -2442,15 +2552,19 @@
             const artist = data.artist || "未知歌手";
             const album = data.album || "";
             const streamLyric = data.streamLyric || "";
+            const hasStreamLyric = !!(streamLyric && streamLyric.trim());
+            const isVideo = !hasStreamLyric && !!(data.isVideo || isVideoTrack(title, artist, album, data.duration));
 
             const isNewSong = (currentTrack.title !== title || currentTrack.artist !== artist);
             currentTrack = data;
 
             document.getElementById('songTitle').textContent = formatSongTitle(title);
-            const formattedArtist = (artist || "未知歌手").replace(/\s*\/\s*/g, ' / ');
-            let artistAlbumText = formattedArtist;
+            let artistAlbumText = (artist && artist !== "未知歌手" && !artist.toLowerCase().includes("bluetooth"))
+                ? artist.replace(/\s*\/\s*/g, ' / ')
+                : (isVideo ? "蓝牙音频播放" : "未知歌手");
+
             if (album && !title.toLowerCase().includes(album.toLowerCase()) && !album.toLowerCase().includes(title.toLowerCase())) {
-                artistAlbumText = `${formattedArtist} · ${album}`;
+                artistAlbumText = `${artistAlbumText} · ${album}`;
             }
             document.getElementById('songArtist').textContent = artistAlbumText;
             document.getElementById('timeTotal').textContent = formatTime(data.duration);
@@ -2458,6 +2572,22 @@
             const trackKey = (title + " - " + artist).toLowerCase().trim();
             if (!songCache[trackKey]) songCache[trackKey] = {};
             if (streamLyric) songCache[trackKey].streamLyric = streamLyric;
+
+            if (isVideo) {
+                // 视频音轨模式：不提取标题搜歌词与封面，不展示“正在检索”，直接呈现大号 9 频段声波律动，黑胶盘展示干净原盘
+                hasOfficialLyrics = false;
+                parsedOfficialLyrics = [];
+                activeLyricIndex = -1;
+                const stream = document.getElementById('lyricsStream');
+                const emptyBox = document.getElementById('emptyLyrics');
+                const largeViz = document.getElementById('largeVisualizer');
+                if (stream) stream.style.display = 'none';
+                if (emptyBox) emptyBox.style.display = 'none';
+                if (largeViz) largeViz.style.display = 'flex';
+                updateStatusTag('视频模式', '#5ac8fa');
+                setCoverImage('img/default_cover.png');
+                return;
+            }
 
             if (isNewSong) {
                 // 1. 彻底重置播放时钟与进度，杜绝切歌后继承上一首歌末尾进度
@@ -2473,6 +2603,9 @@
                 const stream = document.getElementById('lyricsStream');
                 const emptyBox = document.getElementById('emptyLyrics');
                 const emptyText = document.getElementById('emptyText');
+                const largeViz = document.getElementById('largeVisualizer');
+
+                if (largeViz) largeViz.style.display = 'none';
 
                 if (stream) {
                     stream.style.transition = 'opacity 0.25s ease-out';

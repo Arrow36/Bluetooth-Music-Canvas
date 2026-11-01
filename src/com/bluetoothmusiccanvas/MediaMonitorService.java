@@ -384,16 +384,17 @@ public class MediaMonitorService extends NotificationListenerService {
             if (localArt == null) {
                 localArt = metadata.getBitmap(MediaMetadata.METADATA_KEY_ART);
             }
+            boolean hasStream = mStreamLyric != null && !mStreamLyric.trim().isEmpty();
             if (localArt != null) {
                 mCurrentCoverBitmap = localArt;
                 mGeneratedVinylBitmap = null;
                 updateFloatingViewContent();
-            } else {
-                // Fetch online cover for floating vinyl
+            } else if (hasStream || !MetadataFetcher.isVideoTrack(mRealTitle, mRealArtist, mRealAlbum, mDuration)) {
+                // Fetch online cover for floating vinyl (skip for video tracks)
                 final String key = (mRealTitle + " - " + mRealArtist + (mRealAlbum != null && !mRealAlbum.isEmpty() ? " - " + mRealAlbum : "")).toLowerCase().trim();
                 if (!key.isEmpty() && !key.equals(mLastFetchedCoverKey)) {
                     mLastFetchedCoverKey = key;
-                    MetadataFetcher.fetch(mRealTitle, mRealArtist, mRealAlbum, new MetadataFetcher.Callback() {
+                    MetadataFetcher.fetch(mRealTitle, mRealArtist, mRealAlbum, mDuration, new MetadataFetcher.Callback() {
                         @Override
                         public void onResult(final String coverUrl, final String lyricsLrc, final String lyricSource) {
                             if (coverUrl != null && !coverUrl.isEmpty()) {

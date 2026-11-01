@@ -359,24 +359,35 @@ public class MainActivity extends Activity {
         sCachedDuration = duration;
         sCachedStreamLyric = streamLyric;
 
-        final String key = (title + " - " + artist + (album != null && !album.isEmpty() ? " - " + album : "")).toLowerCase().trim();
-        MetadataFetcher.CachedMeta cached = MetadataFetcher.getCached(title, artist, album);
-        if (cached != null && (cached.coverUrl != null || cached.lyricsLrc != null)) {
-            sCachedCoverUrl = cached.coverUrl != null ? cached.coverUrl : "";
-            sCachedLyrics = cached.lyricsLrc != null ? cached.lyricsLrc : "";
-            sCachedLyricSource = cached.lyricSource != null ? cached.lyricSource : "";
-            dispatchOnlineResult(sCachedCoverUrl, sCachedLyrics, sCachedLyricSource);
-        } else if (isNewSong && !key.isEmpty() && (!key.equals(sLastFetchedKey) || (sCachedCoverUrl.isEmpty() && sCachedLyrics.isEmpty()))) {
-            sLastFetchedKey = key;
-            MetadataFetcher.fetch(title, artist, album, new MetadataFetcher.Callback() {
-                @Override
-                public void onResult(final String coverUrl, final String lyricsLrc, final String lyricSource) {
-                    sCachedCoverUrl = coverUrl != null ? coverUrl : "";
-                    sCachedLyrics = lyricsLrc != null ? lyricsLrc : "";
-                    sCachedLyricSource = lyricSource != null ? lyricSource : "";
-                    dispatchOnlineResult(sCachedCoverUrl, sCachedLyrics, sCachedLyricSource);
-                }
-            });
+        // 若收到了蓝牙动态歌词流（streamLyric），100% 确认是音乐 App 投送，直接免检排除视频！
+        final boolean hasStreamLyric = streamLyric != null && !streamLyric.trim().isEmpty();
+        final boolean isVideo = !hasStreamLyric && MetadataFetcher.isVideoTrack(title, artist, album, duration);
+
+        if (isVideo) {
+            sCachedCoverUrl = "";
+            sCachedLyrics = "";
+            sCachedLyricSource = "视频模式";
+            dispatchOnlineResult("", "", "视频模式");
+        } else {
+            final String key = (title + " - " + artist + (album != null && !album.isEmpty() ? " - " + album : "")).toLowerCase().trim();
+            MetadataFetcher.CachedMeta cached = MetadataFetcher.getCached(title, artist, album);
+            if (cached != null && (cached.coverUrl != null || cached.lyricsLrc != null)) {
+                sCachedCoverUrl = cached.coverUrl != null ? cached.coverUrl : "";
+                sCachedLyrics = cached.lyricsLrc != null ? cached.lyricsLrc : "";
+                sCachedLyricSource = cached.lyricSource != null ? cached.lyricSource : "";
+                dispatchOnlineResult(sCachedCoverUrl, sCachedLyrics, sCachedLyricSource);
+            } else if (isNewSong && !key.isEmpty() && (!key.equals(sLastFetchedKey) || (sCachedCoverUrl.isEmpty() && sCachedLyrics.isEmpty()))) {
+                sLastFetchedKey = key;
+                MetadataFetcher.fetch(title, artist, album, duration, new MetadataFetcher.Callback() {
+                    @Override
+                    public void onResult(final String coverUrl, final String lyricsLrc, final String lyricSource) {
+                        sCachedCoverUrl = coverUrl != null ? coverUrl : "";
+                        sCachedLyrics = lyricsLrc != null ? lyricsLrc : "";
+                        sCachedLyricSource = lyricSource != null ? lyricSource : "";
+                        dispatchOnlineResult(sCachedCoverUrl, sCachedLyrics, sCachedLyricSource);
+                    }
+                });
+            }
         }
 
         if (!mPageLoaded || mWebView == null) return;
@@ -390,6 +401,7 @@ public class MainActivity extends Activity {
                     obj.put("album", album);
                     obj.put("duration", duration);
                     obj.put("streamLyric", streamLyric != null ? streamLyric : "");
+                    obj.put("isVideo", isVideo);
                     mWebView.evaluateJavascript("window.onMetadataChanged && window.onMetadataChanged(" + obj.toString() + ");", null);
                 } catch (Exception e) {
                     e.printStackTrace();

@@ -71,14 +71,14 @@ public class MetadataFetcher {
                 String actualSource = "";
                 try {
                     if ("netease".equalsIgnoreCase(source)) {
-                        String[] res = fetchFromNetEase(title, fullArtist, album);
+                        String[] res = fetchFromNetEase(title, fullArtist, album, 0);
                         lyricsLrc = res[1];
                         actualSource = "网易云音乐";
                     } else if ("qq".equalsIgnoreCase(source)) {
-                        lyricsLrc = fetchFromQQ(title, fullArtist);
+                        lyricsLrc = fetchFromQQ(title, fullArtist, 0);
                         actualSource = "QQ音乐";
                     } else if ("kugou".equalsIgnoreCase(source)) {
-                        String[] res = fetchFromKugou(title, fullArtist, false, true);
+                        String[] res = fetchFromKugou(title, fullArtist, false, true, 0);
                         lyricsLrc = res[1];
                         actualSource = "酷狗音乐";
                     } else if ("lrclib".equalsIgnoreCase(source)) {
@@ -93,7 +93,94 @@ public class MetadataFetcher {
         }).start();
     }
 
+    public static boolean isVideoTrack(String rawTitle, String rawArtist, String rawAlbum, long duration) {
+        if (rawTitle == null || rawTitle.trim().isEmpty()) return false;
+        String t = rawTitle.trim();
+        String a = (rawArtist != null) ? rawArtist.trim() : "";
+        String alb = (rawAlbum != null) ? rawAlbum.trim() : "";
+
+        String lowerTitle = t.toLowerCase();
+        String lowerArtist = a.toLowerCase();
+        String lowerAlbum = alb.toLowerCase();
+
+        // 1. 明确的视频平台 / UP主 特征（最高优先级判定为视频）
+        if (lowerArtist.contains("bilibili") || lowerArtist.contains("b站") || lowerArtist.contains("哔哩哔哩")
+                || lowerArtist.contains("youtube") || lowerArtist.contains("douyin") || lowerArtist.contains("抖音")
+                || lowerArtist.contains("kuaishou") || lowerArtist.contains("快手") || lowerArtist.contains("tiktok")
+                || lowerArtist.contains("tencent video") || lowerArtist.contains("iqiyi") || lowerArtist.contains("youku")
+                || lowerArtist.contains("up主") || lowerArtist.contains("官方频道")) {
+            return true;
+        }
+
+        // 2. 强保护：若拥有非空的真实专辑名（且非视频平台名），优先视为正规音乐，绝不误判为视频
+        if (!alb.isEmpty() && !lowerAlbum.contains("bilibili") && !lowerAlbum.contains("youtube")
+                && !lowerAlbum.contains("douyin") && !lowerAlbum.contains("tiktok") && !lowerAlbum.contains("快手")) {
+            return false;
+        }
+
+        // 3. 强保护：古典音乐、器乐、交响乐等正规音乐作品特征（即便单曲超长，也绝非视频）
+        if (lowerTitle.contains("sonata") || lowerTitle.contains("奏鸣曲")
+                || lowerTitle.contains("symphony") || lowerTitle.contains("交响")
+                || lowerTitle.contains("concerto") || lowerTitle.contains("协奏")
+                || lowerTitle.contains("nocturne") || lowerTitle.contains("夜曲")
+                || lowerTitle.contains("prelude") || lowerTitle.contains("前奏曲")
+                || lowerTitle.contains("etude") || lowerTitle.contains("练习曲")
+                || lowerTitle.contains("rhapsody") || lowerTitle.contains("狂想曲")
+                || lowerTitle.contains("suite") || lowerTitle.contains("组曲")
+                || lowerTitle.contains("waltz") || lowerTitle.contains("圆舞曲")
+                || lowerTitle.contains("serenade") || lowerTitle.contains("小夜曲")
+                || lowerTitle.contains("op.") || lowerTitle.contains("bwv")
+                || lowerTitle.contains("k.") || lowerTitle.contains("hob.")
+                || lowerTitle.contains("rv ") || lowerTitle.contains("d.")
+                || lowerTitle.contains("乐章") || lowerTitle.contains("andante")
+                || lowerTitle.contains("allegro") || lowerTitle.contains("adagio")) {
+            return false;
+        }
+
+        // 4. 视频特有集数/期数/分集（例如：第2集、第10期、第5话、第3回），严格限定“集期话回季篇”
+        if (t.matches(".*第\\s*\\d+\\s*[集期话回季篇].*")) {
+            return true;
+        }
+
+        // 5. 常见强视频特征词（游戏解说、开箱测评、预告片、直播录播、二创切片等）
+        String[] videoKeywords = {
+            "vlog", "解说", "实况", "测评", "评测", "开箱", "预告片", "官方预告", "直播回放",
+            "切片", "鬼畜", "短剧", "通关攻略", "游戏实况", "录播", "二创",
+            "reaction", "gameplay", "walkthrough", "speedrun", "trailer", "teaser", "livestream"
+        };
+        for (String kw : videoKeywords) {
+            if (lowerTitle.contains(kw)) {
+                return true;
+            }
+        }
+
+        // 6. 视频特有括号标签（如 【4K】、【解说】、【实况】、【测评】、【自制】、【熟肉】、【生肉】）
+        if (t.matches(".*【(4k|1080p|解说|实况|测评|评测|开箱|自制|熟肉|生肉|合集|日常|vlog|切片|录播|二创|鬼畜|短剧).*】.*")) {
+            return true;
+        }
+
+        // 7. 视频长句标题特征：无专辑且长标题 (>= 22 字) 带有典型设问或感叹标点
+        if (t.length() >= 22 && (a.isEmpty() || a.equals("未知歌手"))) {
+            if (t.contains("？") || t.contains("?") || t.contains("！") || t.contains("!")
+                    || t.contains("如何看待") || t.contains("为什么") || t.contains("一口气看完") || t.contains("大结局")) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static void fetch(final String rawTitle, final String rawArtist, final String rawAlbum, final Callback callback) {
+        fetch(rawTitle, rawArtist, rawAlbum, 0, callback);
+    }
+
+    public static void fetch(final String rawTitle, final String rawArtist, final String rawAlbum, final long duration, final Callback callback) {
+        if (isVideoTrack(rawTitle, rawArtist, rawAlbum, duration)) {
+            Log.i(TAG, "Skipping fetch for video track: [" + rawTitle + "]");
+            callback.onResult(null, null, "");
+            return;
+        }
+
         final String title = cleanTitle(rawTitle);
         final String fullArtist = (rawArtist != null) ? rawArtist.trim() : "";
         final String album = (rawAlbum != null) ? rawAlbum.trim() : "";
@@ -121,9 +208,9 @@ public class MetadataFetcher {
                 String lyricsLrc = null;
                 String lyricSource = "";
 
-                // 1. 优先从网易云音乐 (NetEase) 检索官方高清封面与同步歌词 (带多候选评分机制)
+                // 1. 优先从网易云音乐 (NetEase) 检索官方高清封面与同步歌词 (带多候选评分机制及时长校验)
                 try {
-                    String[] neteaseRes = fetchFromNetEase(title, fullArtist, album);
+                    String[] neteaseRes = fetchFromNetEase(title, fullArtist, album, duration);
                     if (neteaseRes[0] != null && !neteaseRes[0].isEmpty()) {
                         coverUrl = neteaseRes[0];
                     }
@@ -135,10 +222,10 @@ public class MetadataFetcher {
                     Log.w(TAG, "NetEase search failed: " + e.getMessage());
                 }
 
-                // 2. 备用封面：iTunes (600x600 官方高保真，带候选评分)
+                // 2. 备用封面：iTunes (600x600 官方高保真，带候选评分及时长校验)
                 if (coverUrl == null) {
                     try {
-                        coverUrl = fetchCoverFromiTunes(title, fullArtist, album);
+                        coverUrl = fetchCoverFromiTunes(title, fullArtist, album, duration);
                     } catch (Exception e) {
                         Log.w(TAG, "iTunes cover search failed: " + e.getMessage());
                     }
@@ -160,7 +247,7 @@ public class MetadataFetcher {
                     if (hasChinese) {
                         // 中文歌曲备选酷狗音乐
                         try {
-                            String[] kugouRes = fetchFromKugou(title, fullArtist, coverUrl == null, true);
+                            String[] kugouRes = fetchFromKugou(title, fullArtist, coverUrl == null, true, duration);
                             if (coverUrl == null && kugouRes[0] != null) {
                                 coverUrl = kugouRes[0];
                             }
@@ -191,7 +278,7 @@ public class MetadataFetcher {
 
                         if (lyricsLrc == null) {
                             try {
-                                String[] kugouRes = fetchFromKugou(title, fullArtist, coverUrl == null, true);
+                                String[] kugouRes = fetchFromKugou(title, fullArtist, coverUrl == null, true, duration);
                                 if (coverUrl == null && kugouRes[0] != null) {
                                     coverUrl = kugouRes[0];
                                 }
@@ -207,7 +294,7 @@ public class MetadataFetcher {
                 // 4. 若封面仍缺失，从酷狗兜底
                 if (coverUrl == null) {
                     try {
-                        String[] kugouRes = fetchFromKugou(title, fullArtist, true, false);
+                        String[] kugouRes = fetchFromKugou(title, fullArtist, true, false, duration);
                         if (kugouRes[0] != null) {
                             coverUrl = kugouRes[0];
                         }
@@ -269,8 +356,8 @@ public class MetadataFetcher {
         return list;
     }
 
-    private static int scoreCandidate(String candidateTitle, List<String> candidateArtists, String candidateAlbum,
-                                      String reqTitle, String reqArtist, String reqAlbum) {
+    private static int scoreCandidate(String candidateTitle, List<String> candidateArtists, String candidateAlbum, long candidateDurationMs,
+                                      String reqTitle, String reqArtist, String reqAlbum, long reqDurationMs) {
         int score = 0;
         String cTitle = (candidateTitle != null) ? candidateTitle.toLowerCase().trim() : "";
         String rTitle = (reqTitle != null) ? reqTitle.toLowerCase().trim() : "";
@@ -328,9 +415,9 @@ public class MetadataFetcher {
         }
 
         // 6. 歌手匹配（兼容多歌手合作场景）
+        boolean artistMatched = false;
         if (reqArtist != null && !reqArtist.trim().isEmpty()) {
             List<String> reqArtistList = extractAllArtists(reqArtist);
-            boolean anyMatched = false;
             if (candidateArtists != null && !candidateArtists.isEmpty()) {
                 for (String ca : candidateArtists) {
                     if (ca == null) continue;
@@ -340,18 +427,18 @@ public class MetadataFetcher {
                         String raLow = ra.toLowerCase().trim();
                         if (caLow.equals(raLow)) {
                             score += 90;
-                            anyMatched = true;
+                            artistMatched = true;
                             break;
                         } else if (caLow.contains(raLow) || raLow.contains(caLow)) {
                             score += 65;
-                            anyMatched = true;
+                            artistMatched = true;
                             break;
                         }
                     }
-                    if (anyMatched) break;
+                    if (artistMatched) break;
                 }
             }
-            if (!anyMatched) {
+            if (!artistMatched) {
                 // 若候选曲目不含任何请求中的歌手名，严厉惩罚
                 score -= 80;
             }
@@ -370,10 +457,34 @@ public class MetadataFetcher {
             }
         }
 
+        // 8. 时长精准匹配校验（Duration Delta Check）：识别视频与音乐的终极利器
+        if (reqDurationMs > 15000 && candidateDurationMs > 15000) {
+            long diffSec = Math.abs(reqDurationMs - candidateDurationMs) / 1000;
+            if (diffSec <= 4) {
+                score += 70; // 几乎完全吻合（正规音乐同一版本）
+            } else if (diffSec <= 22) {
+                score += 35; // 正常误差区间（可能为MV带片头片尾、Radio/Album Edit）
+            } else if (diffSec <= 40) {
+                score -= 40; // 存在较明显时长出入
+            } else {
+                // 时长相差超过40秒：严重时长不符！
+                if (diffSec > 75) {
+                    score -= 300; // 巨大偏差（如十几分钟的视频解说 vs 几分钟的歌），直接打入深渊
+                } else {
+                    score -= 130;
+                }
+            }
+
+            // 严厉的硬性安全门禁：如果时长相差超过45秒且歌手未完全匹配，直接否决该候选
+            if (diffSec > 45 && !artistMatched && (reqAlbum == null || reqAlbum.isEmpty())) {
+                score = -999;
+            }
+        }
+
         return score;
     }
 
-    private static String fetchCoverFromiTunes(String title, String artist, String album) {
+    private static String fetchCoverFromiTunes(String title, String artist, String album, long duration) {
         try {
             String firstArtist = cleanArtist(artist);
             String q = URLEncoder.encode((title + " " + firstArtist).trim(), "UTF-8");
@@ -390,15 +501,16 @@ public class MetadataFetcher {
                         String t = item.optString("trackName", "");
                         String a = item.optString("artistName", "");
                         String alb = item.optString("collectionName", "");
+                        long cDur = item.optLong("trackTimeMillis", 0);
                         List<String> artists = new ArrayList<>();
                         artists.add(a);
-                        int score = scoreCandidate(t, artists, alb, title, artist, album);
+                        int score = scoreCandidate(t, artists, alb, cDur, title, artist, album, duration);
                         if (score > bestScore) {
                             bestScore = score;
                             bestItem = item;
                         }
                     }
-                    if (bestItem != null && bestScore > -50) {
+                    if (bestItem != null && bestScore >= 50) {
                         String art = bestItem.optString("artworkUrl100", null);
                         if (art != null && !art.isEmpty()) {
                             String hdArt = art.replace("100x100bb", "600x600bb");
@@ -438,7 +550,7 @@ public class MetadataFetcher {
         return null;
     }
 
-    private static String[] fetchFromKugou(String title, String artist, boolean needCover, boolean needLyric) {
+    private static String[] fetchFromKugou(String title, String artist, boolean needCover, boolean needLyric, long duration) {
         String[] out = new String[2]; // [0]=cover, [1]=lyrics
         try {
             String firstArtist = cleanArtist(artist);
@@ -461,17 +573,20 @@ public class MetadataFetcher {
                 String sName = song.optString("songname", "");
                 String singer = song.optString("singername", "");
                 String sAlb = song.optString("album_name", "");
+                long cDurSec = song.optLong("duration", 0);
+                if (cDurSec == 0) cDurSec = song.optLong("Duration", 0);
+                long cDur = cDurSec * 1000;
                 List<String> sArtists = new ArrayList<>();
                 sArtists.add(singer);
-                int sc = scoreCandidate(sName, sArtists, sAlb, title, artist, "");
+                int sc = scoreCandidate(sName, sArtists, sAlb, cDur, title, artist, "", duration);
                 if (sc > bestScore) {
                     bestScore = sc;
                     bestSong = song;
                 }
             }
 
-            if (bestSong == null || bestScore <= -50) {
-                bestSong = info.getJSONObject(0);
+            if (bestSong == null || bestScore < 50) {
+                return out; // 低置信度或严重时长不匹配，果断放弃错误匹配
             }
             String hash = bestSong.optString("hash", "");
             if (hash.isEmpty()) return out;
@@ -531,7 +646,7 @@ public class MetadataFetcher {
         return out;
     }
 
-    private static String fetchFromQQ(String title, String artist) {
+    private static String fetchFromQQ(String title, String artist, long duration) {
         try {
             String firstArtist = cleanArtist(artist);
             List<String> queries = new ArrayList<>();
@@ -569,6 +684,7 @@ public class MetadataFetcher {
                     JSONObject song = list.getJSONObject(i);
                     String sName = song.optString("songname", "");
                     String sAlbum = song.optString("albumname", "");
+                    long cDur = song.optLong("interval", 0) * 1000;
                     List<String> sArtists = new ArrayList<>();
                     JSONArray singers = song.optJSONArray("singer");
                     if (singers != null) {
@@ -578,7 +694,7 @@ public class MetadataFetcher {
                         }
                     }
 
-                    int sc = scoreCandidate(sName, sArtists, sAlbum, title, artist, "");
+                    int sc = scoreCandidate(sName, sArtists, sAlbum, cDur, title, artist, "", duration);
                     if (sc > bestScore) {
                         bestScore = sc;
                         bestSong = song;
@@ -590,7 +706,7 @@ public class MetadataFetcher {
                 }
             }
 
-            if (bestSong != null && bestScore > -50) {
+            if (bestSong != null && bestScore >= 50) {
                 String songmid = bestSong.optString("songmid", "");
                 if (!songmid.isEmpty()) {
                     String lrcUrl = "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid=" + songmid + "&format=json&nobase64=0";
@@ -613,7 +729,7 @@ public class MetadataFetcher {
         return null;
     }
 
-    private static String[] fetchFromNetEase(String title, String artist, String album) {
+    private static String[] fetchFromNetEase(String title, String artist, String album, long duration) {
         String coverUrl = null;
         String lyrics = null;
         try {
@@ -656,6 +772,7 @@ public class MetadataFetcher {
                 for (int i = 0; i < songs.length(); i++) {
                     JSONObject song = songs.getJSONObject(i);
                     String sName = song.optString("name", "");
+                    long cDur = song.optLong("dt", 0);
                     JSONObject sAlbumObj = song.optJSONObject("al");
                     if (sAlbumObj == null) sAlbumObj = song.optJSONObject("album");
                     String sAlbumName = (sAlbumObj != null) ? sAlbumObj.optString("name", "") : "";
@@ -672,7 +789,7 @@ public class MetadataFetcher {
                         }
                     }
 
-                    int sc = scoreCandidate(sName, sArtists, sAlbumName, title, artist, album);
+                    int sc = scoreCandidate(sName, sArtists, sAlbumName, cDur, title, artist, album, duration);
                     if (sc > bestScore) {
                         bestScore = sc;
                         bestSong = song;
@@ -685,7 +802,7 @@ public class MetadataFetcher {
                 }
             }
 
-            if (bestSong != null && bestScore > -50) {
+            if (bestSong != null && bestScore >= 50) {
                 long songId = bestSong.optLong("id");
                 JSONObject albObj = bestSong.optJSONObject("al");
                 if (albObj == null) albObj = bestSong.optJSONObject("album");
