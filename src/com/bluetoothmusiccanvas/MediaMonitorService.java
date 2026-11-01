@@ -140,6 +140,13 @@ public class MediaMonitorService extends NotificationListenerService {
         public void onMetadataChanged(MediaMetadata metadata) {
             handleMetadata(metadata);
         }
+
+        @Override
+        public void onSessionDestroyed() {
+            Log.i(TAG, "MediaSession destroyed");
+            MediaStateStore.getInstance().startNewSession("destroyed");
+            handlePlaybackState(null);
+        }
     };
 
     private final MediaSessionManager.OnActiveSessionsChangedListener mSessionListener =
@@ -208,7 +215,18 @@ public class MediaMonitorService extends NotificationListenerService {
     }
 
     private void inspectControllers(List<MediaController> controllers) {
-        if (controllers == null || controllers.isEmpty()) return;
+        if (controllers == null || controllers.isEmpty()) {
+            if (mActiveController != null) {
+                try {
+                    mActiveController.unregisterCallback(mControllerCallback);
+                } catch (Exception ignored) {}
+                mActiveController = null;
+            }
+            MediaStateStore.getInstance().startNewSession("empty");
+            handlePlaybackState(null);
+            return;
+        }
+
         MediaController preferred = null;
         for (MediaController c : controllers) {
             if ("com.android.bluetooth".equals(c.getPackageName())) {
@@ -218,20 +236,35 @@ public class MediaMonitorService extends NotificationListenerService {
         }
         if (preferred == null) preferred = controllers.get(0);
 
-        if (mActiveController != preferred) {
+        boolean tokenChanged = (mActiveController == null)
+                || !mActiveController.getSessionToken().equals(preferred.getSessionToken());
+
+        if (tokenChanged) {
             if (mActiveController != null) {
-                mActiveController.unregisterCallback(mControllerCallback);
+                try {
+                    mActiveController.unregisterCallback(mControllerCallback);
+                } catch (Exception ignored) {}
             }
             mActiveController = preferred;
-            mActiveController.registerCallback(mControllerCallback);
-            Log.i(TAG, "Bound to controller: " + mActiveController.getPackageName());
+            MediaStateStore.getInstance().startNewSession(preferred.getSessionToken().toString());
+            mActiveController.registerCallback(mControllerCallback, mHandler);
+            Log.i(TAG, "Bound to controller: " + mActiveController.getPackageName() + " token: " + mActiveController.getSessionToken());
             handlePlaybackState(mActiveController.getPlaybackState());
             handleMetadata(mActiveController.getMetadata());
         }
     }
 
     private void handlePlaybackState(PlaybackState state) {
-        if (state == null) return;
+        long currentEpoch = MediaStateStore.getInstance().getSessionEpoch();
+        if (state == null) {
+            MediaStateStore.getInstance().updatePlaybackState(currentEpoch, false, 0, 0f, System.currentTimeMillis());
+            mIsPlaying = false;
+            MainActivity act = MainActivity.getInstance();
+            if (act != null) {
+                act.dispatchPlaybackState(false, 0, 0f);
+            }
+            return;
+        }
         int playbackState = state.getState();
         long position = state.getPosition();
         float speed = state.getPlaybackSpeed();
@@ -239,12 +272,15 @@ public class MediaMonitorService extends NotificationListenerService {
             speed = 1.0f;
         }
 
-        long now = android.os.SystemClock.elapsedRealtime();
+        boolean isPlaying = (playbackState == PlaybackState.STATE_PLAYING);
         long updateTime = state.getLastPositionUpdateTime();
+        MediaStateStore.getInstance().updatePlaybackState(currentEpoch, isPlaying, position, speed, updateTime);
+
+        long now = android.os.SystemClock.elapsedRealtime();
         long estimatedPos = position;
 
         // Only extrapolate if state is playing, position is known (>= 0), updateTime is valid and in the past
-        if (playbackState == PlaybackState.STATE_PLAYING && position >= 0 && updateTime > 0 && now >= updateTime) {
+        if (isPlaying && position >= 0 && updateTime > 0 && now >= updateTime) {
             estimatedPos += (long) ((now - updateTime) * speed);
         }
 
@@ -257,7 +293,7 @@ public class MediaMonitorService extends NotificationListenerService {
         }
         mCurrentPosition = estimatedPos;
 
-        if (playbackState == PlaybackState.STATE_PLAYING) {
+        if (isPlaying) {
             mIsPlaying = true;
             mHandler.removeCallbacks(mAutoCloseRunnable);
 
@@ -320,201 +356,136 @@ public class MediaMonitorService extends NotificationListenerService {
         String rawArtist = metadata.getString(MediaMetadata.METADATA_KEY_ARTIST);
         String album = metadata.getString(MediaMetadata.METADATA_KEY_ALBUM);
         long duration = metadata.getLong(MediaMetadata.METADATA_KEY_DURATION);
+        String mediaId = null;
+        try {
+            mediaId = metadata.getString(MediaMetadata.METADATA_KEY_MEDIA_ID);
+        } catch (Exception ignored) {}
 
         if (rawTitle == null || rawTitle.trim().isEmpty() || "Not Provided".equalsIgnoreCase(rawTitle.trim())) {
             onNoMetadataAudio();
             return;
         }
 
-        rawTitle = rawTitle.trim();
-        rawArtist = rawArtist != null ? rawArtist.trim() : "";
-        album = album != null ? album.trim() : "";
+        long currentEpoch = MediaStateStore.getInstance().getSessionEpoch();
+        MediaStateStore.MediaSnapshot snapshot = MediaStateStore.getInstance().handleMetadata(
+                currentEpoch, rawTitle, rawArtist, album, duration, mediaId
+        );
 
-        String candidateTitle = null;
-        String performers = null;
-        int lastSlash = rawArtist.lastIndexOf('/');
-        if (lastSlash > 0) {
-            candidateTitle = rawArtist.substring(lastSlash + 1).trim();
-            performers = rawArtist.substring(0, lastSlash).trim();
-        } else {
-            int lastDash = rawArtist.lastIndexOf(" - ");
-            if (lastDash > 0) {
-                candidateTitle = rawArtist.substring(lastDash + 3).trim();
-                performers = rawArtist.substring(0, lastDash).trim();
-            }
-        }
-
-        // 智能检测古典乐与车载蓝牙 AVRCP 歌词投送中的元数据倒置与占位符：
-        // 国内网易云、QQ音乐、酷狗等主流播放器在开启“车载蓝牙歌词”时，统一规范为：
-        // Title 字段：实时滚动投送动态歌词（或纯音乐占位文案）
-        // Artist 字段：格式固定为 "歌手 / 真实歌名"（如 "polarrana/Full of You (Acoustic Version)"）
-        String mediaId = null;
-        try {
-            mediaId = metadata.getString(MediaMetadata.METADATA_KEY_MEDIA_ID);
-        } catch (Exception ignored) {}
-
-        boolean isPlaceholderOrLyric = false;
-        if (rawTitle != null && !rawTitle.isEmpty()) {
-            String lower = rawTitle.toLowerCase();
-            // 1. 中英文常见占位符、演职员名单关键词
-            if (rawTitle.contains("纯音乐") || rawTitle.contains("请欣赏") || rawTitle.contains("没有填词")
-                    || rawTitle.contains("享受音乐") || rawTitle.contains("作词") || rawTitle.contains("作曲")
-                    || rawTitle.contains("编曲") || rawTitle.contains("制作") || rawTitle.contains("监制")
-                    || rawTitle.contains("混音") || rawTitle.contains("母带") || rawTitle.contains("录音")
-                    || rawTitle.contains("出品") || rawTitle.contains("原唱") || lower.contains("producer")
-                    || lower.contains("composer") || lower.contains("lyricist") || lower.contains("instrumental")) {
-                isPlaceholderOrLyric = true;
-            }
-            // 2. 标点符号特征（整句歌词常带标点，且长度通常不少于12字）
-            else if ((rawTitle.contains("，") || rawTitle.contains("。") || rawTitle.contains("！")
-                    || rawTitle.contains("？") || rawTitle.contains("~") || rawTitle.contains("…")
-                    || rawTitle.contains(",") || rawTitle.contains("!") || rawTitle.contains("?"))
-                    && rawTitle.length() >= 12) {
-                isPlaceholderOrLyric = true;
-            }
-        }
-
-        // 判断当前包是否属于“同一首歌的车载蓝牙动态歌词更新”
-        boolean isCarBluetoothStreamForSameSong = false;
-        if (candidateTitle != null && !candidateTitle.isEmpty() && !mRealTitle.isEmpty()) {
-            if (candidateTitle.equalsIgnoreCase(mRealTitle)
-                    || candidateTitle.contains(mRealTitle)
-                    || mRealTitle.contains(candidateTitle)) {
-                // 当前歌曲未切换，仅手机在动态投送下一句歌词
-                isCarBluetoothStreamForSameSong = true;
-            }
-        }
-
-        boolean isSameSongIdentity = !mRealTitle.isEmpty() && mRealTitle.equalsIgnoreCase(rawTitle)
-                && (mRealArtist.equalsIgnoreCase(rawArtist) || (performers != null && mRealArtist.equalsIgnoreCase(performers)));
-
-        if (isCarBluetoothStreamForSameSong) {
-            // 同一首歌的实时歌词流更新：绝不更换歌名、绝不重新触发线上歌词搜索！
-            if (!rawTitle.contains("纯音乐") && !rawTitle.contains("请欣赏")) {
-                mStreamLyric = rawTitle;
-                Log.i(TAG, "Bluetooth stream lyric updated: [" + mStreamLyric + "]");
-            }
-            if (performers != null && !performers.isEmpty()) {
-                mRealArtist = performers;
-            }
-            if (duration > 0) {
-                mDuration = duration;
-            }
-        } else if (isSameSongIdentity && (((mRealAlbum.isEmpty() && !album.isEmpty())) || (mDuration <= 0 && duration > 0))) {
-            // 元数据补全 (如专辑或时长延迟到达)，更新信息并通知界面，绝不递增代次
-            if (!album.isEmpty()) mRealAlbum = album;
-            if (duration > 0) mDuration = duration;
-            MainActivity act = MainActivity.getInstance();
-            if (act != null) {
-                act.dispatchMetadata(mRealTitle, mRealArtist, mRealAlbum, mDuration, mStreamLyric);
-            }
+        if (snapshot == null) {
+            // Duplicate notification from AVRCP or stale session event:
+            // Do NOT increment generation, do NOT wipe progress, do NOT re-fetch online!
             return;
-        } else {
-            // 新曲目载入
-            mPlaybackGeneration++;
-            final long capturedGen = mPlaybackGeneration;
+        }
 
-            if (candidateTitle != null && !candidateTitle.isEmpty() && performers != null && !performers.isEmpty()) {
-                boolean titleMatchesCandidate = candidateTitle.equalsIgnoreCase(rawTitle);
-                boolean albumConfirmsCandidate = (!album.isEmpty() && (candidateTitle.equalsIgnoreCase(album) || album.toLowerCase().contains(candidateTitle.toLowerCase())) && !rawTitle.equalsIgnoreCase(album));
+        mRealTitle = snapshot.title;
+        mRealArtist = snapshot.artist;
+        mRealAlbum = snapshot.album;
+        mDuration = snapshot.duration;
+        mStreamLyric = snapshot.streamLyric;
+        mPlaybackGeneration = snapshot.playbackGeneration;
 
-                if (titleMatchesCandidate) {
-                    // Artist 中冗余包含了真实歌名（例如 "歌手 / 歌名" 但 Title 已经是真实歌名），清洗 Artist 字段
-                    rawArtist = performers;
-                    mStreamLyric = "";
-                } else if (isPlaceholderOrLyric || albumConfirmsCandidate) {
-                    // Title 是歌词或占位文案，真实歌名在 Artist 的斜杠后
-                    Log.i(TAG, "Restored inverted title from artist: [" + candidateTitle + "] performers=[" + performers + "] streamLyric=[" + rawTitle + "]");
-                    mStreamLyric = rawTitle;
-                    rawTitle = candidateTitle;
-                    rawArtist = performers;
-                } else {
-                    // 纯多艺术家歌曲（如 "fun. / Janelle Monae"），rawTitle 即真实歌名，保留完整多歌手列表
-                    mStreamLyric = "";
-                }
-            } else {
-                // 无斜杠的普通歌曲或视频曲目切换，彻底清空上一首歌的遗留歌词
-                mStreamLyric = "";
+        MainActivity act = MainActivity.getInstance();
+
+        if (snapshot.changeType == MediaStateStore.ChangeType.STREAM_LYRIC) {
+            Log.i(TAG, "Bluetooth stream lyric updated: [" + mStreamLyric + "]");
+            if (act != null) {
+                act.dispatchMetadata(mRealTitle, mRealArtist, mRealAlbum, mDuration, mStreamLyric,
+                        snapshot.playbackGeneration, snapshot.songCacheKey, false);
             }
+            updateFloatingViewContent();
+            return;
+        }
 
-            mUserDismissed = false;
-            mLastRawArtist = rawArtist;
-            mRealTitle = rawTitle;
-            mRealArtist = rawArtist;
-            mRealAlbum = album;
-            mDuration = duration;
-            mCurrentPosition = 0;
-            mLastMediaId = mediaId;
-            Log.i(TAG, "New song loaded (gen " + capturedGen + "): [" + mRealTitle + "] by [" + mRealArtist + "]");
-
-            // Check local album artwork first
-            Bitmap localArt = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
-            if (localArt == null) {
-                localArt = metadata.getBitmap(MediaMetadata.METADATA_KEY_ART);
+        if (snapshot.changeType == MediaStateStore.ChangeType.METADATA_ENRICHMENT) {
+            Log.i(TAG, "Metadata enriched for same track: album=[" + mRealAlbum + "] duration=" + mDuration);
+            if (act != null) {
+                act.dispatchMetadata(mRealTitle, mRealArtist, mRealAlbum, mDuration, mStreamLyric,
+                        snapshot.playbackGeneration, snapshot.songCacheKey, true);
             }
-            boolean hasStream = mStreamLyric != null && !mStreamLyric.trim().isEmpty();
-            if (localArt != null) {
-                mCurrentCoverBitmap = localArt;
-                mGeneratedVinylBitmap = null;
-                updateFloatingViewContent();
-            } else if (hasStream || !MetadataFetcher.isVideoTrack(mRealTitle, mRealArtist, mRealAlbum, mDuration)) {
-                // Fetch online cover for floating vinyl (skip for video tracks)
-                final String key = MetadataFetcher.buildCacheKey(mRealTitle, mRealArtist, mRealAlbum);
-                if (!key.isEmpty() && !key.equals(mLastFetchedCoverKey)) {
-                    mLastFetchedCoverKey = key;
-                    MetadataFetcher.fetch(mRealTitle, mRealArtist, mRealAlbum, mDuration, new MetadataFetcher.Callback() {
-                        @Override
-                        public void onResult(final String coverUrl, final String lyricsLrc, final String lyricSource) {
-                            if (coverUrl != null && !coverUrl.isEmpty()) {
-                                new Thread(new Runnable() {
-                                    @Override
-                                    public void run() {
-                                        try {
-                                            URL url = new URL(coverUrl);
-                                            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                                            conn.setConnectTimeout(4000);
-                                            conn.setReadTimeout(4000);
-                                            InputStream is = conn.getInputStream();
-                                            final Bitmap bmp = BitmapFactory.decodeStream(is);
-                                            is.close();
-                                            if (bmp != null) {
-                                                mHandler.post(new Runnable() {
-                                                    @Override
-                                                    public void run() {
-                                                        if (capturedGen == mPlaybackGeneration) {
-                                                            mCurrentCoverBitmap = bmp;
-                                                            mGeneratedVinylBitmap = null;
-                                                            updateFloatingViewContent();
-                                                        } else {
-                                                            Log.d(TAG, "Discarded stale floating cover for gen " + capturedGen + " (current is " + mPlaybackGeneration + ")");
-                                                        }
+            updateFloatingViewContent();
+            return;
+        }
+
+        // snapshot.changeType == MediaStateStore.ChangeType.NEW_TRACK
+        final long capturedGen = snapshot.playbackGeneration;
+        mUserDismissed = false;
+        mCurrentPosition = 0;
+        mLastMediaId = mediaId;
+        Log.i(TAG, "New song loaded (gen " + capturedGen + "): [" + mRealTitle + "] by [" + mRealArtist + "]");
+
+        // Check local album artwork first
+        Bitmap localArt = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
+        if (localArt == null) {
+            localArt = metadata.getBitmap(MediaMetadata.METADATA_KEY_ART);
+        }
+        boolean hasStream = mStreamLyric != null && !mStreamLyric.trim().isEmpty();
+        if (localArt != null) {
+            mCurrentCoverBitmap = localArt;
+            mGeneratedVinylBitmap = null;
+            updateFloatingViewContent();
+        } else if (hasStream || !MetadataFetcher.isVideoTrack(mRealTitle, mRealArtist, mRealAlbum, mDuration)) {
+            // Fetch online cover for floating vinyl (skip for video tracks)
+            final String key = snapshot.songCacheKey;
+            if (!key.isEmpty() && !key.equals(mLastFetchedCoverKey)) {
+                mLastFetchedCoverKey = key;
+                MetadataFetcher.fetch(mRealTitle, mRealArtist, mRealAlbum, mDuration, new MetadataFetcher.Callback() {
+                    @Override
+                    public void onResult(final String coverUrl, final String lyricsLrc, final String lyricSource) {
+                        if (coverUrl != null && !coverUrl.isEmpty()) {
+                            new Thread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    try {
+                                        URL url = new URL(coverUrl);
+                                        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                                        conn.setConnectTimeout(4000);
+                                        conn.setReadTimeout(4000);
+                                        InputStream is = conn.getInputStream();
+                                        final Bitmap bmp = BitmapFactory.decodeStream(is);
+                                        is.close();
+                                        if (bmp != null) {
+                                            mHandler.post(new Runnable() {
+                                                @Override
+                                                public void run() {
+                                                    if (capturedGen == mPlaybackGeneration) {
+                                                        mCurrentCoverBitmap = bmp;
+                                                        mGeneratedVinylBitmap = null;
+                                                        updateFloatingViewContent();
+                                                    } else {
+                                                        Log.d(TAG, "Discarded stale floating cover for gen " + capturedGen + " (current is " + mPlaybackGeneration + ")");
                                                     }
-                                                });
-                                            }
-                                        } catch (Exception e) {
-                                            Log.w(TAG, "Failed to load floating cover: " + e.getMessage());
+                                                }
+                                            });
                                         }
+                                    } catch (Exception e) {
+                                        Log.w(TAG, "Failed to load floating cover: " + e.getMessage());
                                     }
-                                }).start();
-                            }
+                                }
+                            }).start();
                         }
-                    });
-                }
+                    }
+                });
             }
         }
 
         updateFloatingViewContent();
 
-        MainActivity act = MainActivity.getInstance();
         if (act != null) {
-            act.dispatchMetadata(mRealTitle, mRealArtist, mRealAlbum, mDuration, mStreamLyric);
+            act.dispatchMetadata(mRealTitle, mRealArtist, mRealAlbum, mDuration, mStreamLyric,
+                    snapshot.playbackGeneration, snapshot.songCacheKey, false);
         }
     }
 
     public void syncToActivity(MainActivity activity) {
-        if (!mRealTitle.isEmpty()) {
-            Log.i(TAG, "Syncing current track to MainActivity: " + mRealTitle);
-            activity.dispatchMetadata(mRealTitle, mRealArtist, mRealAlbum, mDuration, mStreamLyric);
+        MediaStateStore.MediaSnapshot snap = MediaStateStore.getInstance().getSnapshot();
+        if (snap != null && snap.hasTrack()) {
+            Log.i(TAG, "Syncing current track to MainActivity from MediaStateStore: " + snap.title);
+            activity.dispatchMetadata(snap.title, snap.artist, snap.album, snap.duration, snap.streamLyric,
+                    snap.playbackGeneration, snap.songCacheKey, false);
+            activity.dispatchPlaybackState(snap.clock.isPlaying, snap.clock.positionMs, snap.clock.speed);
+        } else if (!mRealTitle.isEmpty()) {
+            activity.dispatchMetadata(mRealTitle, mRealArtist, mRealAlbum, mDuration, mStreamLyric,
+                    mPlaybackGeneration, SongIdentity.buildCacheKey(mRealTitle, mRealArtist, mRealAlbum), false);
             activity.dispatchPlaybackState(mIsPlaying, mCurrentPosition, 1.0f);
         }
         activity.dispatchBluetoothStatus(getBluetoothInfo(this));

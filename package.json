@@ -7,7 +7,7 @@
     "doc": "docs"
   },
   "scripts": {
-    "test": "node tests/test_phase1.js && node tests/test_phase2.js"
+    "test": "python tests/run_all.py"
   },
   "repository": {
     "type": "git",

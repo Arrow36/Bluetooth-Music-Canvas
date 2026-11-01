@@ -1,5 +1,6 @@
 *.class
 build/
+bin_tests/
 .gradle/
 local.properties
 .idea/

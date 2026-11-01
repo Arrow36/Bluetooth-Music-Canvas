@@ -385,14 +385,19 @@ public class MainActivity extends Activity {
     }
 
     public void notifyAudioEnergyDetected() {
+        MediaStateStore.MediaSnapshot snap = MediaStateStore.getInstance().getSnapshot();
+        // If an active Bluetooth song is already loaded, do NOT allow TV ambient audio to hijack/overwrite it
+        if (snap != null && snap.hasTrack()) {
+            return;
+        }
         if (!sCachedIsPlaying) {
-            // 蓝牙会话处于暂停或停止，但 TV 扬声器检测到实际音频输出（小红书/短视频/外部流）
+            // 蓝牙会话处于暂停或停止且无有效曲目，TV 扬声器检测到实际音频输出（小红书/短视频/外部流）
             sIsAmbientAudioMode = true;
             sCachedIsPlaying = true;
             dispatchPlaybackState(true, 0, 1.0f);
 
             if (sCachedTitle == null || !sCachedTitle.equals("蓝牙媒体音频")) {
-                dispatchMetadata("蓝牙媒体音频", "视频 / 外部音频", "", 0, "");
+                dispatchMetadata("蓝牙媒体音频", "视频 / 外部音频", "", 0, "", 0, "", false);
                 dispatchOnlineResult(sLastValidMusicCoverUrl, "", "视频模式");
             }
         }
@@ -406,17 +411,19 @@ public class MainActivity extends Activity {
     }
 
     public void dispatchMetadata(final String title, final String artist, final String album, final long duration, final String streamLyric) {
+        MediaStateStore.MediaSnapshot snap = MediaStateStore.getInstance().getSnapshot();
+        long gen = (snap != null && snap.playbackGeneration > 0) ? snap.playbackGeneration : mCurrentPlaybackGeneration;
+        String trackKey = (snap != null && !snap.songCacheKey.isEmpty()) ? snap.songCacheKey : SongIdentity.buildCacheKey(title, artist, album);
+        dispatchMetadata(title, artist, album, duration, streamLyric, gen, trackKey, false);
+    }
+
+    public void dispatchMetadata(final String title, final String artist, final String album,
+                                final long duration, final String streamLyric,
+                                final long generation, final String trackKey, final boolean isEnrichment) {
         if (!"蓝牙媒体音频".equals(title)) {
             sIsAmbientAudioMode = false;
         }
-        final boolean isNewSong = (sCachedTitle == null || !sCachedTitle.equals(title) || sCachedArtist == null || !sCachedArtist.equals(artist));
-        final boolean isEnrichment = !isNewSong && (((sCachedAlbum == null || sCachedAlbum.isEmpty()) && album != null && !album.isEmpty()) || (sCachedDuration <= 0 && duration > 0));
-
-        if (isNewSong) {
-            mCurrentPlaybackGeneration++;
-        }
-        final long generation = mCurrentPlaybackGeneration;
-        final String trackKey = MetadataFetcher.buildCacheKey(title, artist, album);
+        mCurrentPlaybackGeneration = generation;
 
         sCachedTitle = title;
         sCachedArtist = artist;
@@ -452,6 +459,11 @@ public class MainActivity extends Activity {
             }
         });
 
+        // 2. 如果是同一首歌的元数据增量补全，不重新触发网络检索
+        if (isEnrichment) {
+            return;
+        }
+
         // 2. 再分发或检索封面与歌词 (在 mHandler 串行队列中排在 onMetadataChanged 之后)
         if (isVideo) {
             sCachedCoverUrl = sLastValidMusicCoverUrl;
@@ -468,7 +480,7 @@ public class MainActivity extends Activity {
                 sCachedLyrics = cached.lyricsLrc != null ? cached.lyricsLrc : "";
                 sCachedLyricSource = cached.lyricSource != null ? cached.lyricSource : "";
                 dispatchOnlineResult(sCachedCoverUrl, sCachedLyrics, sCachedLyricSource, generation, trackKey, 0, "auto");
-            } else if (isNewSong && !trackKey.isEmpty() && (!trackKey.equals(sLastFetchedKey) || (sCachedCoverUrl.isEmpty() && sCachedLyrics.isEmpty()))) {
+            } else if (!trackKey.isEmpty() && (!trackKey.equals(sLastFetchedKey) || (sCachedCoverUrl.isEmpty() && sCachedLyrics.isEmpty()))) {
                 sLastFetchedKey = trackKey;
                 final long reqId = mRequestIdCounter.incrementAndGet();
                 MetadataFetcher.fetch(title, artist, album, duration, new MetadataFetcher.Callback() {
