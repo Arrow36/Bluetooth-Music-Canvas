@@ -193,20 +193,20 @@
             color: rgba(255, 255, 255, 0.85);
         }
 
-        /* 展开的详情浮层卡片：极简深空磨砂毛玻璃 */
+        /* 展开的详情浮层卡片：与四个角落及音量组件完全相同的磨砂毛玻璃风格 */
         .device-dropdown {
             position: absolute;
             top: calc(100% + 10px);
             left: 0;
             width: 270px;
-            background: rgba(22, 26, 33, 0.92);
+            background: rgba(255, 255, 255, 0.07);
             border: 1px solid rgba(255, 255, 255, 0.14);
             border-radius: 18px;
             padding: 14px 16px;
             box-sizing: border-box;
-            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(24px);
-            -webkit-backdrop-filter: blur(24px);
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             opacity: 0;
             pointer-events: none;
             transform: translateY(-8px) scale(0.96);
@@ -225,7 +225,7 @@
             justify-content: space-between;
             align-items: center;
             padding-bottom: 10px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.10);
             margin-bottom: 10px;
         }
 
@@ -906,18 +906,18 @@
             flex-shrink: 0;
         }
 
-        /* 歌词源二级选择弹层菜单：与设备二级菜单同一设计规范的高级深空磨砂毛玻璃 */
+        /* 歌词源二级选择弹层菜单：与四个角落及音量组件完全相同的磨砂毛玻璃风格 */
         .lyric-source-menu {
             position: fixed;
             right: 36px;
             bottom: 58px;
             width: 216px;
-            background: rgba(22, 26, 33, 0.92);
+            background: rgba(255, 255, 255, 0.07);
             border: 1px solid rgba(255, 255, 255, 0.14);
             border-radius: 18px;
-            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(24px);
-            -webkit-backdrop-filter: blur(24px);
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             z-index: 200;
             padding: 10px;
             box-sizing: border-box;
@@ -937,10 +937,10 @@
         .source-menu-header {
             font-size: 11.5px;
             font-weight: 600;
-            color: rgba(255, 255, 255, 0.45);
+            color: rgba(255, 255, 255, 0.55);
             padding: 2px 6px 9px 6px;
             letter-spacing: 0.8px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.10);
             margin-bottom: 6px;
             display: flex;
             justify-content: space-between;
@@ -970,11 +970,11 @@
         }
 
         .source-menu-item:hover, .source-menu-item:active {
-            background: rgba(255, 255, 255, 0.09);
+            background: rgba(255, 255, 255, 0.10);
         }
 
         .source-menu-item.active {
-            background: rgba(255, 255, 255, 0.13);
+            background: rgba(255, 255, 255, 0.16);
         }
 
         .menu-item-dot {
@@ -992,15 +992,15 @@
         .menu-item-name {
             font-size: 13px;
             font-weight: 500;
-            color: #ffffff;
+            color: rgba(255, 255, 255, 0.90);
             flex: 1;
             letter-spacing: 0.2px;
         }
 
         .menu-item-check {
-            font-size: 13px;
-            font-weight: 700;
-            color: #31c27c;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             opacity: 0;
             transition: opacity 0.15s ease, transform 0.15s ease;
             transform: scale(0.8);
@@ -1444,8 +1444,7 @@
         let activeLyricIndex = -1;
         let currentCoverUrl = "";
         let lyricMode = 'official'; // 'official' | 'bluetooth'
-        let userExplicitMode = null; // 用户手动切换锁定模式
-
+        
         // 歌曲元数据与歌词内存缓存表（避免返回桌面重新点击时重复请求与闪白）
         const songCache = {};
 
@@ -1720,7 +1719,9 @@
             auto: { name: '自动推荐', color: '#f59e0b', label: '自动匹配' }
         };
 
-        let currentActiveSource = 'auto';
+        // 记忆歌词源偏好：切歌时严格保持用户手动选择的来源，不自动回退
+        let currentActiveSource = localStorage.getItem('preferred_lyric_source') || 'auto';
+        let userExplicitMode = (currentActiveSource !== 'auto') ? currentActiveSource : null;
 
         function getSourceMeta(src) {
             if (!src) return SOURCE_META.auto;
@@ -1730,7 +1731,7 @@
             if (s.includes('酷狗') || s.includes('kugou')) return SOURCE_META.kugou;
             if (s.includes('lrclib')) return SOURCE_META.lrclib;
             if (s.includes('蓝牙') || s.includes('bluetooth') || s.includes('stream')) return SOURCE_META.bluetooth;
-            return { name: src, color: '#31c27c', label: src };
+            return { name: src, color: '#31c27c', label: src, id: 'auto' };
         }
 
         function toggleLyricMenu(e) {
@@ -1778,12 +1779,7 @@
             }
         });
 
-        function selectLyricSource(sourceId, e) {
-            if (e && e.stopPropagation) e.stopPropagation();
-            currentActiveSource = sourceId;
-            closeLyricMenu();
-            updateMenuCheckmarks();
-
+        function applyLyricSourceForCurrentTrack(sourceId, isUserTriggered) {
             const trackKey = (currentTrack.title + " - " + currentTrack.artist).toLowerCase().trim();
             if (!songCache[trackKey]) songCache[trackKey] = {};
             const cached = songCache[trackKey];
@@ -1794,7 +1790,7 @@
                 const streamText = currentTrack.streamLyric || (cached && cached.streamLyric) || "当前蓝牙源暂未投送歌词";
                 showStreamLyric(streamText);
                 updateStatusTag(SOURCE_META.bluetooth.label, SOURCE_META.bluetooth.color);
-                showToastTip('已切换至蓝牙实时歌词');
+                if (isUserTriggered) showToastTip('已切换至蓝牙实时歌词');
                 return;
             }
 
@@ -1815,7 +1811,7 @@
                     renderLyrics([]);
                     updateStatusTag('纯音乐 / 暂无歌词', '#888888');
                 }
-                showToastTip('已切换为自动最佳匹配');
+                if (isUserTriggered) showToastTip('已切换为自动推荐');
                 return;
             }
 
@@ -1830,13 +1826,13 @@
                 hasOfficialLyrics = true;
                 renderLyrics(parsedOfficialLyrics);
                 updateStatusTag(meta.label, meta.color);
-                showToastTip('已呈现' + meta.name + '歌词');
+                if (isUserTriggered) showToastTip('已呈现' + meta.name + '歌词');
                 return;
             }
 
             // 2. 否则向原生层发起精准网络检索
             updateStatusTag('检索' + meta.label + '中...', meta.color);
-            showToastTip('正在从' + meta.name + '检索歌词...');
+            if (isUserTriggered) showToastTip('正在从' + meta.name + '检索歌词...');
 
             if (window.AndroidApp && window.AndroidApp.requestLyricSource) {
                 window.AndroidApp.requestLyricSource(
@@ -1846,6 +1842,19 @@
                     currentTrack.album || ""
                 );
             }
+        }
+
+        function selectLyricSource(sourceId, e) {
+            if (e && e.stopPropagation) e.stopPropagation();
+            currentActiveSource = sourceId;
+            userExplicitMode = (sourceId !== 'auto') ? sourceId : null;
+            try {
+                localStorage.setItem('preferred_lyric_source', sourceId);
+            } catch (err) {}
+            closeLyricMenu();
+            updateMenuCheckmarks();
+
+            applyLyricSourceForCurrentTrack(sourceId, true);
         }
 
         // 接收来自 Android 原生层针对特定源的检索结果
@@ -1906,23 +1915,25 @@
                 const parsed = parseLRC(data.lyrics);
                 if (parsed.length > 0) {
                     songCache[trackKey].parsedLyrics = parsed;
-                    parsedOfficialLyrics = parsed;
-                    hasOfficialLyrics = true;
-                    if (userExplicitMode !== 'bluetooth') {
+                    // 仅当用户处于“自动推荐”模式时，才应用全局自动匹配歌词；
+                    // 若用户手动锁定了特定源（如 QQ音乐、网易云等），切歌时绝不被覆盖！
+                    if (currentActiveSource === 'auto') {
+                        parsedOfficialLyrics = parsed;
+                        hasOfficialLyrics = true;
                         lyricMode = 'official';
                         renderLyrics(parsed);
                         const meta = getSourceMeta(data.lyricSource || songCache[trackKey].lyricSource);
-                        currentActiveSource = meta.id;
-                        updateMenuCheckmarks();
                         updateStatusTag(meta.label, meta.color);
+                        return;
                     }
-                    return;
                 }
             }
 
-            if (lyricMode === 'bluetooth' && currentTrack.streamLyric) {
-                showStreamLyric(currentTrack.streamLyric);
-            } else if (!hasOfficialLyrics) {
+            if (currentActiveSource === 'bluetooth') {
+                if (currentTrack.streamLyric) {
+                    showStreamLyric(currentTrack.streamLyric);
+                }
+            } else if (currentActiveSource === 'auto' && !hasOfficialLyrics) {
                 renderLyrics([]);
                 updateStatusTag(currentTrack.streamLyric ? '蓝牙歌词' : '纯音乐 / 暂无歌词', '#888888');
             }
@@ -1962,15 +1973,22 @@
                 hasOfficialLyrics = false;
                 parsedOfficialLyrics = [];
                 activeLyricIndex = -1;
-                userExplicitMode = null;
 
-                // 优先从内存缓存中秒开封面和歌词
+                // 核心：严格保持用户手动选定的歌词源偏好，切歌时不回退为默认
+                updateMenuCheckmarks();
+
                 const cached = songCache[trackKey];
-                if (cached && (cached.coverUrl || cached.parsedLyrics)) {
-                    if (cached.coverUrl) {
-                        setCoverImage(cached.coverUrl);
-                    }
-                    if (cached.parsedLyrics && cached.parsedLyrics.length > 0) {
+                if (cached && cached.coverUrl) {
+                    setCoverImage(cached.coverUrl);
+                }
+
+                if (currentActiveSource !== 'auto') {
+                    // 用户锁定了特定来源（如 QQ音乐 / 网易云音乐 / 酷狗 / 蓝牙实时歌词）
+                    applyLyricSourceForCurrentTrack(currentActiveSource, false);
+                } else {
+                    // 默认自动推荐模式
+                    userExplicitMode = null;
+                    if (cached && cached.parsedLyrics && cached.parsedLyrics.length > 0) {
                         parsedOfficialLyrics = cached.parsedLyrics;
                         hasOfficialLyrics = true;
                         lyricMode = 'official';
@@ -1978,9 +1996,9 @@
                         renderLyrics(parsedOfficialLyrics);
                         const label = getLyricSourceLabel(cached.lyricSource);
                         updateStatusTag(label, '#1db954');
+                    } else {
+                        updateStatusTag('正在匹配歌词与封面...', '#f5a623');
                     }
-                } else {
-                    updateStatusTag('正在匹配歌词与封面...', '#f5a623');
                 }
             }
 
