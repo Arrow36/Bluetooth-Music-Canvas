@@ -534,7 +534,7 @@
         /* 紧凑而富有质感的控制底座 */
         .player-deck {
             width: 100%;
-            max-width: 360px;
+            max-width: 390px;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -554,12 +554,12 @@
         }
 
         .song-title {
-            font-size: 17px;
+            font-size: 22px;
             font-weight: 700;
             color: #ffffff;
-            letter-spacing: 0.2px;
+            letter-spacing: 0.3px;
             text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
-            line-height: 1.36;
+            line-height: 1.32;
             display: -webkit-box;
             -webkit-line-clamp: 4;
             -webkit-box-orient: vertical;
@@ -570,11 +570,11 @@
         }
 
         .song-artist {
-            font-size: 13px;
-            font-weight: 400;
-            color: rgba(255, 255, 255, 0.68);
-            margin-top: 5px;
-            line-height: 1.4;
+            font-size: 15.5px;
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.75);
+            margin-top: 6px;
+            line-height: 1.38;
             display: -webkit-box;
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
@@ -715,10 +715,31 @@
             cursor: grabbing;
         }
 
+        /* 渐变遮罩层：物理置于歌词图层上方 (z-index: 20)，保证拖动歌词边缘时柔顺渐隐，彻底杜绝闪烁 */
+        .lyrics-fade-top, .lyrics-fade-bottom {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            height: 90px;
+            pointer-events: none;
+            z-index: 20;
+        }
+
+        .lyrics-fade-top {
+            top: 0;
+            background: linear-gradient(to bottom, #0b0d10 0%, rgba(11, 13, 16, 0.72) 45%, transparent 100%);
+        }
+
+        .lyrics-fade-bottom {
+            bottom: 0;
+            background: linear-gradient(to top, #0b0d10 0%, rgba(11, 13, 16, 0.72) 45%, transparent 100%);
+        }
+
         .lyrics-stream {
             position: absolute;
             width: 100%;
             top: 40%;
+            z-index: 1;
             /* 平滑跨行缓动曲线：五次减速曲线柔顺回弹 */
             transition: transform 0.85s cubic-bezier(0.22, 1, 0.36, 1);
             text-align: center;
@@ -1431,6 +1452,7 @@
             <!-- 右侧面板：透明渐隐滚动歌词 -->
             <div class="right-panel">
                 <div class="lyrics-viewport" id="lyricsViewport">
+                    <div class="lyrics-fade-top"></div>
                     <div class="empty-lyrics" id="emptyLyrics">
                         <div class="equalizer-wave" id="equalizerWave">
                             <div class="wave-bar"></div>
@@ -1456,6 +1478,7 @@
                             <div class="large-bar" id="lw8"></div>
                         </div>
                     </div>
+                    <div class="lyrics-fade-bottom"></div>
                 </div>
             </div>
         </div>
@@ -1950,10 +1973,14 @@
                     // 2. 在完全隐身状态下无感知直接重定位到当前播放行
                     scrollToLyricIndex(activeLyricIndex, false);
                 }
-                // 3. 强制重排后，优雅淡入当前播放行 (0.38s)
+                // 3. 强制重排并等待渲染树提交，杜绝任何位移跳变闪烁
                 void stream.offsetHeight;
-                stream.style.transition = 'opacity 0.38s cubic-bezier(0, 0, 0.2, 1), transform 0.85s cubic-bezier(0.22, 1, 0.36, 1)';
-                stream.style.opacity = '1';
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        stream.style.transition = 'opacity 0.38s cubic-bezier(0, 0, 0.2, 1), transform 0.85s cubic-bezier(0.22, 1, 0.36, 1)';
+                        stream.style.opacity = '1';
+                    });
+                });
             }, 290);
         }
 
@@ -2015,6 +2042,81 @@
         document.addEventListener('DOMContentLoaded', initLyricsDragGesture);
         setTimeout(initLyricsDragGesture, 200);
 
+        // 智能判断歌词是否为纯音乐占位文案（如“纯音乐，请欣赏”、“没有填词”等）或本身就无歌词
+        function isPureMusicLyric(lrcArray) {
+            if (!lrcArray || lrcArray.length === 0) return true;
+            const placeholderKeywords = [
+                "纯音乐", "请欣赏", "没有填词", "暂无歌词", "享受音乐",
+                "instrumental", "no lyrics", "pure music", "作词 : 纯音乐", "作词:纯音乐", "作词：纯音乐"
+            ];
+            let realLines = 0;
+            for (const item of lrcArray) {
+                const text = (item.text || "").trim().toLowerCase();
+                if (!text) continue;
+                let isPlace = false;
+                for (const kw of placeholderKeywords) {
+                    if (text.includes(kw.toLowerCase())) {
+                        isPlace = true;
+                        break;
+                    }
+                }
+                if (!isPlace) {
+                    realLines++;
+                }
+            }
+            return realLines === 0;
+        }
+
+        // 蓝牙实时歌词与网络拉取官方歌词的二次校对与实时同步校准引擎
+        function crossCheckAndCalibrateLyrics(streamLyric) {
+            if (!streamLyric || !hasOfficialLyrics || !lyrics || lyrics.length === 0) return;
+            // 忽略纯音乐与占位文案
+            if (streamLyric.includes("纯音乐") || streamLyric.includes("请欣赏")) return;
+
+            // 纯净文本标准化（去除标点、符号、空格，统一小写）
+            const sClean = streamLyric.toLowerCase().replace(/[^\w\u4e00-\u9fa5]/g, "");
+            if (sClean.length < 2) return;
+
+            let bestIndex = -1;
+            let bestScore = 0;
+
+            for (let i = 0; i < lyrics.length; i++) {
+                const lClean = (lyrics[i].text || "").toLowerCase().replace(/[^\w\u4e00-\u9fa5]/g, "");
+                if (!lClean) continue;
+
+                if (lClean === sClean) {
+                    bestIndex = i;
+                    bestScore = 1.0;
+                    break;
+                } else if (lClean.includes(sClean) || sClean.includes(lClean)) {
+                    const overlap = Math.min(sClean.length, lClean.length) / Math.max(sClean.length, lClean.length);
+                    if (overlap > bestScore && overlap >= 0.5) {
+                        bestScore = overlap;
+                        bestIndex = i;
+                    }
+                }
+            }
+
+            if (bestIndex >= 0 && bestScore >= 0.6) {
+                // 二次校对成功匹配！手机端当前唱到了第 bestIndex 行
+                // 仅在用户未手动上下拖拽时，以蓝牙广播歌词为真实基准校准时间轴与行定位
+                if (!isManualScrolling && Math.abs(activeLyricIndex - bestIndex) <= 4) {
+                    const targetTime = lyrics[bestIndex].time;
+                    const currentCalculatedTime = lastPositionMs + (isPlaying ? (performance.now() - lastSyncTime) : 0);
+                    // 若时间轴与手机端实际进度产生偏差（> 350ms），以蓝牙实际投送的真实歌词为准精准对齐时钟
+                    if (Math.abs(currentCalculatedTime - targetTime) > 350) {
+                        lastPositionMs = targetTime;
+                        lastSyncTime = performance.now();
+                    }
+                    if (activeLyricIndex !== bestIndex) {
+                        activeLyricIndex = bestIndex;
+                        updateLyricHighlight(activeLyricIndex);
+                        scrollToLyricIndex(activeLyricIndex, true);
+                    }
+                }
+            }
+        }
+
         function renderLyrics(lrcArray) {
             lyrics = lrcArray;
             const stream = document.getElementById('lyricsStream');
@@ -2031,26 +2133,27 @@
                 return;
             }
 
-            if (largeViz) largeViz.style.display = 'none';
+            // 智能识别：无论是“本身就没歌词”，还是歌词内容全部是“纯音乐请欣赏”等占位文案，
+            // 一律自动跳转“律动氛围”（大号 9 频段声波律动），且绝不记忆该临时跳转！
+            // 下一首歌如果有歌词，将无缝自动跳回用户之前选择的歌词来源！
+            const isPureMusic = isPureMusicLyric(lyrics);
 
-            if (!lyrics || lyrics.length === 0) {
+            if (isPureMusic) {
                 hasOfficialLyrics = false;
                 activeLyricIndex = -1;
-                if (currentTrack.streamLyric) {
+                if (currentTrack.streamLyric && !currentTrack.streamLyric.includes("纯音乐") && !currentTrack.streamLyric.includes("请欣赏")) {
                     if (emptyBox) emptyBox.style.display = 'none';
+                    if (largeViz) largeViz.style.display = 'none';
                     if (stream) stream.style.display = 'block';
                     showStreamLyric(currentTrack.streamLyric);
                 } else {
-                    if (emptyBox) {
-                        emptyBox.style.display = 'flex';
-                        emptyBox.style.transition = 'opacity 0.3s ease-in';
-                        emptyBox.style.opacity = '1';
-                        if (emptyText) emptyText.textContent = '纯音乐，请欣赏';
-                    }
+                    // 自动跳转律动氛围（大号 9 频段声波律动），不显示任何文字！
+                    if (emptyBox) emptyBox.style.display = 'none';
                     if (stream) {
                         stream.innerHTML = '';
                         stream.style.display = 'none';
                     }
+                    if (largeViz) largeViz.style.display = 'flex';
                     updateStatusTag('纯音乐', '#888888');
                 }
                 return;
@@ -2059,7 +2162,8 @@
             hasOfficialLyrics = true;
             activeLyricIndex = 0;
 
-            // 1. 提示框平滑淡出并隐藏 (0.25s)
+            // 1. 提示框与大号频谱平滑隐藏
+            if (largeViz) largeViz.style.display = 'none';
             if (emptyBox) {
                 emptyBox.style.transition = 'opacity 0.25s ease-out';
                 emptyBox.style.opacity = '0';
@@ -2353,6 +2457,11 @@
                         renderLyrics(parsed);
                         const meta = getSourceMeta(data.lyricSource || songCache[trackKey].lyricSource);
                         updateStatusTag(meta.label, meta.color);
+
+                        // 蓝牙投送歌词与网上拉取歌词的二次校对
+                        if (currentTrack.streamLyric) {
+                            crossCheckAndCalibrateLyrics(currentTrack.streamLyric);
+                        }
                         return;
                     }
                 }
@@ -2455,6 +2564,9 @@
             }
 
             if (streamLyric) {
+                // 执行蓝牙投送歌词与网上拉取歌词的二次校对
+                crossCheckAndCalibrateLyrics(streamLyric);
+
                 if (userExplicitMode === 'bluetooth' || (!userExplicitMode && !hasOfficialLyrics)) {
                     showStreamLyric(streamLyric);
                 }
