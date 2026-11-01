@@ -54,6 +54,7 @@ public class MediaStateStore {
         public final String streamLyric;
         public final String songCacheKey;
         public final MetadataNormalizer.MetadataFormat format;
+        public final MediaClassifier.ClassificationResult classification;
         public final PlaybackClock clock;
         public final boolean isAmbientAudio;
         public final ChangeType changeType;
@@ -62,6 +63,7 @@ public class MediaStateStore {
                              String title, String artist, String album, long duration,
                              String streamLyric, String songCacheKey,
                              MetadataNormalizer.MetadataFormat format,
+                             MediaClassifier.ClassificationResult classification,
                              PlaybackClock clock, boolean isAmbientAudio,
                              ChangeType changeType) {
             this.sessionEpoch = sessionEpoch;
@@ -74,9 +76,15 @@ public class MediaStateStore {
             this.streamLyric = streamLyric != null ? streamLyric : "";
             this.songCacheKey = songCacheKey != null ? songCacheKey : "";
             this.format = format != null ? format : MetadataNormalizer.MetadataFormat.UNKNOWN;
+            this.classification = classification != null ? classification : new MediaClassifier.ClassificationResult(
+                    MediaClassifier.ContentKind.UNKNOWN, MediaClassifier.EvidenceLevel.NONE, "NONE");
             this.clock = clock != null ? clock : new PlaybackClock(false, 0, System.currentTimeMillis(), 1.0f, false);
             this.isAmbientAudio = isAmbientAudio;
             this.changeType = changeType;
+        }
+
+        public boolean isVideo() {
+            return classification != null && classification.isVideo();
         }
 
         public boolean hasTrack() {
@@ -109,6 +117,8 @@ public class MediaStateStore {
     private String mStreamLyric = "";
     private String mSongCacheKey = "";
     private MetadataNormalizer.MetadataFormat mFormat = MetadataNormalizer.MetadataFormat.UNKNOWN;
+    private MediaClassifier.ClassificationResult mClassification = new MediaClassifier.ClassificationResult(
+            MediaClassifier.ContentKind.UNKNOWN, MediaClassifier.EvidenceLevel.NONE, "INIT");
 
     private PlaybackClock mClock = new PlaybackClock(false, 0, System.currentTimeMillis(), 1.0f, false);
     private boolean mIsAmbientAudio = false;
@@ -153,6 +163,7 @@ public class MediaStateStore {
                 mStreamLyric,
                 mSongCacheKey,
                 mFormat,
+                mClassification,
                 mClock,
                 mIsAmbientAudio,
                 type
@@ -179,6 +190,8 @@ public class MediaStateStore {
         // Retain playback clock paused
         mClock = new PlaybackClock(false, 0, System.currentTimeMillis(), 1.0f, false);
         mIsAmbientAudio = false;
+        mClassification = new MediaClassifier.ClassificationResult(
+                MediaClassifier.ContentKind.UNKNOWN, MediaClassifier.EvidenceLevel.NONE, "SESSION_RESET");
         MediaSnapshot snapshot = buildSnapshot(ChangeType.SESSION_RESET);
         notifyListeners(snapshot);
         return snapshot;
@@ -240,6 +253,7 @@ public class MediaStateStore {
                 if (!normalized.album.isEmpty()) mAlbum = normalized.album;
                 if (normalized.duration > 0) mDuration = normalized.duration;
                 mSongCacheKey = SongIdentity.buildCacheKey(mTitle, mArtist, mAlbum);
+                mClassification = MediaClassifier.classify(mTitle, mArtist, mAlbum, mDuration, mFormat);
                 mSnapshotRevision++;
                 MediaSnapshot snapshot = buildSnapshot(ChangeType.METADATA_ENRICHMENT);
                 notifyListeners(snapshot);
@@ -257,6 +271,7 @@ public class MediaStateStore {
         mStreamLyric = normalized.streamLyric;
         mFormat = normalized.format;
         mSongCacheKey = SongIdentity.buildCacheKey(mTitle, mArtist, mAlbum);
+        mClassification = MediaClassifier.classify(mTitle, mArtist, mAlbum, mDuration, mFormat);
         mIsAmbientAudio = false;
 
         // Reset clock position for new song
@@ -304,6 +319,10 @@ public class MediaStateStore {
     public synchronized MediaSnapshot setAmbientAudioActive(boolean active) {
         if (mIsAmbientAudio == active) return null;
         mIsAmbientAudio = active;
+        if (active) {
+            mClassification = new MediaClassifier.ClassificationResult(
+                    MediaClassifier.ContentKind.VIDEO, MediaClassifier.EvidenceLevel.HEURISTIC, "AMBIENT_AUDIO");
+        }
         mSnapshotRevision++;
         MediaSnapshot snapshot = buildSnapshot(ChangeType.AUDIO_ENERGY);
         notifyListeners(snapshot);

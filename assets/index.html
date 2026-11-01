@@ -2182,76 +2182,6 @@
             return false;
         }
 
-        // 智能识别视频音轨（如 B站、YouTube、抖音、快手等视频应用发出的视频音频）
-        function isVideoTrack(title, artist, album, duration) {
-            if (!title) return false;
-            const t = (title || "").trim();
-            const a = (artist || "").trim().toLowerCase();
-            const alb = (album || "").trim().toLowerCase();
-            const lowerTitle = t.toLowerCase();
-
-            // 1. 明确的视频平台 / UP主特征（最高优先级判定为视频）
-            if (a.includes("bilibili") || a.includes("b站") || a.includes("哔哩哔哩")
-                || a.includes("youtube") || a.includes("douyin") || a.includes("抖音")
-                || a.includes("kuaishou") || a.includes("快手") || a.includes("tiktok")
-                || a.includes("tencent video") || a.includes("iqiyi") || a.includes("youku")
-                || a.includes("up主") || a.includes("官方频道")) {
-                return true;
-            }
-
-            // 2. 强保护：若拥有非空的真实专辑名（且非视频平台名），优先视为正规音乐，绝不误判为视频
-            if (alb && !alb.includes("bilibili") && !alb.includes("youtube")
-                && !alb.includes("douyin") && !alb.includes("tiktok") && !alb.includes("快手") && !alb.includes("小红书")) {
-                if (!/第\s*\d+\s*[集期话回季篇]/.test(t) && !/【(4k|1080p|解说|实况|测评|评测|开箱|自制|熟肉|生肉|合集|日常|vlog|切片|录播|二创|鬼畜|短剧)/i.test(t)) {
-                    return false;
-                }
-            }
-
-            // 3. 强保护：古典音乐与器乐作品特征（绝不误判为视频）
-            if (lowerTitle.includes("sonata") || lowerTitle.includes("奏鸣曲")
-                || lowerTitle.includes("symphony") || lowerTitle.includes("交响")
-                || lowerTitle.includes("concerto") || lowerTitle.includes("协奏")
-                || lowerTitle.includes("nocturne") || lowerTitle.includes("夜曲")
-                || lowerTitle.includes("prelude") || lowerTitle.includes("前奏曲")
-                || lowerTitle.includes("etude") || lowerTitle.includes("练习曲")
-                || lowerTitle.includes("rhapsody") || lowerTitle.includes("狂想曲")
-                || lowerTitle.includes("suite") || lowerTitle.includes("组曲")
-                || lowerTitle.includes("waltz") || lowerTitle.includes("圆舞曲")
-                || lowerTitle.includes("serenade") || lowerTitle.includes("小夜曲")
-                || lowerTitle.includes("op.") || lowerTitle.includes("bwv")
-                || lowerTitle.includes("k.") || lowerTitle.includes("hob.")
-                || lowerTitle.includes("rv ") || lowerTitle.includes("d.")
-                || lowerTitle.includes("乐章") || lowerTitle.includes("andante")
-                || lowerTitle.includes("allegro") || lowerTitle.includes("adagio")) {
-                return false;
-            }
-
-            // 4. 视频特有集数/期数/分集（例如：第2集、第10期、第5话、第3回），严格限定“集期话回季篇”
-            if (/第\s*\d+\s*[集期话回季篇]/.test(t)) return true;
-
-            // 5. 常见视频关键词
-            const videoKeywords = [
-                "vlog", "解说", "实况", "测评", "评测", "开箱", "预告片", "官方预告", "直播回放",
-                "切片", "鬼畜", "短剧", "通关攻略", "游戏实况", "录播", "二创",
-                "reaction", "gameplay", "walkthrough", "speedrun", "trailer", "teaser", "livestream"
-            ];
-            for (const kw of videoKeywords) {
-                if (lowerTitle.includes(kw)) return true;
-            }
-
-            // 6. 视频特有括号标签（如 【4K】、【解说】、【实况】、【测评】、【自制】、【熟肉】、【生肉】）
-            if (/【(4k|1080p|解说|实况|测评|评测|开箱|自制|熟肉|生肉|合集|日常|vlog|切片|录播|二创|鬼畜|短剧)/i.test(t)) return true;
-
-            // 7. 视频长句标题特征：无专辑且长标题带有设问/感叹
-            if (!alb && (t.length >= 22 || !a || a === "未知歌手")) {
-                if (/[？?！!…]/.test(t) || t.includes("如何看待") || t.includes("为什么") || t.includes("一口气看完") || t.includes("大结局")) {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
         // 蓝牙实时歌词与网络拉取官方歌词的双层时间窗口与权威校准引擎
         let isOfficialLyricVerified = false;
         function crossCheckLyrics(streamLyric) {
@@ -2756,7 +2686,7 @@
             const artist = data.artist || "未知歌手";
             const album = data.album || "";
             const streamLyric = data.streamLyric || "";
-            const isVideo = !!(data.isVideo || isVideoTrack(title, artist, album, data.duration));
+            const isVideo = !!data.isVideo;
 
             if (data.isEnrichment) {
                 // 元数据补全（如只补充专辑或时长）：绝不能切歌、绝不能递增代次、绝不能重置时钟与歌词！

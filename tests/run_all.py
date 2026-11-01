@@ -38,22 +38,26 @@ def main():
         "-cp", base_cp,
         str(ROOT / "src" / "com" / "bluetoothmusiccanvas" / "SongIdentity.java"),
         str(ROOT / "src" / "com" / "bluetoothmusiccanvas" / "MetadataNormalizer.java"),
+        str(ROOT / "src" / "com" / "bluetoothmusiccanvas" / "MediaClassifier.java"),
         str(ROOT / "src" / "com" / "bluetoothmusiccanvas" / "MediaStateStore.java"),
         str(ROOT / "tests" / "TestMediaStateStore.java"),
+        str(ROOT / "tests" / "TestStep2CacheAndTickets.java"),
+        str(ROOT / "tests" / "TestMediaClassifier.java"),
         "-d", str(bin_tests)
     ]
     if subprocess.call(javac_cmd) != 0:
         print("[FAIL] Failed to compile Java tests.")
         sys.exit(1)
 
-    java_cmd = [
-        "java", "-ea",
-        "-cp", f"{bin_tests}{cp_sep}tests",
-        "tests.TestMediaStateStore"
-    ]
-    if subprocess.call(java_cmd) != 0:
-        print("[FAIL] Java MediaStateStore tests failed.")
-        sys.exit(1)
+    for test_class in ["tests.TestMediaStateStore", "tests.TestStep2CacheAndTickets", "tests.TestMediaClassifier"]:
+        java_cmd = [
+            "java", "-ea",
+            "-cp", f"{bin_tests}{cp_sep}tests",
+            test_class
+        ]
+        if subprocess.call(java_cmd) != 0:
+            print(f"[FAIL] Java test {test_class} failed.")
+            sys.exit(1)
 
     print("\n==================================================")
     print("ALL TEST SUITES (JS + Java) PASSED SUCCESSFULLY!")

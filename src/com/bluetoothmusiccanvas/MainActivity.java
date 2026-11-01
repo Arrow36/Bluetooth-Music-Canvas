@@ -433,7 +433,12 @@ public class MainActivity extends Activity {
         sCachedDuration = duration;
         sCachedStreamLyric = streamLyric;
 
-        final boolean isVideo = "蓝牙媒体音频".equals(title) || MetadataFetcher.isVideoTrack(title, artist, album, duration);
+        MediaStateStore.MediaSnapshot snap = MediaStateStore.getInstance().getSnapshot();
+        final boolean isVideo = (snap != null && snap.isVideo())
+                || MediaClassifier.classify(title, artist, album, duration, MetadataNormalizer.MetadataFormat.UNKNOWN).isVideo();
+        final String contentKind = (snap != null && snap.classification != null) ? snap.classification.kind.name() : (isVideo ? "VIDEO" : "MUSIC");
+        final String evidenceLevel = (snap != null && snap.classification != null) ? snap.classification.evidenceLevel.name() : "HEURISTIC";
+        final String reasonCode = (snap != null && snap.classification != null) ? snap.classification.reasonCode : "";
 
         if (!mPageLoaded || mWebView == null) return;
         if (isFinishing() || (Build.VERSION.SDK_INT >= 17 && isDestroyed())) return;
@@ -451,6 +456,9 @@ public class MainActivity extends Activity {
                     obj.put("duration", duration);
                     obj.put("streamLyric", streamLyric != null ? streamLyric : "");
                     obj.put("isVideo", isVideo);
+                    obj.put("contentKind", contentKind);
+                    obj.put("evidenceLevel", evidenceLevel);
+                    obj.put("reasonCode", reasonCode);
                     obj.put("generation", generation);
                     obj.put("trackKey", trackKey);
                     obj.put("isEnrichment", isEnrichment);
