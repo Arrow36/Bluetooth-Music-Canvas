@@ -168,13 +168,15 @@ public class MetadataFetcher {
             return true;
         }
 
-        // 2. 强保护：若拥有非空的真实专辑名（且非视频平台名，且不与标题雷同），优先视为正规音乐，绝不误判为视频
-        boolean isDuplicateTitleAlbum = alb.isEmpty() || alb.equalsIgnoreCase(t)
-                || (alb.length() > 5 && (alb.contains(t) || t.contains(alb)));
-        if (!isDuplicateTitleAlbum && !lowerAlbum.contains("bilibili") && !lowerAlbum.contains("youtube")
+        // 2. 强保护：若拥有非空的真实专辑名（且非视频平台名），优先视为正规音乐
+        if (!alb.isEmpty() && !lowerAlbum.contains("bilibili") && !lowerAlbum.contains("youtube")
                 && !lowerAlbum.contains("douyin") && !lowerAlbum.contains("tiktok") && !lowerAlbum.contains("快手")
                 && !lowerAlbum.contains("小红书")) {
-            return false;
+            // 只要不是明确的视频集数或【视频标签】，拥有合法专辑即为正规音乐
+            if (!t.matches(".*第\\s*\\d+\\s*[集期话回季篇].*")
+                    && !t.matches(".*【(4k|1080p|解说|实况|测评|评测|开箱|自制|熟肉|生肉|合集|日常|vlog|切片|录播|二创|鬼畜|短剧).*】.*")) {
+                return false;
+            }
         }
 
         // 3. 强保护：古典音乐、器乐、交响乐等正规音乐作品特征（即便单曲超长，也绝非视频）
@@ -218,17 +220,11 @@ public class MetadataFetcher {
             return true;
         }
 
-        // 7. 典型视频标点与设问/感叹句特征（标题带有疑问、感叹号、技术词或设问短语）
-        if (t.contains("？") || t.contains("?") || t.contains("！") || t.contains("!")
-                || t.contains("如何看待") || t.contains("为什么") || t.contains("一口气看完") || t.contains("大结局")) {
-            if (t.length() >= 12 || isDuplicateTitleAlbum) {
+        // 5. 典型视频设问与标点（标题包含设问短语，且带问号/叹号）
+        if (t.contains("如何看待") || t.contains("为什么") || t.contains("一口气看完") || t.contains("大结局")) {
+            if (t.contains("？") || t.contains("?") || t.contains("！") || t.contains("!")) {
                 return true;
             }
-        }
-
-        // 8. 视频长句标题特征：无明确专辑且长标题 (>= 20 字)
-        if (t.length() >= 20 && isDuplicateTitleAlbum) {
-            return true;
         }
 
         return false;
