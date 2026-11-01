@@ -666,11 +666,12 @@
             fill: #0b0d10;
         }
 
-        /* 右侧面板：歌词大视口 */
+        /* 右侧面板：歌词大视口（完全对称居中） */
         .right-panel {
             width: 56%;
             height: 100%;
-            padding-left: 36px;
+            padding: 0 36px;
+            box-sizing: border-box;
             display: flex;
             flex-direction: column;
             position: relative;
@@ -683,22 +684,28 @@
             height: 100%;
             position: relative;
             overflow: hidden;
-            /* 纯净透明视口，绝无任何黑色遮罩与 GPU 闪烁 */
+            cursor: grab;
+            user-select: none;
+            touch-action: pan-y;
+        }
+
+        .lyrics-viewport:active {
+            cursor: grabbing;
         }
 
         .lyrics-stream {
             position: absolute;
             width: 100%;
             top: 40%;
-            /* 采用苹果级临界阻尼缓动曲线，丝滑推进，绝不回弹抖动 */
-            transition: transform 0.6s cubic-bezier(0.25, 1, 0.5, 1);
-            text-align: left;
+            /* 平滑跨行缓动曲线：五次减速曲线柔顺回弹 */
+            transition: transform 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+            text-align: center;
             will-change: transform;
         }
 
         /* 
            歌词固定行高设计：彻底杜绝动态字体尺寸变化引起的 DOM 布局重排（Reflow）颠簸抖动！
-           高亮放大完全通过 GPU transform: scale 渲染，物理 offsetTop 永恒恒定！
+           完全水平居中对齐，高亮放大通过 transform-origin: center center 从正中心等比放大，平滑对称！
         */
         .lyric-line {
             height: 50px;
@@ -708,7 +715,7 @@
             color: rgba(255, 255, 255, 0.4);
             opacity: 0.15;
             transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.4s cubic-bezier(0.25, 1, 0.5, 1), color 0.4s cubic-bezier(0.25, 1, 0.5, 1);
-            transform-origin: left center;
+            transform-origin: center center;
             white-space: nowrap;
             overflow: visible;
         }
@@ -820,6 +827,49 @@
             transform: scaleY(0.08);
             transition: transform 0.08s cubic-bezier(0.18, 0.89, 0.32, 1.28);
             will-change: transform;
+        }
+
+        /* 律动氛围：大号发烧级全屏声波频谱动画 */
+        .large-visualizer {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 28px;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .large-wave {
+            display: flex;
+            align-items: flex-end;
+            gap: 12px;
+            height: 120px;
+        }
+
+        .large-bar {
+            width: 10px;
+            height: 120px;
+            background: linear-gradient(to top, #ff416c, #ff4b2b, #f5a623);
+            border-radius: 5px;
+            transform-origin: bottom center;
+            transform: scaleY(0.08);
+            box-shadow: 0 0 18px rgba(255, 75, 43, 0.45);
+            transition: transform 0.08s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+            will-change: transform;
+        }
+
+        .large-wave-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.85);
+            letter-spacing: 2.5px;
+            text-align: center;
+            text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
         }
 
         /* 底部全宽栏：左下角音频硬件规格，右下角歌词源切换 */
@@ -1345,6 +1395,21 @@
                         <div class="empty-lyrics-text" id="emptyText">正在检索官方歌词与封面...</div>
                     </div>
                     <div class="lyrics-stream" id="lyricsStream"></div>
+                    <!-- 律动氛围：大号声波频谱动画 -->
+                    <div class="large-visualizer" id="largeVisualizer">
+                        <div class="large-wave" id="largeWave">
+                            <div class="large-bar" id="lw0"></div>
+                            <div class="large-bar" id="lw1"></div>
+                            <div class="large-bar" id="lw2"></div>
+                            <div class="large-bar" id="lw3"></div>
+                            <div class="large-bar" id="lw4"></div>
+                            <div class="large-bar" id="lw5"></div>
+                            <div class="large-bar" id="lw6"></div>
+                            <div class="large-bar" id="lw7"></div>
+                            <div class="large-bar" id="lw8"></div>
+                        </div>
+                        <div class="large-wave-title">声波律动氛围</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1405,6 +1470,11 @@
                     <span class="menu-item-dot" style="background-color: #38bdf8; box-shadow: 0 0 8px #38bdf8;"></span>
                     <span class="menu-item-name">蓝牙实时歌词</span>
                     <span class="menu-item-check" id="check-bluetooth"><svg viewBox="0 0 24 24" width="13" height="13" stroke="#31c27c" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                </button>
+                <button class="source-menu-item" id="menuItem-visualizer" onclick="selectLyricSource('visualizer', event)">
+                    <span class="menu-item-dot" style="background-color: #00f2fe; box-shadow: 0 0 10px #00f2fe;"></span>
+                    <span class="menu-item-name">律动氛围</span>
+                    <span class="menu-item-check" id="check-visualizer"><svg viewBox="0 0 24 24" width="13" height="13" stroke="#31c27c" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
                 </button>
             </div>
         </div>
@@ -1660,34 +1730,169 @@
                     bars[i].style.transform = `scaleY(${realSpectrum[i].toFixed(3)})`;
                 }
             }
+
+            // 驱动大号律动频谱柱形 (9频段插值细腻动态)
+            const lbars = getLargeWaveBars();
+            if (lbars.length >= 9) {
+                const s = realSpectrum;
+                const l9 = [
+                    s[0],
+                    s[0] * 0.6 + s[1] * 0.4,
+                    s[1],
+                    s[1] * 0.5 + s[2] * 0.5,
+                    s[2],
+                    s[2] * 0.5 + s[3] * 0.5,
+                    s[3],
+                    s[3] * 0.4 + s[4] * 0.6,
+                    s[4]
+                ];
+                for (let i = 0; i < 9; i++) {
+                    lbars[i].style.transform = `scaleY(${l9[i].toFixed(3)})`;
+                }
+            }
         };
+
+        // ===== 歌词视口手势上下拖拽滑动与 3 秒柔顺回滚 =====
+        let isManualScrolling = false;
+        let isDraggingLyrics = false;
+        let dragStartY = 0;
+        let dragStartTranslateY = 0;
+        let currentTranslateY = 0;
+        let manualScrollResumeTimer = null;
+
+        function updateLyricHighlight(targetIndex) {
+            const lines = document.querySelectorAll('.lyric-line');
+            for (let idx = 0; idx < lines.length; idx++) {
+                const el = lines[idx];
+                const dist = Math.abs(idx - targetIndex);
+                el.className = 'lyric-line';
+                if (dist === 0) {
+                    el.classList.add('active');
+                } else if (dist <= 4) {
+                    el.classList.add('near', `near-${dist}`);
+                } else {
+                    el.classList.add('far');
+                }
+            }
+        }
+
+        function scrollToLyricIndex(index, animated) {
+            const stream = document.getElementById('lyricsStream');
+            if (!stream) return;
+            const targetEl = document.getElementById(`line-${index}`);
+            if (!targetEl) return;
+            const targetOffset = targetEl.offsetTop;
+            currentTranslateY = -targetOffset;
+            if (animated) {
+                // 五次减速柔顺曲线（Quintic Deceleration）：松手 3 秒后丝滑滚回
+                stream.style.transition = 'transform 0.85s cubic-bezier(0.22, 1, 0.36, 1)';
+            } else {
+                stream.style.transition = 'none';
+            }
+            stream.style.transform = `translateY(-${targetOffset}px)`;
+        }
+
+        function initLyricsDragGesture() {
+            const viewport = document.getElementById('lyricsViewport');
+            const stream = document.getElementById('lyricsStream');
+            if (!viewport || !stream) return;
+
+            viewport.addEventListener('pointerdown', function(e) {
+                if (lyricMode !== 'official' || !hasOfficialLyrics || !lyrics || lyrics.length === 0) return;
+                dragStartY = e.clientY;
+                dragStartTranslateY = currentTranslateY;
+                isDraggingLyrics = false;
+                clearTimeout(manualScrollResumeTimer);
+            });
+
+            viewport.addEventListener('pointermove', function(e) {
+                if (lyricMode !== 'official' || !hasOfficialLyrics || !lyrics || lyrics.length === 0) return;
+                const deltaY = e.clientY - dragStartY;
+                if (!isDraggingLyrics && Math.abs(deltaY) > 5) {
+                    isDraggingLyrics = true;
+                    isManualScrolling = true;
+                    stream.style.transition = 'none';
+                }
+
+                if (isDraggingLyrics) {
+                    let targetY = dragStartTranslateY + deltaY;
+                    const maxOffset = -(lyrics.length - 1) * 50;
+                    // 阻尼弹性边界
+                    if (targetY > 100) targetY = 100 + (targetY - 100) * 0.3;
+                    if (targetY < maxOffset - 100) targetY = maxOffset - 100 + (targetY - (maxOffset - 100)) * 0.3;
+
+                    currentTranslateY = targetY;
+                    stream.style.transform = `translateY(${targetY}px)`;
+
+                    // 动态高亮当前视口中心对齐的歌词行
+                    const previewIndex = Math.max(0, Math.min(lyrics.length - 1, Math.round(-targetY / 50)));
+                    updateLyricHighlight(previewIndex);
+                }
+            });
+
+            const onDragEnd = function(e) {
+                if (!isDraggingLyrics) return;
+                isDraggingLyrics = false;
+                resetIdleTimer();
+
+                // 手松开 3 秒后柔顺地自动滚回当前播放位置
+                clearTimeout(manualScrollResumeTimer);
+                manualScrollResumeTimer = setTimeout(() => {
+                    isManualScrolling = false;
+                    if (activeLyricIndex >= 0) {
+                        updateLyricHighlight(activeLyricIndex);
+                        scrollToLyricIndex(activeLyricIndex, true);
+                    }
+                }, 3000);
+            };
+
+            viewport.addEventListener('pointerup', onDragEnd);
+            viewport.addEventListener('pointercancel', onDragEnd);
+        }
+        document.addEventListener('DOMContentLoaded', initLyricsDragGesture);
+        setTimeout(initLyricsDragGesture, 200);
 
         function renderLyrics(lrcArray) {
             lyrics = lrcArray;
             const stream = document.getElementById('lyricsStream');
             const emptyBox = document.getElementById('emptyLyrics');
             const emptyText = document.getElementById('emptyText');
+            const largeViz = document.getElementById('largeVisualizer');
             stream.innerHTML = '';
             activeLyricIndex = -1;
+            isManualScrolling = false;
+            clearTimeout(manualScrollResumeTimer);
+
+            if (currentActiveSource === 'visualizer') {
+                if (stream) stream.style.display = 'none';
+                if (emptyBox) emptyBox.style.display = 'none';
+                if (largeViz) largeViz.style.display = 'flex';
+                return;
+            }
+
+            if (largeViz) largeViz.style.display = 'none';
 
             if (!lyrics || lyrics.length === 0) {
                 hasOfficialLyrics = false;
                 if (currentTrack.streamLyric) {
                     if (emptyBox) emptyBox.style.display = 'none';
+                    if (stream) stream.style.display = 'block';
                     showStreamLyric(currentTrack.streamLyric);
                 } else {
                     if (emptyBox) {
                         emptyBox.style.display = 'flex';
                         if (emptyText) emptyText.textContent = '纯音乐，请欣赏';
                     }
-                    stream.innerHTML = '';
+                    if (stream) stream.innerHTML = '';
                     updateStatusTag('纯音乐', '#888888');
                 }
                 return;
             }
 
-            if (emptyBox) emptyBox.style.display = 'none';
             hasOfficialLyrics = true;
+            if (emptyBox) emptyBox.style.display = 'none';
+            if (stream) stream.style.display = 'block';
+
             lyrics.forEach((item, index) => {
                 const div = document.createElement('div');
                 div.className = 'lyric-line' + (index === 0 ? ' active' : (index <= 4 ? ` near near-${index}` : ' far'));
@@ -1695,6 +1900,7 @@
                 div.textContent = item.text;
                 stream.appendChild(div);
             });
+            scrollToLyricIndex(0, false);
         }
 
         function showStreamLyric(text) {
@@ -1709,14 +1915,15 @@
             updateStatusTag('蓝牙实时歌词', '#4a90e2');
         }
 
-        // 歌词源代表色与信息字典
+        // 歌词源代表色与信息字典（新增律动氛围选项）
         const SOURCE_META = {
-            netease: { name: '网易云音乐', color: '#ff3a3a', label: '网易云音乐' },
-            qq: { name: 'QQ音乐', color: '#31c27c', label: 'QQ音乐' },
-            kugou: { name: '酷狗音乐', color: '#0084ff', label: '酷狗音乐' },
-            lrclib: { name: 'LRCLIB 全球库', color: '#a855f7', label: 'LRCLIB' },
-            bluetooth: { name: '蓝牙实时歌词', color: '#38bdf8', label: '蓝牙实时歌词' },
-            auto: { name: '自动推荐', color: '#f59e0b', label: '自动匹配' }
+            netease: { name: '网易云音乐', color: '#ff3a3a', label: '网易云音乐', id: 'netease' },
+            qq: { name: 'QQ音乐', color: '#31c27c', label: 'QQ音乐', id: 'qq' },
+            kugou: { name: '酷狗音乐', color: '#0084ff', label: '酷狗音乐', id: 'kugou' },
+            lrclib: { name: 'LRCLIB 全球库', color: '#a855f7', label: 'LRCLIB', id: 'lrclib' },
+            bluetooth: { name: '蓝牙实时歌词', color: '#38bdf8', label: '蓝牙实时歌词', id: 'bluetooth' },
+            visualizer: { name: '律动氛围', color: '#00f2fe', label: '律动氛围', id: 'visualizer' },
+            auto: { name: '自动推荐', color: '#f59e0b', label: '自动匹配', id: 'auto' }
         };
 
         // 记忆歌词源偏好：切歌时严格保持用户手动选择的来源，不自动回退
@@ -1730,6 +1937,7 @@
             if (s.includes('qq') || s.includes('tencent')) return SOURCE_META.qq;
             if (s.includes('酷狗') || s.includes('kugou')) return SOURCE_META.kugou;
             if (s.includes('lrclib')) return SOURCE_META.lrclib;
+            if (s.includes('律动') || s.includes('visualizer') || s.includes('氛围')) return SOURCE_META.visualizer;
             if (s.includes('蓝牙') || s.includes('bluetooth') || s.includes('stream')) return SOURCE_META.bluetooth;
             return { name: src, color: '#31c27c', label: src, id: 'auto' };
         }
@@ -1755,7 +1963,7 @@
         }
 
         function updateMenuCheckmarks() {
-            const keys = ['auto', 'netease', 'qq', 'kugou', 'lrclib', 'bluetooth'];
+            const keys = ['auto', 'netease', 'qq', 'kugou', 'lrclib', 'bluetooth', 'visualizer'];
             keys.forEach(k => {
                 const item = document.getElementById('menuItem-' + k);
                 if (item) {
@@ -1779,21 +1987,53 @@
             }
         });
 
+        // 获取大号律动频谱条
+        let largeWaveBars = [];
+        function getLargeWaveBars() {
+            if (largeWaveBars.length === 0) {
+                const container = document.getElementById('largeWave');
+                if (container) {
+                    largeWaveBars = Array.from(container.getElementsByClassName('large-bar'));
+                }
+            }
+            return largeWaveBars;
+        }
+
         function applyLyricSourceForCurrentTrack(sourceId, isUserTriggered) {
             const trackKey = (currentTrack.title + " - " + currentTrack.artist).toLowerCase().trim();
             if (!songCache[trackKey]) songCache[trackKey] = {};
             const cached = songCache[trackKey];
 
+            const largeViz = document.getElementById('largeVisualizer');
+            const stream = document.getElementById('lyricsStream');
+            const emptyBox = document.getElementById('emptyLyrics');
+
+            // 模式 1：律动氛围（大号频谱波形动画）
+            if (sourceId === 'visualizer') {
+                lyricMode = 'visualizer';
+                userExplicitMode = 'visualizer';
+                if (stream) stream.style.display = 'none';
+                if (emptyBox) emptyBox.style.display = 'none';
+                if (largeViz) largeViz.style.display = 'flex';
+                updateStatusTag(SOURCE_META.visualizer.label, SOURCE_META.visualizer.color);
+                return;
+            }
+
+            // 非律动氛围：隐藏大号频谱，恢复歌词视口
+            if (largeViz) largeViz.style.display = 'none';
+            if (stream) stream.style.display = 'block';
+
+            // 模式 2：蓝牙实时歌词
             if (sourceId === 'bluetooth') {
                 lyricMode = 'bluetooth';
                 userExplicitMode = 'bluetooth';
                 const streamText = currentTrack.streamLyric || (cached && cached.streamLyric) || "当前蓝牙源暂未投送歌词";
                 showStreamLyric(streamText);
                 updateStatusTag(SOURCE_META.bluetooth.label, SOURCE_META.bluetooth.color);
-                if (isUserTriggered) showToastTip('已切换至蓝牙实时歌词');
                 return;
             }
 
+            // 模式 3：自动推荐最佳匹配
             if (sourceId === 'auto') {
                 userExplicitMode = null;
                 if (cached.parsedLyrics && cached.parsedLyrics.length > 0) {
@@ -1811,28 +2051,25 @@
                     renderLyrics([]);
                     updateStatusTag('纯音乐 / 暂无歌词', '#888888');
                 }
-                if (isUserTriggered) showToastTip('已切换为自动推荐');
                 return;
             }
 
-            // 用户手动点选特定源 (netease / qq / kugou / lrclib)
+            // 模式 4：用户手动指定外部歌词源 (netease / qq / kugou / lrclib)
             lyricMode = 'official';
             userExplicitMode = sourceId;
             const meta = SOURCE_META[sourceId] || SOURCE_META.auto;
 
-            // 1. 若当前歌曲已缓存过此源的歌词，立即呈现
+            // 若当前歌曲已缓存过此源的歌词，立即呈现
             if (cached[sourceId + '_lyrics']) {
                 parsedOfficialLyrics = cached[sourceId + '_lyrics'];
                 hasOfficialLyrics = true;
                 renderLyrics(parsedOfficialLyrics);
                 updateStatusTag(meta.label, meta.color);
-                if (isUserTriggered) showToastTip('已呈现' + meta.name + '歌词');
                 return;
             }
 
-            // 2. 否则向原生层发起精准网络检索
+            // 否则向原生层发起精准网络检索（静默更新右下角胶囊，不再弹出居中 Toast）
             updateStatusTag('检索' + meta.label + '中...', meta.color);
-            if (isUserTriggered) showToastTip('正在从' + meta.name + '检索歌词...');
 
             if (window.AndroidApp && window.AndroidApp.requestLyricSource) {
                 window.AndroidApp.requestLyricSource(
@@ -1857,7 +2094,7 @@
             applyLyricSourceForCurrentTrack(sourceId, true);
         }
 
-        // 接收来自 Android 原生层针对特定源的检索结果
+        // 接收来自 Android 原生层针对特定源的检索结果（完全静默化，不弹居中窗）
         window.onSpecificLyricResult = function(data) {
             if (!data) return;
             const source = data.source;
@@ -1877,7 +2114,6 @@
                         hasOfficialLyrics = true;
                         renderLyrics(parsed);
                         updateStatusTag(meta.label, meta.color);
-                        showToastTip('已成功匹配' + meta.name + '歌词');
                     }
                     return;
                 }
@@ -1885,7 +2121,6 @@
 
             // 未找到该源歌词
             if (userExplicitMode === source) {
-                showToastTip(meta.name + '暂无该歌曲歌词');
                 if (currentTrack.streamLyric) {
                     showStreamLyric(currentTrack.streamLyric);
                     updateStatusTag('蓝牙歌词 (原源无词)', SOURCE_META.bluetooth.color);
@@ -2084,26 +2319,9 @@
 
                 if (targetIndex !== activeLyricIndex && targetIndex >= 0) {
                     activeLyricIndex = targetIndex;
-                    const lines = document.querySelectorAll('.lyric-line');
-                    for (let idx = 0; idx < lines.length; idx++) {
-                        const el = lines[idx];
-                        const dist = Math.abs(idx - targetIndex);
-                        el.className = 'lyric-line';
-                        if (dist === 0) {
-                            el.classList.add('active');
-                        } else if (dist <= 4) {
-                            el.classList.add('near', `near-${dist}`);
-                        } else {
-                            el.classList.add('far');
-                        }
-                    }
-
-                    const targetEl = document.getElementById(`line-${targetIndex}`);
-                    if (targetEl) {
-                        const stream = document.getElementById('lyricsStream');
-                        // 固定行高，无任何布局重排抖动
-                        const offset = targetEl.offsetTop;
-                        stream.style.transform = `translateY(-${offset}px)`;
+                    if (!isManualScrolling) {
+                        updateLyricHighlight(activeLyricIndex);
+                        scrollToLyricIndex(activeLyricIndex, true);
                     }
                 }
             }
@@ -2251,14 +2469,31 @@
             closeBtn.addEventListener('mouseup', cancelClosePress);
         }
 
-        // ===== 沉浸模式：6秒无操作自动渐隐，支持单击空白处手动切换 =====
+        // ===== 二级菜单全局辅助函数 =====
+        function isAnySecondaryMenuOpen() {
+            const dropdown = document.getElementById('deviceDropdown');
+            const lyricMenu = document.getElementById('lyricSourceMenu');
+            return !!((dropdown && dropdown.classList.contains('show')) || (lyricMenu && lyricMenu.classList.contains('show')));
+        }
+
+        function closeAllSecondaryMenus() {
+            const dropdown = document.getElementById('deviceDropdown');
+            const pill = document.getElementById('devicePill');
+            if (dropdown) dropdown.classList.remove('show');
+            if (pill) pill.classList.remove('active');
+
+            const lyricMenu = document.getElementById('lyricSourceMenu');
+            if (lyricMenu) lyricMenu.classList.remove('show');
+        }
+
+        // ===== 沉浸模式：6秒（二级菜单展开时15秒）无操作自动渐隐，支持单击屏幕任意空白处手动隐藏/唤醒 =====
         const IDLE_TIMEOUT_MS = 6000;
+        const MENU_IDLE_TIMEOUT_MS = 15000;
         let idleTimer = null;
 
         function setIdleState(isIdle) {
             if (isIdle) {
-                const dropdown = document.getElementById('deviceDropdown');
-                if (dropdown && dropdown.classList.contains('show')) return;
+                closeAllSecondaryMenus();
                 document.body.classList.add('idle');
                 clearTimeout(idleTimer);
                 if (window.AndroidApp && window.AndroidApp.onIdleStateChanged) {
@@ -2278,9 +2513,10 @@
 
         function resetIdleTimer() {
             clearTimeout(idleTimer);
+            const timeout = isAnySecondaryMenuOpen() ? MENU_IDLE_TIMEOUT_MS : IDLE_TIMEOUT_MS;
             idleTimer = setTimeout(function() {
                 setIdleState(true);
-            }, IDLE_TIMEOUT_MS);
+            }, timeout);
         }
 
         // 单击屏幕手动激活淡出 / 唤醒
@@ -2299,10 +2535,9 @@
 
         function handleTapEnd(x, y, target) {
             const now = performance.now();
-            if (now - lastTapHandledTime < 400) {
-                return; // 过滤 pointerup 与 touchend 重复事件
+            if (now - lastTapHandledTime < 500) {
+                return; // 过滤 500ms 内重复合成事件（pointerup, touchend）
             }
-            lastTapHandledTime = now;
 
             const elapsed = now - tapDownTime;
             const dist = Math.hypot(x - tapDownX, y - tapDownY);
@@ -2310,17 +2545,11 @@
 
             if (isTapCandidate && elapsed < 500 && dist < 20) {
                 isTapCandidate = false;
+                lastTapHandledTime = now;
                 if (!isInteractive) {
-                    // 点击空白处 / 歌词 / 唱片区域
                     if (document.body.classList.contains('idle')) {
-                        // 处于沉浸隐藏态时，点击屏幕唤醒控件（二级菜单保持收起，需重新点击）
                         setIdleState(false);
-                    } else if (isAnySecondaryMenuOpen()) {
-                        // 二级菜单展开时，点击空白处收起菜单，保持控件可见
-                        closeAllSecondaryMenus();
-                        resetIdleTimer();
                     } else {
-                        // 正常显示控件时，点击空白处立即进入沉浸模式
                         setIdleState(true);
                     }
                     return;
@@ -2328,6 +2557,7 @@
             }
 
             // 点击或交互了具体控件
+            lastTapHandledTime = now;
             if (document.body.classList.contains('idle')) {
                 setIdleState(false);
             } else {
@@ -2369,6 +2599,21 @@
                 handleTapEnd(e.changedTouches[0].clientX, e.changedTouches[0].clientY, e.target);
             }
         }, { passive: true });
+
+        // 点击屏幕空白处保底事件（兼容各种输入设备与电视遥控器）
+        document.addEventListener('click', function(e) {
+            const isInteractive = e.target && e.target.closest && !!e.target.closest('button, .btn-ctrl, .vol-btn, .volume-widget, .source-tag, .device-pill, .device-dropdown, .lyric-source-menu, #closeBtn');
+            if (!isInteractive) {
+                const now = performance.now();
+                if (now - lastTapHandledTime < 600) return; // 过滤 300ms 移动端合成点击
+                lastTapHandledTime = now;
+                if (document.body.classList.contains('idle')) {
+                    setIdleState(false);
+                } else {
+                    setIdleState(true);
+                }
+            }
+        });
 
         resetIdleTimer();
 
