@@ -7,11 +7,10 @@
 > **极简、高颜值的 Android 蓝牙音频大屏看板 & 桌面黑胶悬浮球**  
 > 手机蓝牙连上大屏设备放歌，电视 / 车机 / 智慧屏秒变现代拟物黑胶唱机与全屏流光歌词幕布。
 
-[![Platform](https://img.shields.io/badge/Platform-Android%205.0%2B%20(API%2021~34)-brightgreen.svg)](https://developer.android.com)
-[![Architecture](https://img.shields.io/badge/Arch-Universal%20(armeabi--v7a%20%7C%20arm64--v8a%20%7C%20x86)-blue.svg)]()
+[![Platform](https://img.shields.io/badge/Platform-Android%205.0%2B%20(API%2021%2B)-brightgreen.svg)](https://developer.android.com)
+[![Architecture](https://img.shields.io/badge/Arch-Universal-blue.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-orange.svg)](LICENSE)
-[![APK Size](https://img.shields.io/badge/APK%20Size-~460%20KB-success.svg)](BluetoothMusicCanvas.apk)
-[![Tests](https://img.shields.io/badge/Tests-63%2F63%20Passing-brightgreen.svg)]()
+[![APK Size](https://img.shields.io/badge/APK%20Size-~450%20KB-success.svg)](BluetoothMusicCanvas.apk)
 
 </div>
 
@@ -57,7 +56,7 @@
 ### 🚀 7. 极度轻量、低配流畅模式与高能效
 - **低配流畅模式（Performance Mode）**：在左上角设备详情中提供一键流畅开关，针对老旧电视盒/车机芯片禁用高消耗的 `backdrop-filter` 磨砂毛玻璃，大幅降低 GPU 图层合成开销。
 - **50 首 LRU 缓存与网络合并**：内置 50 首容量上限的 LRU 内存缓存与飞行中相同网络请求合并（In-Flight Deduplication），切歌不卡顿、无内存泄漏。
-- **纯原生无重型依赖**：全包体积仅 **~460KB**，兼容 **Android 5.0 (API 21) 至 Android 14**，内置 v1+v2 签名确保老用户平滑覆盖升级。
+- **纯原生无重型依赖**：全包体积仅 **~450KB**，基于 Android API 21+ 构建（Target API 28，针对电视大屏与车载设备深度调优），采用标准 v1 签名确保在老旧盒子与各类 Android 终端上平滑安装。
 
 ---
 
