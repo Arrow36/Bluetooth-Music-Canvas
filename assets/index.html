@@ -715,31 +715,10 @@
             cursor: grabbing;
         }
 
-        /* 渐变遮罩层：物理置于歌词图层上方 (z-index: 20)，保证拖动歌词边缘时柔顺渐隐，彻底杜绝闪烁 */
-        .lyrics-fade-top, .lyrics-fade-bottom {
-            position: absolute;
-            left: 0;
-            width: 100%;
-            height: 90px;
-            pointer-events: none;
-            z-index: 20;
-        }
-
-        .lyrics-fade-top {
-            top: 0;
-            background: linear-gradient(to bottom, #0b0d10 0%, rgba(11, 13, 16, 0.72) 45%, transparent 100%);
-        }
-
-        .lyrics-fade-bottom {
-            bottom: 0;
-            background: linear-gradient(to top, #0b0d10 0%, rgba(11, 13, 16, 0.72) 45%, transparent 100%);
-        }
-
         .lyrics-stream {
             position: absolute;
             width: 100%;
             top: 40%;
-            z-index: 1;
             /* 平滑跨行缓动曲线：五次减速曲线柔顺回弹 */
             transition: transform 0.85s cubic-bezier(0.22, 1, 0.36, 1);
             text-align: center;
@@ -797,9 +776,11 @@
         }
 
         .lyric-line.far {
-            opacity: 0;
+            opacity: 0 !important;
+            visibility: hidden !important;
             pointer-events: none;
             transform: scale(0.94);
+            transition: none !important;
         }
 
         /* 蓝牙实时单行车载歌词视口：纯净大字无晕光 */
@@ -1452,7 +1433,6 @@
             <!-- 右侧面板：透明渐隐滚动歌词 -->
             <div class="right-panel">
                 <div class="lyrics-viewport" id="lyricsViewport">
-                    <div class="lyrics-fade-top"></div>
                     <div class="empty-lyrics" id="emptyLyrics">
                         <div class="equalizer-wave" id="equalizerWave">
                             <div class="wave-bar"></div>
@@ -1478,7 +1458,6 @@
                             <div class="large-bar" id="lw8"></div>
                         </div>
                     </div>
-                    <div class="lyrics-fade-bottom"></div>
                 </div>
             </div>
         </div>
@@ -1923,19 +1902,25 @@
         let currentTranslateY = 0;
         let manualScrollResumeTimer = null;
 
-        function updateLyricHighlight(targetIndex) {
+        function updateLyricHighlight(targetIndex, instant) {
             const lines = document.querySelectorAll('.lyric-line');
             for (let idx = 0; idx < lines.length; idx++) {
                 const el = lines[idx];
                 const dist = Math.abs(idx - targetIndex);
-                el.className = 'lyric-line';
-                if (dist === 0) {
-                    el.classList.add('active');
-                } else if (dist <= 4) {
-                    el.classList.add('near', `near-${dist}`);
-                } else {
-                    el.classList.add('far');
+                if (instant) {
+                    el.style.transition = 'none';
+                } else if (el.style.transition) {
+                    el.style.transition = '';
                 }
+                let newClass = 'lyric-line';
+                if (dist === 0) {
+                    newClass += ' active';
+                } else if (dist <= 4) {
+                    newClass += ` near near-${dist}`;
+                } else {
+                    newClass += ' far';
+                }
+                el.className = newClass;
             }
         }
 
@@ -1967,17 +1952,18 @@
             stream.style.opacity = '0';
 
             setTimeout(() => {
-                isManualScrolling = false;
                 if (activeLyricIndex >= 0) {
-                    updateLyricHighlight(activeLyricIndex);
                     // 2. 在完全隐身状态下无感知直接重定位到当前播放行
+                    // instant=true 保证非激活远端行立即变成 visibility: hidden / opacity: 0，无任何 0.4s 滞后残影！
+                    updateLyricHighlight(activeLyricIndex, true);
                     scrollToLyricIndex(activeLyricIndex, false);
                 }
-                // 3. 强制重排并等待渲染树提交，杜绝任何位移跳变闪烁
+                // 3. 强制重排并等待渲染树完成帧提交后，再淡入当前播放行 (0.35s)
                 void stream.offsetHeight;
                 requestAnimationFrame(() => {
                     requestAnimationFrame(() => {
-                        stream.style.transition = 'opacity 0.38s cubic-bezier(0, 0, 0.2, 1), transform 0.85s cubic-bezier(0.22, 1, 0.36, 1)';
+                        isManualScrolling = false;
+                        stream.style.transition = 'opacity 0.35s cubic-bezier(0, 0, 0.2, 1), transform 0.85s cubic-bezier(0.22, 1, 0.36, 1)';
                         stream.style.opacity = '1';
                     });
                 });
@@ -2067,8 +2053,9 @@
             return realLines === 0;
         }
 
-        // 蓝牙实时歌词与网络拉取官方歌词的二次校对与实时同步校准引擎
-        function crossCheckAndCalibrateLyrics(streamLyric) {
+        // 蓝牙实时歌词与网络拉取官方歌词的二次校对验证（仅用于比对校验准确度，绝不干扰时间轴与播放行）
+        let isOfficialLyricVerified = false;
+        function crossCheckLyrics(streamLyric) {
             if (!streamLyric || !hasOfficialLyrics || !lyrics || lyrics.length === 0) return;
             // 忽略纯音乐与占位文案
             if (streamLyric.includes("纯音乐") || streamLyric.includes("请欣赏")) return;
@@ -2077,42 +2064,13 @@
             const sClean = streamLyric.toLowerCase().replace(/[^\w\u4e00-\u9fa5]/g, "");
             if (sClean.length < 2) return;
 
-            let bestIndex = -1;
-            let bestScore = 0;
-
             for (let i = 0; i < lyrics.length; i++) {
                 const lClean = (lyrics[i].text || "").toLowerCase().replace(/[^\w\u4e00-\u9fa5]/g, "");
                 if (!lClean) continue;
 
-                if (lClean === sClean) {
-                    bestIndex = i;
-                    bestScore = 1.0;
+                if (lClean.includes(sClean) || sClean.includes(lClean)) {
+                    isOfficialLyricVerified = true;
                     break;
-                } else if (lClean.includes(sClean) || sClean.includes(lClean)) {
-                    const overlap = Math.min(sClean.length, lClean.length) / Math.max(sClean.length, lClean.length);
-                    if (overlap > bestScore && overlap >= 0.5) {
-                        bestScore = overlap;
-                        bestIndex = i;
-                    }
-                }
-            }
-
-            if (bestIndex >= 0 && bestScore >= 0.6) {
-                // 二次校对成功匹配！手机端当前唱到了第 bestIndex 行
-                // 仅在用户未手动上下拖拽时，以蓝牙广播歌词为真实基准校准时间轴与行定位
-                if (!isManualScrolling && Math.abs(activeLyricIndex - bestIndex) <= 4) {
-                    const targetTime = lyrics[bestIndex].time;
-                    const currentCalculatedTime = lastPositionMs + (isPlaying ? (performance.now() - lastSyncTime) : 0);
-                    // 若时间轴与手机端实际进度产生偏差（> 350ms），以蓝牙实际投送的真实歌词为准精准对齐时钟
-                    if (Math.abs(currentCalculatedTime - targetTime) > 350) {
-                        lastPositionMs = targetTime;
-                        lastSyncTime = performance.now();
-                    }
-                    if (activeLyricIndex !== bestIndex) {
-                        activeLyricIndex = bestIndex;
-                        updateLyricHighlight(activeLyricIndex);
-                        scrollToLyricIndex(activeLyricIndex, true);
-                    }
                 }
             }
         }
@@ -2460,7 +2418,7 @@
 
                         // 蓝牙投送歌词与网上拉取歌词的二次校对
                         if (currentTrack.streamLyric) {
-                            crossCheckAndCalibrateLyrics(currentTrack.streamLyric);
+                            crossCheckLyrics(currentTrack.streamLyric);
                         }
                         return;
                     }
@@ -2564,8 +2522,8 @@
             }
 
             if (streamLyric) {
-                // 执行蓝牙投送歌词与网上拉取歌词的二次校对
-                crossCheckAndCalibrateLyrics(streamLyric);
+                // 蓝牙投送歌词与网上拉取歌词二次校验
+                crossCheckLyrics(streamLyric);
 
                 if (userExplicitMode === 'bluetooth' || (!userExplicitMode && !hasOfficialLyrics)) {
                     showStreamLyric(streamLyric);
