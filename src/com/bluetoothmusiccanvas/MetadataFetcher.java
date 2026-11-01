@@ -108,13 +108,17 @@ public class MetadataFetcher {
                 || lowerArtist.contains("youtube") || lowerArtist.contains("douyin") || lowerArtist.contains("抖音")
                 || lowerArtist.contains("kuaishou") || lowerArtist.contains("快手") || lowerArtist.contains("tiktok")
                 || lowerArtist.contains("tencent video") || lowerArtist.contains("iqiyi") || lowerArtist.contains("youku")
-                || lowerArtist.contains("up主") || lowerArtist.contains("官方频道")) {
+                || lowerArtist.contains("up主") || lowerArtist.contains("官方频道")
+                || lowerArtist.endsWith("diy") || lowerArtist.contains("工作室") || lowerArtist.contains("实验室")) {
             return true;
         }
 
-        // 2. 强保护：若拥有非空的真实专辑名（且非视频平台名），优先视为正规音乐，绝不误判为视频
-        if (!alb.isEmpty() && !lowerAlbum.contains("bilibili") && !lowerAlbum.contains("youtube")
-                && !lowerAlbum.contains("douyin") && !lowerAlbum.contains("tiktok") && !lowerAlbum.contains("快手")) {
+        // 2. 强保护：若拥有非空的真实专辑名（且非视频平台名，且不与标题雷同），优先视为正规音乐，绝不误判为视频
+        boolean isDuplicateTitleAlbum = alb.isEmpty() || alb.equalsIgnoreCase(t)
+                || (alb.length() > 5 && (alb.contains(t) || t.contains(alb)));
+        if (!isDuplicateTitleAlbum && !lowerAlbum.contains("bilibili") && !lowerAlbum.contains("youtube")
+                && !lowerAlbum.contains("douyin") && !lowerAlbum.contains("tiktok") && !lowerAlbum.contains("快手")
+                && !lowerAlbum.contains("小红书")) {
             return false;
         }
 
@@ -145,7 +149,7 @@ public class MetadataFetcher {
         // 5. 常见强视频特征词（游戏解说、开箱测评、预告片、直播录播、二创切片等）
         String[] videoKeywords = {
             "vlog", "解说", "实况", "测评", "评测", "开箱", "预告片", "官方预告", "直播回放",
-            "切片", "鬼畜", "短剧", "通关攻略", "游戏实况", "录播", "二创",
+            "切片", "鬼畜", "短剧", "通关攻略", "游戏实况", "录播", "二创", "教程", "盘点",
             "reaction", "gameplay", "walkthrough", "speedrun", "trailer", "teaser", "livestream"
         };
         for (String kw : videoKeywords) {
@@ -159,12 +163,17 @@ public class MetadataFetcher {
             return true;
         }
 
-        // 7. 视频长句标题特征：无专辑且长标题 (>= 22 字) 带有典型设问或感叹标点
-        if (t.length() >= 22 && (a.isEmpty() || a.equals("未知歌手"))) {
-            if (t.contains("？") || t.contains("?") || t.contains("！") || t.contains("!")
-                    || t.contains("如何看待") || t.contains("为什么") || t.contains("一口气看完") || t.contains("大结局")) {
+        // 7. 典型视频标点与设问/感叹句特征（标题带有疑问、感叹号、技术词或设问短语）
+        if (t.contains("？") || t.contains("?") || t.contains("！") || t.contains("!")
+                || t.contains("如何看待") || t.contains("为什么") || t.contains("一口气看完") || t.contains("大结局")) {
+            if (t.length() >= 12 || isDuplicateTitleAlbum) {
                 return true;
             }
+        }
+
+        // 8. 视频长句标题特征：无明确专辑且长标题 (>= 20 字)
+        if (t.length() >= 20 && isDuplicateTitleAlbum) {
+            return true;
         }
 
         return false;
@@ -369,12 +378,17 @@ public class MetadataFetcher {
         // 1. 歌名匹配
         if (cClean.equals(rClean)) {
             score += 160;
-        } else if (cClean.contains(rClean) || rClean.contains(cClean)) {
+        } else if (cClean.contains(rClean)) {
             score += 85;
+        } else if (rClean.contains(cClean)) {
+            // 候选歌名被包含在请求名中：必须占比足够长，防止长句视频将几个字词误认成歌名
+            if (cClean.length() >= 4 && (float) cClean.length() / rClean.length() >= 0.5f) {
+                score += 85;
+            }
         } else {
             String cBase = cTitle.split("[:(（【\\[]")[0].trim();
             String rBase = rTitle.split("[:(（【\\[]")[0].trim();
-            if (!cBase.isEmpty() && !rBase.isEmpty() && (cBase.contains(rBase) || rBase.contains(cBase))) {
+            if (!cBase.isEmpty() && !rBase.isEmpty() && (cBase.equals(rBase) || (cBase.contains(rBase) && rBase.length() >= 4))) {
                 score += 50;
             }
         }

@@ -274,12 +274,11 @@ public class MediaMonitorService extends NotificationListenerService {
         mRealAlbum = "";
         mDuration = 0;
         mLastRawArtist = "";
-        mCurrentCoverBitmap = null;
-        mGeneratedVinylBitmap = null;
+        // 保留之前的有效封面 Bitmap，在视频模式不置为 null
         updateFloatingViewContent();
         if (MainActivity.sInstance != null) {
             MainActivity.sInstance.dispatchMetadata(mRealTitle, mRealArtist, mRealAlbum, mDuration, "");
-            MainActivity.sInstance.dispatchOnlineResult("", "", "视频模式");
+            MainActivity.sInstance.dispatchOnlineResult(MainActivity.sLastValidMusicCoverUrl, "", "视频模式");
             MainActivity.sInstance.dispatchPlaybackState(true, 0, 1.0f);
         }
     }

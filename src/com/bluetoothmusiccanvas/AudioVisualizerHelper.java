@@ -116,8 +116,8 @@ public class AudioVisualizerHelper {
                 mMainHandler.post(new Runnable() {
                     @Override
                     public void run() {
-                        if (MainActivity.sInstance != null && MainActivity.sCachedIsPlaying && MainActivity.sCachedTitle != null && MainActivity.sCachedTitle.contains("蓝牙媒体音频")) {
-                            MainActivity.sInstance.dispatchPlaybackState(false, 0, 0f);
+                        if (MainActivity.sInstance != null) {
+                            MainActivity.sInstance.notifyAudioSilence();
                         }
                     }
                 });
@@ -132,8 +132,8 @@ public class AudioVisualizerHelper {
             mMainHandler.post(new Runnable() {
                 @Override
                 public void run() {
-                    if (MainActivity.sInstance != null && !MainActivity.sCachedIsPlaying) {
-                        MainActivity.sInstance.dispatchPlaybackState(true, 0, 1.0f);
+                    if (MainActivity.sInstance != null) {
+                        MainActivity.sInstance.notifyAudioEnergyDetected();
                     }
                 }
             });

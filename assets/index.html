@@ -1564,6 +1564,7 @@
         let hasOfficialLyrics = false;
         let activeLyricIndex = -1;
         let currentCoverUrl = "";
+        let lastValidMusicCoverUrl = "";
         let lyricMode = 'official'; // 'official' | 'bluetooth'
         
         // 歌曲元数据与歌词内存缓存表（避免返回桌面重新点击时重复请求与闪白）
@@ -1677,7 +1678,13 @@
             const bg = document.getElementById('ambientBg');
             if (currentCoverUrl) {
                 img.onload = () => { img.style.opacity = '1'; };
-                img.onerror = () => { img.style.opacity = '0'; };
+                img.onerror = () => {
+                    if (lastValidMusicCoverUrl && currentCoverUrl !== lastValidMusicCoverUrl) {
+                        setCoverImage(lastValidMusicCoverUrl);
+                    } else {
+                        img.style.opacity = '0';
+                    }
+                };
                 img.src = currentCoverUrl;
                 bg.style.backgroundImage = `url('${currentCoverUrl}')`;
             } else {
@@ -2504,8 +2511,13 @@
             if (!songCache[trackKey]) songCache[trackKey] = {};
 
             if (data.coverUrl) {
+                if (data.lyricSource !== '视频模式') {
+                    lastValidMusicCoverUrl = data.coverUrl;
+                }
                 songCache[trackKey].coverUrl = data.coverUrl;
                 setCoverImage(data.coverUrl);
+            } else if (data.lyricSource === '视频模式' && lastValidMusicCoverUrl) {
+                setCoverImage(lastValidMusicCoverUrl);
             }
             if (data.lyricSource) {
                 songCache[trackKey].lyricSource = data.lyricSource;
@@ -2574,7 +2586,7 @@
             if (streamLyric) songCache[trackKey].streamLyric = streamLyric;
 
             if (isVideo) {
-                // 视频音轨模式：不提取标题搜歌词与封面，不展示“正在检索”，直接呈现大号 9 频段声波律动，黑胶盘展示干净原盘
+                // 视频音轨模式：不提取标题搜歌词与封面，不展示“正在检索”，直接呈现大号 9 频段声波律动
                 hasOfficialLyrics = false;
                 parsedOfficialLyrics = [];
                 activeLyricIndex = -1;
@@ -2585,7 +2597,11 @@
                 if (emptyBox) emptyBox.style.display = 'none';
                 if (largeViz) largeViz.style.display = 'flex';
                 updateStatusTag('视频模式', '#5ac8fa');
-                setCoverImage('img/default_cover.png');
+                if (lastValidMusicCoverUrl) {
+                    setCoverImage(lastValidMusicCoverUrl);
+                } else {
+                    setCoverImage('');
+                }
                 return;
             }
 
@@ -2631,7 +2647,10 @@
 
                 const cached = songCache[trackKey];
                 if (cached && cached.coverUrl) {
+                    if (!isVideo) lastValidMusicCoverUrl = cached.coverUrl;
                     setCoverImage(cached.coverUrl);
+                } else if (isVideo && lastValidMusicCoverUrl) {
+                    setCoverImage(lastValidMusicCoverUrl);
                 }
 
                 if (currentActiveSource !== 'auto') {
