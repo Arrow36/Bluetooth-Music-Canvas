@@ -289,11 +289,19 @@ public class MediaMonitorService extends NotificationListenerService {
                 || rawTitle.contains("请欣赏")
                 || rawTitle.contains("没有填词")
                 || rawTitle.contains("享受音乐")
-                || rawTitle.startsWith("作曲")
-                || rawTitle.startsWith("作词")
-                || rawTitle.startsWith("编曲")
-                || rawTitle.toLowerCase().startsWith("composer")
-                || rawTitle.toLowerCase().startsWith("lyricist")
+                || rawTitle.contains("作词")
+                || rawTitle.contains("作曲")
+                || rawTitle.contains("编曲")
+                || rawTitle.contains("制作")
+                || rawTitle.contains("监制")
+                || rawTitle.contains("混音")
+                || rawTitle.contains("母带")
+                || rawTitle.contains("录音")
+                || rawTitle.contains("出品")
+                || rawTitle.contains("原唱")
+                || rawTitle.toLowerCase().contains("producer")
+                || rawTitle.toLowerCase().contains("composer")
+                || rawTitle.toLowerCase().contains("lyricist")
                 || rawTitle.contains("，")
                 || rawTitle.contains("。")
                 || rawTitle.contains("！")
@@ -340,10 +348,10 @@ public class MediaMonitorService extends NotificationListenerService {
         } else {
             // 新曲目载入：仅当 Title 确系车载蓝牙滚动歌词或纯音乐占位符时，才从 Artist 中的 "歌手 / 真实歌名" 还原
             if (candidateTitle != null && !candidateTitle.isEmpty() && performers != null && !performers.isEmpty()) {
-                boolean titleMatchesCandidate = candidateTitle.equalsIgnoreCase(rawTitle)
-                        || (!album.isEmpty() && (candidateTitle.equalsIgnoreCase(album) || album.toLowerCase().contains(candidateTitle.toLowerCase())));
+                boolean titleMatchesCandidate = candidateTitle.equalsIgnoreCase(rawTitle);
+                boolean albumConfirmsCandidate = (!album.isEmpty() && (candidateTitle.equalsIgnoreCase(album) || album.toLowerCase().contains(candidateTitle.toLowerCase())) && !rawTitle.equalsIgnoreCase(album));
 
-                if (isPlaceholderOrLyric) {
+                if (isPlaceholderOrLyric || albumConfirmsCandidate) {
                     // Title 是歌词或占位文案，真实歌名在 Artist 的斜杠后
                     Log.i(TAG, "Restored inverted title from artist: [" + candidateTitle + "] performers=[" + performers + "]");
                     mStreamLyric = rawTitle;

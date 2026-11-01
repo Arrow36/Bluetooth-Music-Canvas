@@ -130,10 +130,10 @@
         .device-pill::after {
             content: '';
             position: absolute;
-            top: -16px;
-            bottom: -16px;
-            left: -20px;
-            right: -20px;
+            top: -24px;
+            bottom: -24px;
+            left: -28px;
+            right: -28px;
             z-index: 1;
         }
 
@@ -327,10 +327,10 @@
         .btn-close::after {
             content: '';
             position: absolute;
-            top: -16px;
-            bottom: -16px;
-            left: -20px;
-            right: -20px;
+            top: -24px;
+            bottom: -24px;
+            left: -28px;
+            right: -28px;
             z-index: 1;
         }
 
@@ -963,10 +963,10 @@
         .source-tag::after {
             content: '';
             position: absolute;
-            top: -16px;
-            bottom: -16px;
-            left: -20px;
-            right: -20px;
+            top: -30px;
+            bottom: -30px;
+            left: -36px;
+            right: -36px;
             z-index: 1;
         }
 
@@ -1039,18 +1039,31 @@
 
         .source-menu-item {
             width: 100%;
+            height: 46px;
+            box-sizing: border-box;
             display: flex;
             align-items: center;
-            gap: 10px;
-            padding: 8px 10px;
+            gap: 12px;
+            padding: 0 14px;
             background: transparent;
             border: none;
-            border-radius: 12px;
+            border-radius: 14px;
             cursor: pointer;
             text-align: left;
             transition: background 0.15s ease, transform 0.1s ease;
             outline: none;
             position: relative;
+        }
+
+        /* 菜单项无死角命中扩展 */
+        .source-menu-item::after {
+            content: '';
+            position: absolute;
+            top: -3px;
+            bottom: -3px;
+            left: 0;
+            right: 0;
+            z-index: 1;
         }
 
         .source-menu-item:hover, .source-menu-item:active {
@@ -1817,12 +1830,37 @@
             const targetOffset = targetEl.offsetTop;
             currentTranslateY = -targetOffset;
             if (animated) {
-                // 五次减速柔顺曲线（Quintic Deceleration）：松手 3 秒后丝滑滚回
                 stream.style.transition = 'transform 0.85s cubic-bezier(0.22, 1, 0.36, 1)';
             } else {
                 stream.style.transition = 'none';
             }
             stream.style.transform = `translateY(-${targetOffset}px)`;
+        }
+
+        // 手松开 3 秒后：优雅淡出当前拖动停留行，瞬间切换到当前播放行并淡入
+        function fadeTransitionToCurrentLyric() {
+            const stream = document.getElementById('lyricsStream');
+            if (!stream) {
+                isManualScrolling = false;
+                return;
+            }
+
+            // 1. 拖动停止 3 秒后，当前停留的歌词视口平滑淡出 (0.28s)
+            stream.style.transition = 'opacity 0.28s cubic-bezier(0.4, 0, 1, 1)';
+            stream.style.opacity = '0';
+
+            setTimeout(() => {
+                isManualScrolling = false;
+                if (activeLyricIndex >= 0) {
+                    updateLyricHighlight(activeLyricIndex);
+                    // 2. 在完全隐身状态下无感知直接重定位到当前播放行
+                    scrollToLyricIndex(activeLyricIndex, false);
+                }
+                // 3. 强制重排后，优雅淡入当前播放行 (0.38s)
+                void stream.offsetHeight;
+                stream.style.transition = 'opacity 0.38s cubic-bezier(0, 0, 0.2, 1), transform 0.85s cubic-bezier(0.22, 1, 0.36, 1)';
+                stream.style.opacity = '1';
+            }, 290);
         }
 
         function initLyricsDragGesture() {
@@ -1836,6 +1874,8 @@
                 dragStartTranslateY = currentTranslateY;
                 isDraggingLyrics = false;
                 clearTimeout(manualScrollResumeTimer);
+                // 若在淡入淡出中再次触碰屏幕，立即恢复满不透明度
+                stream.style.opacity = '1';
             });
 
             viewport.addEventListener('pointermove', function(e) {
@@ -1868,14 +1908,10 @@
                 isDraggingLyrics = false;
                 resetIdleTimer();
 
-                // 手松开 3 秒后柔顺地自动滚回当前播放位置
+                // 手松开 3 秒后：不滚回，优雅淡出后淡入当前播放行
                 clearTimeout(manualScrollResumeTimer);
                 manualScrollResumeTimer = setTimeout(() => {
-                    isManualScrolling = false;
-                    if (activeLyricIndex >= 0) {
-                        updateLyricHighlight(activeLyricIndex);
-                        scrollToLyricIndex(activeLyricIndex, true);
-                    }
+                    fadeTransitionToCurrentLyric();
                 }, 3000);
             };
 
@@ -2577,7 +2613,20 @@
 
             const elapsed = now - tapDownTime;
             const dist = Math.hypot(x - tapDownX, y - tapDownY);
-            const isInteractive = target && target.closest && !!target.closest('button, .btn-ctrl, .vol-btn, .volume-widget, .source-tag, .device-pill, .device-dropdown, .lyric-source-menu, #closeBtn, .top-bar, .bottom-bar, .player-deck, .source-menu-item, .device-card-wrapper, .audio-spec-card');
+
+            // 智能四角控制区大范围保护（大幅扩展触控范围，点偏也不会意外隐藏控件）
+            const isBottomRightZone = (x > window.innerWidth - 300 && y > window.innerHeight - 100);
+            const isTopLeftZone = (x < 300 && y < 100);
+            const isTopRightZone = (x > window.innerWidth - 120 && y < 100);
+
+            const isInteractive = (isBottomRightZone || isTopLeftZone || isTopRightZone) ||
+                (target && target.closest && !!target.closest('button, .btn-ctrl, .vol-btn, .volume-widget, .source-tag, .device-pill, .device-dropdown, .lyric-source-menu, #closeBtn, .top-bar, .bottom-bar, .player-deck, .source-menu-item, .device-card-wrapper, .audio-spec-card'));
+
+            // 若用户触碰的是右下角扩展区域但稍有偏差未命中标签，主动触发歌词源菜单
+            if (isBottomRightZone && (!target || !target.closest('.source-tag, .lyric-source-menu'))) {
+                toggleLyricMenu();
+                return;
+            }
 
             if (isTapCandidate && elapsed < 500 && dist < 20) {
                 isTapCandidate = false;
