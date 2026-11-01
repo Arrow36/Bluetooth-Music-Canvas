@@ -15,6 +15,8 @@ import android.os.Looper;
 import android.provider.Settings;
 import android.view.View;
 import android.view.WindowManager;
+import android.util.Log;
+import android.webkit.ConsoleMessage;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -87,7 +89,13 @@ public class MainActivity extends Activity {
 
         mWebView.setBackgroundColor(0xFF0B0D10);
         mWebView.addJavascriptInterface(new WebAppInterface(this), "AndroidApp");
-        mWebView.setWebChromeClient(new WebChromeClient());
+        mWebView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onConsoleMessage(ConsoleMessage cm) {
+                Log.d("WebConsole", cm.message() + " [" + cm.lineNumber() + "]");
+                return true;
+            }
+        });
         mWebView.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView view, String url) {
@@ -314,6 +322,12 @@ public class MainActivity extends Activity {
     }
 
     public void dispatchOnlineResult(final String coverUrl, final String lyricsLrc, final String lyricSource) {
+        if ("蓝牙媒体音频".equals(sCachedTitle) && !"视频模式".equals(lyricSource)) {
+            if (coverUrl != null && !coverUrl.isEmpty()) {
+                sLastValidMusicCoverUrl = coverUrl;
+            }
+            return;
+        }
         mHandler.post(new Runnable() {
             @Override
             public void run() {
@@ -385,7 +399,7 @@ public class MainActivity extends Activity {
 
         // 若收到了蓝牙动态歌词流（streamLyric），100% 确认是音乐 App 投送，直接免检排除视频！
         final boolean hasStreamLyric = streamLyric != null && !streamLyric.trim().isEmpty();
-        final boolean isVideo = !hasStreamLyric && MetadataFetcher.isVideoTrack(title, artist, album, duration);
+        final boolean isVideo = "蓝牙媒体音频".equals(title) || (!hasStreamLyric && MetadataFetcher.isVideoTrack(title, artist, album, duration));
 
         if (isVideo) {
             // 视频模式：保留上一首音乐的有效封面，杜绝丑陋人像或空白默认图

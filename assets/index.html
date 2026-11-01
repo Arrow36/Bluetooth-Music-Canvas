@@ -1857,14 +1857,7 @@
                 }
             }
 
-            // 6. 避免行末孤字（排版寡字）：对分行后的每一行，将最后两个中文字符以 \u00A0 绑定
-            const lines = t.split('\n');
-            for (let i = 0; i < lines.length; i++) {
-                let line = lines[i];
-                line = line.replace(/([\u4e00-\u9fa5])([\u4e00-\u9fa5])$/, '$1\u00A0$2');
-                lines[i] = line;
-            }
-            return lines.join('\n');
+            return t;
         }
 
         
@@ -2201,6 +2194,16 @@
             isManualScrolling = false;
             clearTimeout(manualScrollResumeTimer);
 
+            if (currentTrack && currentTrack.isVideo) {
+                if (stream) {
+                    stream.innerHTML = '';
+                    stream.style.display = 'none';
+                }
+                if (emptyBox) emptyBox.style.display = 'none';
+                if (largeViz) largeViz.style.display = 'flex';
+                return;
+            }
+
             if (currentActiveSource === 'visualizer') {
                 if (stream) stream.style.display = 'none';
                 if (emptyBox) emptyBox.style.display = 'none';
@@ -2507,6 +2510,26 @@
         // 接收来自 Java 原生多源高速检索的网络封面与官方歌词 (iTunes, Kugou, LRCLIB)
         window.onOnlineResult = function(data) {
             if (!data) return;
+            // 核心保护：若当前曲目处于视频模式，严禁被滞后的旧音乐歌词渲染覆盖大号律动频谱
+            if (currentTrack && currentTrack.isVideo) {
+                const stream = document.getElementById('lyricsStream');
+                const emptyBox = document.getElementById('emptyLyrics');
+                const largeViz = document.getElementById('largeVisualizer');
+                if (stream) {
+                    stream.innerHTML = '';
+                    stream.style.display = 'none';
+                }
+                if (emptyBox) emptyBox.style.display = 'none';
+                if (largeViz) largeViz.style.display = 'flex';
+                if (data.coverUrl && data.lyricSource !== '视频模式') {
+                    lastValidMusicCoverUrl = data.coverUrl;
+                    setCoverImage(data.coverUrl);
+                } else if (lastValidMusicCoverUrl) {
+                    setCoverImage(lastValidMusicCoverUrl);
+                }
+                return;
+            }
+
             const trackKey = (currentTrack.title + " - " + currentTrack.artist).toLowerCase().trim();
             if (!songCache[trackKey]) songCache[trackKey] = {};
 
@@ -2559,6 +2582,7 @@
 
         window.onMetadataChanged = function(data) {
             if (!data || !data.title) return;
+            console.log("[JS] onMetadataChanged: title=" + data.title + " isVideo=" + data.isVideo);
 
             const title = data.title;
             const artist = data.artist || "未知歌手";
@@ -2593,7 +2617,10 @@
                 const stream = document.getElementById('lyricsStream');
                 const emptyBox = document.getElementById('emptyLyrics');
                 const largeViz = document.getElementById('largeVisualizer');
-                if (stream) stream.style.display = 'none';
+                if (stream) {
+                    stream.innerHTML = '';
+                    stream.style.display = 'none';
+                }
                 if (emptyBox) emptyBox.style.display = 'none';
                 if (largeViz) largeViz.style.display = 'flex';
                 updateStatusTag('视频模式', '#5ac8fa');

@@ -99,6 +99,10 @@ public class MetadataFetcher {
         String a = (rawArtist != null) ? rawArtist.trim() : "";
         String alb = (rawAlbum != null) ? rawAlbum.trim() : "";
 
+        if (t.equals("蓝牙媒体音频") || a.contains("视频 / 外部音频") || a.contains("视频 / 媒体声音")) {
+            return true;
+        }
+
         String lowerTitle = t.toLowerCase();
         String lowerArtist = a.toLowerCase();
         String lowerAlbum = alb.toLowerCase();
