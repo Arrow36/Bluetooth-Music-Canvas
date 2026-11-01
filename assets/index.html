@@ -193,23 +193,24 @@
             color: rgba(255, 255, 255, 0.85);
         }
 
-        /* 展开的详情浮层卡片 */
+        /* 展开的详情浮层卡片：极简深空磨砂毛玻璃 */
         .device-dropdown {
             position: absolute;
             top: calc(100% + 10px);
             left: 0;
-            width: 280px;
-            background: rgba(18, 22, 28, 0.95);
-            border: 1px solid rgba(255, 255, 255, 0.16);
+            width: 270px;
+            background: rgba(22, 26, 33, 0.92);
+            border: 1px solid rgba(255, 255, 255, 0.14);
             border-radius: 18px;
-            padding: 16px 18px;
+            padding: 14px 16px;
             box-sizing: border-box;
-            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.06);
-            backdrop-filter: blur(28px);
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
             opacity: 0;
             pointer-events: none;
             transform: translateY(-8px) scale(0.96);
-            transition: opacity 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+            transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
             z-index: 200;
         }
 
@@ -223,9 +224,9 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding-bottom: 12px;
+            padding-bottom: 10px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            margin-bottom: 12px;
+            margin-bottom: 10px;
         }
 
         .device-name-row {
@@ -905,24 +906,24 @@
             flex-shrink: 0;
         }
 
-        /* 歌词源二级选择弹层菜单：现代磨砂毛玻璃极简设计 */
+        /* 歌词源二级选择弹层菜单：与设备二级菜单同一设计规范的高级深空磨砂毛玻璃 */
         .lyric-source-menu {
             position: fixed;
             right: 36px;
             bottom: 58px;
-            width: 260px;
-            background: rgba(20, 22, 28, 0.90);
-            border: 1px solid rgba(255, 255, 255, 0.16);
-            border-radius: 20px;
-            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.06);
+            width: 216px;
+            background: rgba(22, 26, 33, 0.92);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 18px;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05);
             backdrop-filter: blur(24px);
             -webkit-backdrop-filter: blur(24px);
-            z-index: 100;
-            padding: 8px;
+            z-index: 200;
+            padding: 10px;
             box-sizing: border-box;
             opacity: 0;
             pointer-events: none;
-            transform: translateY(12px) scale(0.95);
+            transform: translateY(8px) scale(0.96);
             transform-origin: bottom right;
             transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
         }
@@ -935,9 +936,9 @@
 
         .source-menu-header {
             font-size: 11.5px;
-            font-weight: 700;
+            font-weight: 600;
             color: rgba(255, 255, 255, 0.45);
-            padding: 6px 12px 7px 12px;
+            padding: 2px 6px 9px 6px;
             letter-spacing: 0.8px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.08);
             margin-bottom: 6px;
@@ -956,8 +957,8 @@
             width: 100%;
             display: flex;
             align-items: center;
-            gap: 12px;
-            padding: 8px 12px;
+            gap: 10px;
+            padding: 8px 10px;
             background: transparent;
             border: none;
             border-radius: 12px;
@@ -977,8 +978,8 @@
         }
 
         .menu-item-dot {
-            width: 9px;
-            height: 9px;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
             flex-shrink: 0;
             transition: transform 0.2s ease;
@@ -988,28 +989,16 @@
             transform: scale(1.25);
         }
 
-        .menu-item-content {
-            display: flex;
-            flex-direction: column;
-            flex: 1;
-            min-width: 0;
-        }
-
         .menu-item-name {
-            font-size: 13.5px;
-            font-weight: 600;
+            font-size: 13px;
+            font-weight: 500;
             color: #ffffff;
+            flex: 1;
             letter-spacing: 0.2px;
         }
 
-        .menu-item-desc {
-            font-size: 10.5px;
-            color: rgba(255, 255, 255, 0.42);
-            margin-top: 1px;
-        }
-
         .menu-item-check {
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 700;
             color: #31c27c;
             opacity: 0;
@@ -1028,7 +1017,7 @@
             margin-left: 2px;
         }
 
-        /* 6秒无操作后自动优雅渐隐四个角落的控件与音量条 */
+        /* 无操作后自动优雅渐隐四个角落的控件与二级菜单 */
         .top-bar, .bottom-bar {
             transition: opacity 0.8s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
             opacity: 1;
@@ -1044,6 +1033,12 @@
             opacity: 0;
             pointer-events: none;
             transform: translateY(8px);
+        }
+
+        body.idle .lyric-source-menu,
+        body.idle .device-dropdown {
+            opacity: 0;
+            pointer-events: none;
         }
 
         /* 常驻垂直音量控制组件：极简磨砂质感，与右上角关闭按钮宽度相等（36px）、右边距严格对齐（36px），加减号位于圆弧圆心 */
@@ -1374,60 +1369,42 @@
         </div>
     </div>
 
-            <!-- 歌词源二级选择弹层菜单：现代磨砂毛玻璃极简设计 -->
+        <!-- 歌词源二级选择弹层菜单：极简深空磨砂毛玻璃 -->
         <div class="lyric-source-menu" id="lyricSourceMenu">
             <div class="source-menu-header">
                 <span>歌词来源设置</span>
-                <span style="font-size: 11px; opacity: 0.6;">点击切换</span>
+                <span style="font-size: 11px; opacity: 0.5;">点击切换</span>
             </div>
             <div class="source-menu-items">
                 <button class="source-menu-item active" id="menuItem-auto" onclick="selectLyricSource('auto', event)">
                     <span class="menu-item-dot" style="background-color: #f59e0b; box-shadow: 0 0 8px #f59e0b;"></span>
-                    <div class="menu-item-content">
-                        <span class="menu-item-name">自动推荐</span>
-                        <span class="menu-item-desc">聚合多源优先展现</span>
-                    </div>
-                    <span class="menu-item-check" id="check-auto">✓</span>
+                    <span class="menu-item-name">自动推荐</span>
+                    <span class="menu-item-check" id="check-auto"><svg viewBox="0 0 24 24" width="13" height="13" stroke="#31c27c" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
                 </button>
                 <button class="source-menu-item" id="menuItem-netease" onclick="selectLyricSource('netease', event)">
                     <span class="menu-item-dot" style="background-color: #ff3a3a; box-shadow: 0 0 8px #ff3a3a;"></span>
-                    <div class="menu-item-content">
-                        <span class="menu-item-name">网易云音乐</span>
-                        <span class="menu-item-desc">官方高保真滚动歌词</span>
-                    </div>
-                    <span class="menu-item-check" id="check-netease">✓</span>
+                    <span class="menu-item-name">网易云音乐</span>
+                    <span class="menu-item-check" id="check-netease"><svg viewBox="0 0 24 24" width="13" height="13" stroke="#31c27c" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
                 </button>
                 <button class="source-menu-item" id="menuItem-qq" onclick="selectLyricSource('qq', event)">
                     <span class="menu-item-dot" style="background-color: #31c27c; box-shadow: 0 0 8px #31c27c;"></span>
-                    <div class="menu-item-content">
-                        <span class="menu-item-name">QQ音乐</span>
-                        <span class="menu-item-desc">海量华语流行同步库</span>
-                    </div>
-                    <span class="menu-item-check" id="check-qq">✓</span>
+                    <span class="menu-item-name">QQ音乐</span>
+                    <span class="menu-item-check" id="check-qq"><svg viewBox="0 0 24 24" width="13" height="13" stroke="#31c27c" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
                 </button>
                 <button class="source-menu-item" id="menuItem-kugou" onclick="selectLyricSource('kugou', event)">
                     <span class="menu-item-dot" style="background-color: #0084ff; box-shadow: 0 0 8px #0084ff;"></span>
-                    <div class="menu-item-content">
-                        <span class="menu-item-name">酷狗音乐</span>
-                        <span class="menu-item-desc">华语经典伴奏伴唱库</span>
-                    </div>
-                    <span class="menu-item-check" id="check-kugou">✓</span>
+                    <span class="menu-item-name">酷狗音乐</span>
+                    <span class="menu-item-check" id="check-kugou"><svg viewBox="0 0 24 24" width="13" height="13" stroke="#31c27c" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
                 </button>
                 <button class="source-menu-item" id="menuItem-lrclib" onclick="selectLyricSource('lrclib', event)">
                     <span class="menu-item-dot" style="background-color: #a855f7; box-shadow: 0 0 8px #a855f7;"></span>
-                    <div class="menu-item-content">
-                        <span class="menu-item-name">LRCLIB 全球库</span>
-                        <span class="menu-item-desc">欧美外文开源歌词库</span>
-                    </div>
-                    <span class="menu-item-check" id="check-lrclib">✓</span>
+                    <span class="menu-item-name">LRCLIB 全球库</span>
+                    <span class="menu-item-check" id="check-lrclib"><svg viewBox="0 0 24 24" width="13" height="13" stroke="#31c27c" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
                 </button>
                 <button class="source-menu-item" id="menuItem-bluetooth" onclick="selectLyricSource('bluetooth', event)">
                     <span class="menu-item-dot" style="background-color: #38bdf8; box-shadow: 0 0 8px #38bdf8;"></span>
-                    <div class="menu-item-content">
-                        <span class="menu-item-name">车载蓝牙实时歌词</span>
-                        <span class="menu-item-desc">手机播放器实时投送</span>
-                    </div>
-                    <span class="menu-item-check" id="check-bluetooth">✓</span>
+                    <span class="menu-item-name">蓝牙实时歌词</span>
+                    <span class="menu-item-check" id="check-bluetooth"><svg viewBox="0 0 24 24" width="13" height="13" stroke="#31c27c" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
                 </button>
             </div>
         </div>
@@ -1474,6 +1451,7 @@
 
         function toggleDeviceInfo(e) {
             if (e && e.stopPropagation) e.stopPropagation();
+            closeLyricMenu();
             const dropdown = document.getElementById('deviceDropdown');
             const pill = document.getElementById('devicePill');
             if (dropdown) {
@@ -1483,6 +1461,8 @@
                     else pill.classList.remove('active');
                 }
             }
+            document.body.classList.remove('idle');
+            resetIdleTimer();
         }
 
         // 点击或触摸外部区域自动关闭设备详情浮层
@@ -1736,7 +1716,7 @@
             qq: { name: 'QQ音乐', color: '#31c27c', label: 'QQ音乐' },
             kugou: { name: '酷狗音乐', color: '#0084ff', label: '酷狗音乐' },
             lrclib: { name: 'LRCLIB 全球库', color: '#a855f7', label: 'LRCLIB' },
-            bluetooth: { name: '车载蓝牙实时歌词', color: '#38bdf8', label: '蓝牙实时歌词' },
+            bluetooth: { name: '蓝牙实时歌词', color: '#38bdf8', label: '蓝牙实时歌词' },
             auto: { name: '自动推荐', color: '#f59e0b', label: '自动匹配' }
         };
 
@@ -1755,10 +1735,17 @@
 
         function toggleLyricMenu(e) {
             if (e && e.stopPropagation) e.stopPropagation();
+            const dropdown = document.getElementById('deviceDropdown');
+            const pill = document.getElementById('devicePill');
+            if (dropdown) dropdown.classList.remove('show');
+            if (pill) pill.classList.remove('active');
+
             const menu = document.getElementById('lyricSourceMenu');
             if (!menu) return;
             menu.classList.toggle('show');
             updateMenuCheckmarks();
+            document.body.classList.remove('idle');
+            resetIdleTimer();
         }
 
         function closeLyricMenu() {
@@ -1807,7 +1794,7 @@
                 const streamText = currentTrack.streamLyric || (cached && cached.streamLyric) || "当前蓝牙源暂未投送歌词";
                 showStreamLyric(streamText);
                 updateStatusTag(SOURCE_META.bluetooth.label, SOURCE_META.bluetooth.color);
-                showToastTip('已切换至车载蓝牙歌词');
+                showToastTip('已切换至蓝牙实时歌词');
                 return;
             }
 
@@ -2004,11 +1991,27 @@
             }
         };
 
+        let manualPlaybackLockUntil = 0;
+        let manualTargetPlayState = null;
+
         window.onPlaybackStateChanged = function(data) {
             if (!data) return;
             lastPositionMs = data.position || 0;
             lastSyncTime = performance.now();
-            setOptimisticPlaybackState(!!data.isPlaying);
+            const incomingPlaying = !!data.isPlaying;
+
+            // 针对手动点击播控的防抖保护窗口（1.5秒）：
+            // 过滤手机端蓝牙 AVRCP 尚未完成状态切换前由系统回调投送的回声脏数据，
+            // 杜绝唱针在点击暂停时“先起针、又被回声落针、最后又起针”的抽动假死现象。
+            if (performance.now() < manualPlaybackLockUntil) {
+                if (incomingPlaying === manualTargetPlayState) {
+                    manualPlaybackLockUntil = 0;
+                    setOptimisticPlaybackState(incomingPlaying);
+                }
+                return;
+            }
+
+            setOptimisticPlaybackState(incomingPlaying);
         };
 
         function updateTimeline() {
@@ -2150,8 +2153,11 @@
 
         function triggerPlayPause(e) {
             if (e && e.stopPropagation) e.stopPropagation();
+            const target = !isPlaying;
+            manualTargetPlayState = target;
+            manualPlaybackLockUntil = performance.now() + 1500;
             // 乐观瞬态响应：立即切换状态与动效
-            setOptimisticPlaybackState(!isPlaying);
+            setOptimisticPlaybackState(target);
             if (window.AndroidApp && window.AndroidApp.togglePlayPause) {
                 window.AndroidApp.togglePlayPause();
             }
@@ -2282,15 +2288,21 @@
 
             const elapsed = now - tapDownTime;
             const dist = Math.hypot(x - tapDownX, y - tapDownY);
-            const isInteractive = target && target.closest && !!target.closest('button, .btn-ctrl, .vol-btn, .volume-widget, .source-tag, .device-pill, .device-dropdown, #closeBtn');
+            const isInteractive = target && target.closest && !!target.closest('button, .btn-ctrl, .vol-btn, .volume-widget, .source-tag, .device-pill, .device-dropdown, .lyric-source-menu, #closeBtn');
 
             if (isTapCandidate && elapsed < 500 && dist < 20) {
                 isTapCandidate = false;
                 if (!isInteractive) {
-                    // 点击空白处 / 歌词 / 唱片区域：手动切换淡出/唤醒
+                    // 点击空白处 / 歌词 / 唱片区域
                     if (document.body.classList.contains('idle')) {
+                        // 处于沉浸隐藏态时，点击屏幕唤醒控件（二级菜单保持收起，需重新点击）
                         setIdleState(false);
+                    } else if (isAnySecondaryMenuOpen()) {
+                        // 二级菜单展开时，点击空白处收起菜单，保持控件可见
+                        closeAllSecondaryMenus();
+                        resetIdleTimer();
                     } else {
+                        // 正常显示控件时，点击空白处立即进入沉浸模式
                         setIdleState(true);
                     }
                     return;

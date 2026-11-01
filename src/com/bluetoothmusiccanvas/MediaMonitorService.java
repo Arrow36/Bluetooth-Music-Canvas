@@ -258,12 +258,11 @@ public class MediaMonitorService extends NotificationListenerService {
             }
         } else if (playbackState == PlaybackState.STATE_PAUSED || playbackState == PlaybackState.STATE_STOPPED) {
             mIsPlaying = false;
+            mHandler.removeCallbacks(mAutoCloseRunnable);
             if (MainActivity.sInstance != null) {
                 MainActivity.sInstance.dispatchPlaybackState(false, position, speed);
             }
-            // Auto close after 10s of inactivity
-            mHandler.removeCallbacks(mAutoCloseRunnable);
-            mHandler.postDelayed(mAutoCloseRunnable, 10000);
+            // 用户体验优化：暂停音乐后，保留当前全屏界面，不自动退出
         }
     }
 
@@ -282,10 +281,10 @@ public class MediaMonitorService extends NotificationListenerService {
         rawArtist = rawArtist != null ? rawArtist.trim() : "";
         album = album != null ? album.trim() : "";
 
-        // 智能检测古典乐与蓝牙 AVRCP 歌词投送中的元数据倒置与占位符：
-        // 网易云/QQ音乐在开启车载蓝牙歌词时，遇到纯音乐或古典乐会将占位符
-        // （如 "纯音乐，请欣赏"、"作曲：..."、"作词：..."、"没有填词"）填入 Title 字段，
-        // 而将真实乐章名称放在 Artist 字段的最末端（以 '/' 分隔）。
+        // 智能检测古典乐与车载蓝牙 AVRCP 歌词投送中的元数据倒置与占位符：
+        // 国内网易云、QQ音乐、酷狗等主流播放器在开启“车载蓝牙歌词”时，统一规范为：
+        // Title 字段：实时滚动投送动态歌词（或纯音乐占位文案）
+        // Artist 字段：格式固定为 "歌手 / 真实歌名"（如 "林忆莲 / 至少还有你"）
         boolean isPlaceholderOrLyric = rawTitle.contains("纯音乐")
                 || rawTitle.contains("请欣赏")
                 || rawTitle.contains("没有填词")
@@ -294,100 +293,136 @@ public class MediaMonitorService extends NotificationListenerService {
                 || rawTitle.startsWith("作词")
                 || rawTitle.startsWith("编曲")
                 || rawTitle.toLowerCase().startsWith("composer")
-                || rawTitle.toLowerCase().startsWith("lyricist");
+                || rawTitle.toLowerCase().startsWith("lyricist")
+                || rawTitle.contains("，")
+                || rawTitle.contains("。")
+                || rawTitle.contains("！")
+                || rawTitle.contains("？")
+                || rawTitle.contains("~")
+                || rawTitle.contains("…");
 
+        String candidateTitle = null;
+        String performers = null;
         int lastSlash = rawArtist.lastIndexOf('/');
         if (lastSlash > 0) {
-            String candidateTitle = rawArtist.substring(lastSlash + 1).trim();
-            String performers = rawArtist.substring(0, lastSlash).trim();
+            candidateTitle = rawArtist.substring(lastSlash + 1).trim();
+            performers = rawArtist.substring(0, lastSlash).trim();
+        }
 
-            boolean candidateLooksLikePiece = candidateTitle.contains("Concerto")
-                    || candidateTitle.contains("Symphony")
-                    || candidateTitle.contains("Sonata")
-                    || candidateTitle.contains("Op.")
-                    || candidateTitle.contains("No.")
-                    || candidateTitle.contains("K.")
-                    || candidateTitle.contains("BWV")
-                    || candidateTitle.contains("Major")
-                    || candidateTitle.contains("Minor")
-                    || candidateTitle.contains("Allegro")
-                    || candidateTitle.contains("Adagio")
-                    || candidateTitle.contains("Andante")
-                    || candidateTitle.length() > 25
-                    || (!album.isEmpty() && candidateTitle.toLowerCase().contains(album.toLowerCase()));
-
-            if (isPlaceholderOrLyric || candidateLooksLikePiece) {
-                Log.i(TAG, "Restored inverted title from artist: [" + candidateTitle + "] performers=[" + performers + "]");
-                rawTitle = candidateTitle;
-                rawArtist = performers;
+        // 判断当前包是否属于“同一首歌的车载蓝牙动态歌词更新”
+        boolean isCarBluetoothStreamForSameSong = false;
+        if (candidateTitle != null && !candidateTitle.isEmpty() && !mRealTitle.isEmpty()) {
+            if (candidateTitle.equalsIgnoreCase(mRealTitle)
+                    || candidateTitle.contains(mRealTitle)
+                    || mRealTitle.contains(candidateTitle)) {
+                // 当前歌曲未切换，仅手机在动态投送下一句歌词
+                isCarBluetoothStreamForSameSong = true;
             }
         }
 
-        // 智能区分：真实歌曲元数据 VS 蓝牙动态逐句投屏歌词
-        // 整首歌播放过程中 duration 与 rawArtist 保持恒定，但 rawTitle 随旋律动态变为下一句歌词
-        boolean isDynamicLyricUpdate = (mDuration > 0 && duration == mDuration
+        // 另一种情况：无斜杠但时长与歌手完全一致，只有Title在变
+        boolean isGeneralDynamicLyric = (mDuration > 0 && duration > 0 && duration == mDuration
                 && !rawArtist.isEmpty() && rawArtist.equals(mLastRawArtist)
                 && !rawTitle.equals(mRealTitle));
 
-        if (isDynamicLyricUpdate) {
+        if (isCarBluetoothStreamForSameSong || isGeneralDynamicLyric) {
+            // 同一首歌的实时歌词流更新：绝不更换歌名、绝不重新触发线上歌词搜索！
             if (!rawTitle.contains("纯音乐") && !rawTitle.contains("请欣赏")) {
                 mStreamLyric = rawTitle;
                 Log.i(TAG, "Bluetooth stream lyric updated: [" + mStreamLyric + "]");
             }
+            if (performers != null && !performers.isEmpty()) {
+                mRealArtist = performers;
+            }
+            if (duration > 0) {
+                mDuration = duration;
+            }
         } else {
-            // 新曲目载入：严格保留完整的真实标题与艺术家列表，绝不截断或错位
+            // 新曲目载入：检查是否需要从 Artist 中的 "歌手 / 歌名" 还原真实歌名
+            if (candidateTitle != null && !candidateTitle.isEmpty() && performers != null && !performers.isEmpty()) {
+                boolean candidateLooksLikePiece = candidateTitle.contains("Concerto")
+                        || candidateTitle.contains("Symphony")
+                        || candidateTitle.contains("Sonata")
+                        || candidateTitle.contains("Op.")
+                        || candidateTitle.contains("No.")
+                        || candidateTitle.contains("K.")
+                        || candidateTitle.contains("BWV")
+                        || candidateTitle.contains("Major")
+                        || candidateTitle.contains("Minor")
+                        || candidateTitle.contains("Allegro")
+                        || candidateTitle.contains("Adagio")
+                        || candidateTitle.contains("Andante")
+                        || candidateTitle.length() > 25;
+
+                boolean titleMatchesCandidate = candidateTitle.equalsIgnoreCase(rawTitle)
+                        || (!album.isEmpty() && (candidateTitle.equalsIgnoreCase(album) || album.toLowerCase().contains(candidateTitle.toLowerCase())));
+
+                if (isPlaceholderOrLyric || candidateLooksLikePiece || titleMatchesCandidate
+                        || (candidateTitle.length() > 1 && performers.length() > 1)) {
+                    Log.i(TAG, "Restored inverted title from artist: [" + candidateTitle + "] performers=[" + performers + "]");
+                    if (isPlaceholderOrLyric || !titleMatchesCandidate) {
+                        mStreamLyric = rawTitle;
+                    } else {
+                        mStreamLyric = "";
+                    }
+                    rawTitle = candidateTitle;
+                    rawArtist = performers;
+                }
+            } else {
+                mStreamLyric = "";
+            }
+
             mUserDismissed = false;
             mLastRawArtist = rawArtist;
             mRealTitle = rawTitle;
             mRealArtist = rawArtist;
-            mStreamLyric = "";
             mRealAlbum = album;
             mDuration = duration;
             Log.i(TAG, "New song loaded: [" + mRealTitle + "] by [" + mRealArtist + "]");
-        }
 
-        // Check local album artwork first
-        Bitmap localArt = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
-        if (localArt == null) {
-            localArt = metadata.getBitmap(MediaMetadata.METADATA_KEY_ART);
-        }
-        if (localArt != null) {
-            mCurrentCoverBitmap = localArt;
-            mGeneratedVinylBitmap = null;
-            updateFloatingViewContent();
-        } else {
-            // Fetch online cover for floating vinyl
-            final String key = (mRealTitle + " - " + mRealArtist + (mRealAlbum != null && !mRealAlbum.isEmpty() ? " - " + mRealAlbum : "")).toLowerCase().trim();
-            if (!key.isEmpty() && !key.equals(mLastFetchedCoverKey)) {
-                mLastFetchedCoverKey = key;
-                MetadataFetcher.fetch(mRealTitle, mRealArtist, mRealAlbum, new MetadataFetcher.Callback() {
-                    @Override
-                    public void onResult(final String coverUrl, final String lyricsLrc, final String lyricSource) {
-                        if (coverUrl != null && !coverUrl.isEmpty()) {
-                            new Thread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    try {
-                                        URL url = new URL(coverUrl);
-                                        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                                        conn.setConnectTimeout(4000);
-                                        conn.setReadTimeout(4000);
-                                        InputStream is = conn.getInputStream();
-                                        Bitmap bmp = BitmapFactory.decodeStream(is);
-                                        is.close();
-                                        if (bmp != null) {
-                                            mCurrentCoverBitmap = bmp;
-                                            mGeneratedVinylBitmap = null;
-                                            updateFloatingViewContent();
+            // Check local album artwork first
+            Bitmap localArt = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
+            if (localArt == null) {
+                localArt = metadata.getBitmap(MediaMetadata.METADATA_KEY_ART);
+            }
+            if (localArt != null) {
+                mCurrentCoverBitmap = localArt;
+                mGeneratedVinylBitmap = null;
+                updateFloatingViewContent();
+            } else {
+                // Fetch online cover for floating vinyl
+                final String key = (mRealTitle + " - " + mRealArtist + (mRealAlbum != null && !mRealAlbum.isEmpty() ? " - " + mRealAlbum : "")).toLowerCase().trim();
+                if (!key.isEmpty() && !key.equals(mLastFetchedCoverKey)) {
+                    mLastFetchedCoverKey = key;
+                    MetadataFetcher.fetch(mRealTitle, mRealArtist, mRealAlbum, new MetadataFetcher.Callback() {
+                        @Override
+                        public void onResult(final String coverUrl, final String lyricsLrc, final String lyricSource) {
+                            if (coverUrl != null && !coverUrl.isEmpty()) {
+                                new Thread(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        try {
+                                            URL url = new URL(coverUrl);
+                                            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                                            conn.setConnectTimeout(4000);
+                                            conn.setReadTimeout(4000);
+                                            InputStream is = conn.getInputStream();
+                                            Bitmap bmp = BitmapFactory.decodeStream(is);
+                                            is.close();
+                                            if (bmp != null) {
+                                                mCurrentCoverBitmap = bmp;
+                                                mGeneratedVinylBitmap = null;
+                                                updateFloatingViewContent();
+                                            }
+                                        } catch (Exception e) {
+                                            Log.w(TAG, "Failed to load floating cover: " + e.getMessage());
                                         }
-                                    } catch (Exception e) {
-                                        Log.w(TAG, "Failed to load floating cover: " + e.getMessage());
                                     }
-                                }
-                            }).start();
+                                }).start();
+                            }
                         }
-                    }
-                });
+                    });
+                }
             }
         }
 

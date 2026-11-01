@@ -352,6 +352,7 @@ public class MainActivity extends Activity {
     }
 
     public void dispatchMetadata(final String title, final String artist, final String album, final long duration, final String streamLyric) {
+        boolean isNewSong = (sCachedTitle == null || !sCachedTitle.equals(title) || sCachedArtist == null || !sCachedArtist.equals(artist));
         sCachedTitle = title;
         sCachedArtist = artist;
         sCachedAlbum = album;
@@ -365,7 +366,7 @@ public class MainActivity extends Activity {
             sCachedLyrics = cached.lyricsLrc != null ? cached.lyricsLrc : "";
             sCachedLyricSource = cached.lyricSource != null ? cached.lyricSource : "";
             dispatchOnlineResult(sCachedCoverUrl, sCachedLyrics, sCachedLyricSource);
-        } else if (!key.isEmpty() && (!key.equals(sLastFetchedKey) || (sCachedCoverUrl.isEmpty() && sCachedLyrics.isEmpty()))) {
+        } else if (isNewSong && !key.isEmpty() && (!key.equals(sLastFetchedKey) || (sCachedCoverUrl.isEmpty() && sCachedLyrics.isEmpty()))) {
             sLastFetchedKey = key;
             MetadataFetcher.fetch(title, artist, album, new MetadataFetcher.Callback() {
                 @Override
