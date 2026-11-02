@@ -376,7 +376,7 @@ public class MediaMonitorService extends NotificationListenerService {
             Log.i(TAG, "Bluetooth stream lyric updated: [" + mStreamLyric + "]");
             if (act != null) {
                 act.dispatchMetadata(mRealTitle, mRealArtist, mRealAlbum, mDuration, mStreamLyric,
-                        snapshot.playbackGeneration, snapshot.songCacheKey, false);
+                        snapshot.playbackGeneration, snapshot.songCacheKey, true);
             }
             updateFloatingViewContent();
             return;

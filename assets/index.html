@@ -2698,7 +2698,17 @@
             const isVideo = !!data.isVideo;
 
             if (data.isEnrichment) {
-                // 元数据补全（如只补充专辑或时长）：绝不能切歌、绝不能递增代次、绝不能重置时钟与歌词！
+                // 元数据补全或蓝牙流式歌词推送：绝不能切歌、绝不能递增代次、绝不能重置时钟与歌词！
+                if (streamLyric) {
+                    currentTrack.streamLyric = streamLyric;
+                    if (data.trackKey && songCache[data.trackKey]) {
+                        songCache[data.trackKey].streamLyric = streamLyric;
+                    }
+                    crossCheckLyrics(streamLyric);
+                    if (userExplicitMode === 'bluetooth' || (!userExplicitMode && !hasOfficialLyrics)) {
+                        showStreamLyric(streamLyric);
+                    }
+                }
                 if (album && (!currentTrack.album || currentTrack.album === '')) {
                     currentTrack.album = album;
                     let artistAlbumText = (artist && artist !== "未知歌手" && !artist.toLowerCase().includes("bluetooth"))

@@ -71,7 +71,7 @@ public class TestMediaStateStore {
         assert normPunct.format == MetadataNormalizer.MetadataFormat.STANDARD : "Must be STANDARD format";
         System.out.println("  PASS [6]: Song with punctuation correctly preserved without false inversion");
 
-        // 8. Real car Bluetooth lyric stream
+        // 8. Real car Bluetooth lyric stream (NetEase style: Artist / Title)
         MetadataNormalizer.NormalizedResult carInit = MetadataNormalizer.normalize(
                 "纯音乐，请欣赏", "王菲 / 如愿", "如愿", 240000,
                 "", "", MetadataNormalizer.MetadataFormat.UNKNOWN
@@ -80,9 +80,9 @@ public class TestMediaStateStore {
         assert carInit.title.equals("如愿") : "Car lyric candidate title restored as real title, got: " + carInit.title;
         assert carInit.artist.equals("王菲") : "Performer restored as artist, got: " + carInit.artist;
         assert carInit.format == MetadataNormalizer.MetadataFormat.CAR_LYRICS_CONFIRMED : "Format must be CAR_LYRICS_CONFIRMED";
-        System.out.println("  PASS [7]: Car Bluetooth lyric track placeholder properly identified");
+        System.out.println("  PASS [7]: NetEase car Bluetooth lyric track placeholder properly identified");
 
-        // Subsequent line of car stream lyric for same track
+        // Subsequent line of NetEase car stream lyric for same track
         MetadataNormalizer.NormalizedResult carLine2 = MetadataNormalizer.normalize(
                 "你是 岁月长河 星火", "王菲 / 如愿", "如愿", 240000,
                 "如愿", "王菲", MetadataNormalizer.MetadataFormat.CAR_LYRICS_CONFIRMED
@@ -91,7 +91,80 @@ public class TestMediaStateStore {
         assert carLine2.isStreamLyricUpdate : "Must be marked as stream lyric update";
         assert carLine2.title.equals("如愿") : "Title remains 如愿";
         assert carLine2.streamLyric.equals("你是 岁月长河 星火") : "Stream lyric line captured";
-        System.out.println("  PASS [8]: Car Bluetooth dynamic lyric stream line captured without replacing song title");
+        System.out.println("  PASS [8]: NetEase car Bluetooth dynamic lyric stream line captured without replacing song title");
+
+        // 9. QQ Music Car Bluetooth Lyric Format: "Title — Artist" with placeholder title
+        MetadataNormalizer.NormalizedResult qqInit = MetadataNormalizer.normalize(
+                "制作人: 董冬冬", "花开满篱院 — 谭松韵", "兰香如故 影视剧原声带", 185000,
+                "", "", MetadataNormalizer.MetadataFormat.UNKNOWN
+        );
+        assert qqInit != null;
+        assert qqInit.title.equals("花开满篱院") : "QQ Music real title extracted, got: " + qqInit.title;
+        assert qqInit.artist.equals("谭松韵") : "QQ Music real artist extracted, got: " + qqInit.artist;
+        assert qqInit.album.equals("兰香如故 影视剧原声带") : "Album preserved, got: " + qqInit.album;
+        assert qqInit.format == MetadataNormalizer.MetadataFormat.CAR_LYRICS_CONFIRMED : "Must be CAR_LYRICS_CONFIRMED";
+        assert !qqInit.isStreamLyricUpdate : "First track event is not a stream lyric update";
+        System.out.println("  PASS [9]: QQ Music car Bluetooth lyric initial track identified with title and artist separated by em-dash");
+
+        // 10. QQ Music subsequent lyric lines (production credits and lyrics)
+        MetadataNormalizer.NormalizedResult qqLine2 = MetadataNormalizer.normalize(
+                "和声编写/和声:陈无二", "花开满篱院 — 谭松韵", "兰香如故 影视剧原声带", 185000,
+                "花开满篱院", "谭松韵", MetadataNormalizer.MetadataFormat.CAR_LYRICS_CONFIRMED
+        );
+        assert qqLine2 != null;
+        assert qqLine2.isStreamLyricUpdate : "Must be marked as stream lyric update";
+        assert qqLine2.title.equals("花开满篱院") : "Title remains 花开满篱院";
+        assert qqLine2.streamLyric.equals("和声编写/和声:陈无二") : "Stream lyric captured correctly, got: " + qqLine2.streamLyric;
+
+        MetadataNormalizer.NormalizedResult qqLine3 = MetadataNormalizer.normalize(
+                "花开满篱院 芬芳了流年", "花开满篱院 — 谭松韵", "兰香如故 影视剧原声带", 185000,
+                "花开满篱院", "谭松韵", MetadataNormalizer.MetadataFormat.CAR_LYRICS_CONFIRMED
+        );
+        assert qqLine3 != null;
+        assert qqLine3.isStreamLyricUpdate : "Lyric line is stream lyric update";
+        assert qqLine3.title.equals("花开满篱院") : "Title remains steady";
+        assert qqLine3.streamLyric.equals("花开满篱院 芬芳了流年") : "Actual lyric line captured";
+        System.out.println("  PASS [10]: QQ Music subsequent dynamic lyric lines update streamLyric without resetting track");
+
+        // 11. QQ Music format with embedded album after dot: "Title — Artist · Album"
+        MetadataNormalizer.NormalizedResult qqWithAlbum = MetadataNormalizer.normalize(
+                "制作人: 董冬冬", "我来书写我的名 — 王铮亮 · 兰香如故 影视剧原声带", "", 210000,
+                "", "", MetadataNormalizer.MetadataFormat.UNKNOWN
+        );
+        assert qqWithAlbum != null;
+        assert qqWithAlbum.title.equals("我来书写我的名") : "Title extracted: " + qqWithAlbum.title;
+        assert qqWithAlbum.artist.equals("王铮亮") : "Artist extracted: " + qqWithAlbum.artist;
+        assert qqWithAlbum.album.equals("兰香如故 影视剧原声带") : "Album extracted from artist field: " + qqWithAlbum.album;
+        assert qqWithAlbum.format == MetadataNormalizer.MetadataFormat.CAR_LYRICS_CONFIRMED;
+        System.out.println("  PASS [11]: QQ Music embedded album with middle dot parsed properly");
+
+        // 12. MediaStateStore handles QQ Music stream lyrics end-to-end without bumping generation
+        MediaStateStore qqStore = new MediaStateStore();
+        long qqEpoch = qqStore.getSessionEpoch();
+        MediaStateStore.MediaSnapshot qqSnap1 = qqStore.handleMetadata(
+                qqEpoch, "制作人: 董冬冬", "花开满篱院 — 谭松韵", "兰香如故 影视剧原声带", 185000, "qq1"
+        );
+        assert qqSnap1 != null;
+        assert qqSnap1.playbackGeneration == 1 : "First track generation must be 1";
+        assert qqSnap1.title.equals("花开满篱院") : "Real title is 花开满篱院";
+        assert qqSnap1.artist.equals("谭松韵") : "Real artist is 谭松韵";
+
+        MediaStateStore.MediaSnapshot qqSnap2 = qqStore.handleMetadata(
+                qqEpoch, "和声编写/和声:陈无二", "花开满篱院 — 谭松韵", "兰香如故 影视剧原声带", 185000, "qq1"
+        );
+        assert qqSnap2 != null;
+        assert qqSnap2.changeType == MediaStateStore.ChangeType.STREAM_LYRIC : "ChangeType must be STREAM_LYRIC";
+        assert qqSnap2.playbackGeneration == 1 : "Generation must NOT bump on lyric line";
+        assert qqSnap2.streamLyric.equals("和声编写/和声:陈无二");
+
+        MediaStateStore.MediaSnapshot qqSnap3 = qqStore.handleMetadata(
+                qqEpoch, "花开满篱院 芬芳了流年", "花开满篱院 — 谭松韵", "兰香如故 影视剧原声带", 185000, "qq1"
+        );
+        assert qqSnap3 != null;
+        assert qqSnap3.changeType == MediaStateStore.ChangeType.STREAM_LYRIC;
+        assert qqSnap3.playbackGeneration == 1 : "Generation still 1";
+        assert qqSnap3.streamLyric.equals("花开满篱院 芬芳了流年");
+        System.out.println("  PASS [12]: MediaStateStore end-to-end handles QQ Music car Bluetooth lyrics with steady generation 1");
 
         System.out.println("==================================================");
         System.out.println("All MediaStateStore & Normalizer tests PASSED!");
