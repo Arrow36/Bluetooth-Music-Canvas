@@ -3628,7 +3628,7 @@
         window.toggleLyricMenu = toggleLyricMenu;
 
         // ===== 电视遥控器 (D-Pad 方向键 / 确认键 / 菜单键) 与触控双栖导航支持 =====
-        const LYRIC_MENU_ORDER = ['official', 'bluetooth', 'offset_minus', 'offset_plus', 'research'];
+        const LYRIC_MENU_ORDER = ['auto', 'netease', 'qq', 'kugou', 'lrclib', 'bluetooth', 'visualizer'];
         let remoteMenuFocusIdx = -1;
 
         function clearRemoteMenuFocus() {
@@ -3644,7 +3644,7 @@
             if (!menu || !menu.classList.contains('show')) return;
             const total = LYRIC_MENU_ORDER.length;
             remoteMenuFocusIdx = ((idx % total) + total) % total;
-            const targetId = 'menuItem_' + LYRIC_MENU_ORDER[remoteMenuFocusIdx];
+            const targetId = 'menuItem-' + LYRIC_MENU_ORDER[remoteMenuFocusIdx];
             const items = menu.querySelectorAll('.source-menu-item');
             for (let i = 0; i < items.length; i++) {
                 if (items[i].id === targetId) {
@@ -3700,34 +3700,18 @@
                     }
                     return true;
                 case 21: // KEYCODE_DPAD_LEFT
-                    if (isLyricMenuOpen) {
-                        adjustLyricOffset(-500);
-                    } else {
-                        triggerPrev();
-                        showToastTip('⏮ 上一曲');
-                    }
+                    triggerPrev();
+                    showToastTip('⏮ 上一曲');
                     return true;
                 case 22: // KEYCODE_DPAD_RIGHT
-                    if (isLyricMenuOpen) {
-                        adjustLyricOffset(500);
-                    } else {
-                        triggerNext();
-                        showToastTip('⏭ 下一曲');
-                    }
+                    triggerNext();
+                    showToastTip('⏭ 下一曲');
                     return true;
                 case 23: // KEYCODE_DPAD_CENTER
                 case 66: // KEYCODE_ENTER
                     if (isLyricMenuOpen) {
-                        const action = LYRIC_MENU_ORDER[remoteMenuFocusIdx >= 0 ? remoteMenuFocusIdx : 0];
-                        if (action === 'official' || action === 'bluetooth') {
-                            switchLyricSource(action);
-                        } else if (action === 'offset_minus') {
-                            adjustLyricOffset(-500);
-                        } else if (action === 'offset_plus') {
-                            adjustLyricOffset(500);
-                        } else if (action === 'research') {
-                            reSearchLyrics();
-                        }
+                        const src = LYRIC_MENU_ORDER[remoteMenuFocusIdx >= 0 ? remoteMenuFocusIdx : 0];
+                        selectLyricSource(src);
                     } else {
                         triggerPlayPause();
                     }

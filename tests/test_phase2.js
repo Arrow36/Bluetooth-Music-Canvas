@@ -252,18 +252,18 @@ async function runTests() {
         window.onPermissionStatusChanged(true);
         assert(permBtn && !permBtn.classList.contains('show'), "Permission guide banner hidden when permission is granted");
 
-        // Menu key (82) toggles lyric source menu and focuses first item
+        // Menu key (82) toggles lyric source menu and focuses first item (auto)
         window.closeAllSecondaryMenus();
         assert(window.isAnySecondaryMenuOpen() === false, "All secondary menus closed initially");
         window.handleRemoteKey(82); // KEYCODE_MENU
         assert(window.isAnySecondaryMenuOpen() === true, "KEYCODE_MENU (82) opens lyric source menu");
-        const firstMenuEl = document.getElementById('menuItem_official');
-        assert(firstMenuEl && firstMenuEl.classList.contains('remote-focus'), "First menu item receives remote-focus highlight");
+        const firstMenuEl = document.getElementById('menuItem-auto');
+        assert(firstMenuEl && firstMenuEl.classList.contains('remote-focus'), "First menu item (menuItem-auto) receives remote-focus highlight");
 
-        // D-Pad Down (20) moves focus to second item (bluetooth)
+        // D-Pad Down (20) moves focus to second item (netease)
         window.handleRemoteKey(20); // KEYCODE_DPAD_DOWN
-        const secondMenuEl = document.getElementById('menuItem_bluetooth');
-        assert(secondMenuEl && secondMenuEl.classList.contains('remote-focus'), "DPAD_DOWN moves remote-focus to menuItem_bluetooth");
+        const secondMenuEl = document.getElementById('menuItem-netease');
+        assert(secondMenuEl && secondMenuEl.classList.contains('remote-focus'), "DPAD_DOWN moves remote-focus to menuItem-netease");
 
         window.closeAllSecondaryMenus();
         assert(window.isAnySecondaryMenuOpen() === false, "closeAllSecondaryMenus closes lyric menu and clears focus");
