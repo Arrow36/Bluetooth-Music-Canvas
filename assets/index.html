@@ -3383,15 +3383,10 @@
             });
         }
 
-        // 点击页面其它任意地方自动收起二级菜单（严格保护右下角控件群）
+        // 点击页面其它任意地方自动收起二级菜单
         document.addEventListener('click', function(e) {
             const menu = document.getElementById('lyricSourceMenu');
             if (!menu || !menu.classList.contains('show')) return;
-            const x = (typeof e.clientX === 'number') ? e.clientX : 0;
-            const y = (typeof e.clientY === 'number') ? e.clientY : 0;
-            if (x >= window.innerWidth - 420 && y >= window.innerHeight - 130) {
-                return; // 右下角字号控件与歌词源集群安全保护区
-            }
             const btn = document.getElementById('statusTag');
             const fontWidget = document.getElementById('lyricFontWidget');
             if (!menu.contains(e.target) && (!btn || !btn.contains(e.target)) && (!fontWidget || !fontWidget.contains(e.target))) {
@@ -4381,64 +4376,40 @@
 
         function handleTapEnd(x, y, target) {
             const now = performance.now();
-            if (now - lastTapHandledTime < 500) {
-                return; // 过滤 500ms 内重复合成事件（pointerup, touchend）
+            if (now - lastTapHandledTime < 400) {
+                return; // 过滤 400ms 内重复合成事件（pointerup, touchend）
             }
+            lastTapHandledTime = now;
 
             const elapsed = now - tapDownTime;
             const dist = Math.hypot(x - tapDownX, y - tapDownY);
 
-            // 精准判定右下角控制集群（含二级菜单、字号控件、歌词源胶囊及其外延保护区）
-            const fontWidget = document.getElementById('lyricFontWidget');
-            const lyricMenu = document.getElementById('lyricSourceMenu');
-            const statusTag = document.getElementById('statusTag');
-            const checkRect = (el, pad = 18) => {
-                if (!el) return false;
-                const r = el.getBoundingClientRect();
-                return (x >= r.left - pad && x <= r.right + pad && y >= r.top - pad && y <= r.bottom + pad);
-            };
+            // 检查当前是否有二级菜单（歌词源菜单或输出设备下拉框）展开
+            const isMenuOpen = isAnySecondaryMenuOpen();
 
-            const isFontWidgetTouch = checkRect(fontWidget, 28);
-            const isStatusTagTouch = checkRect(statusTag, 24);
-            const isLyricMenuTouch = checkRect(lyricMenu, 12);
-            const isBottomClusterTouch = isFontWidgetTouch || isStatusTagTouch || isLyricMenuTouch;
-
-            // 智能四角控制区防误触保护（点偏也不会意外隐藏常驻控件）
-            const isBottomRightZone = (x > window.innerWidth - 300 && y > window.innerHeight - 100);
-            const isTopLeftZone = (x < 300 && y < 100);
-            const isTopRightZone = (x > window.innerWidth - 120 && y < 100);
-
-            const isInteractive = (isBottomRightZone || isTopLeftZone || isTopRightZone) ||
-                (target && target.closest && !!target.closest('button, .btn-ctrl, .vol-btn, .volume-widget, .source-tag, .lyric-font-widget, .font-btn, .device-pill, .device-dropdown, .lyric-source-menu, #closeBtn, .top-bar, .bottom-bar, .player-deck, .source-menu-item, .device-card-wrapper, .audio-spec-card'));
-
-            // 如果触摸在字号微调控件范围内，且二级菜单已展开，确保绝不触发空白关闭，兜底直接调字号
-            if (isFontWidgetTouch && document.body.classList.contains('lyric-menu-open')) {
-                lastTapHandledTime = now;
-                resetIdleTimer();
-                if (!target || !target.closest('.font-btn')) {
-                    if (fontWidget) {
-                        const r = fontWidget.getBoundingClientRect();
-                        adjustLyricFontSize(x < (r.left + r.width / 2) ? -1 : 1);
-                    }
+            // 判断是否真正命中了可交互的控件元素（严禁将整行 top-bar / bottom-bar 或四周大范围作为控件）
+            let isInteractive = false;
+            if (target && target.closest) {
+                if (isMenuOpen) {
+                    isInteractive = !!target.closest('button, .btn-ctrl, .vol-btn, .volume-widget, .source-tag, .device-pill, .device-dropdown, .lyric-source-menu, #closeBtn, .font-btn, .lyric-font-widget');
+                } else {
+                    isInteractive = !!target.closest('button, .btn-ctrl, .vol-btn, .volume-widget, .source-tag, .device-pill, .device-dropdown, #closeBtn');
                 }
-                return;
             }
 
             if (isTapCandidate && elapsed < 500 && dist < 20) {
                 isTapCandidate = false;
-                lastTapHandledTime = now;
-                // 触摸到右下角控制集群（含二级菜单、字号控件、胶囊标签及其保护区）时，阻断空白关闭逻辑
-                if (isBottomClusterTouch || (target && target.closest && target.closest('.lyric-source-menu, .lyric-font-widget, .source-tag, .font-btn, #btnFontDec, #btnFontInc, #fontSizeLabel'))) {
-                    return;
-                }
                 if (!isInteractive) {
+                    // 点击空白区域：原汁原味统一的全局“点击唤醒，再点击就隐藏”触控逻辑
                     if (document.body.classList.contains('idle')) {
+                        // 1. 休眠沉浸状态下：点击任何空白/非按钮区域，立即唤醒控件！
                         setIdleState(false);
-                    } else if (isAnySecondaryMenuOpen()) {
-                        // 二级菜单展开时，点击空白处仅关闭二级菜单并恢复常规 6 秒自动隐藏倒计时，防止意外黑屏
+                    } else if (isMenuOpen) {
+                        // 2. 二级菜单展开时：点击任何空白区域，仅收起二级菜单，保持常驻控件唤醒
                         closeAllSecondaryMenus();
                         resetIdleTimer();
                     } else {
+                        // 3. 常规唤醒状态下：再点击空白区域，立即隐藏界面进入沉浸！
                         setIdleState(true);
                     }
                     return;
@@ -4446,7 +4417,6 @@
             }
 
             // 点击或交互了具体控件
-            lastTapHandledTime = now;
             if (document.body.classList.contains('idle')) {
                 setIdleState(false);
             } else {
@@ -4491,13 +4461,26 @@
 
         // 点击屏幕空白处保底事件（兼容各种输入设备与电视遥控器）
         document.addEventListener('click', function(e) {
-            const isInteractive = e.target && e.target.closest && !!e.target.closest('button, .btn-ctrl, .vol-btn, .volume-widget, .source-tag, .lyric-font-widget, .font-btn, .device-pill, .device-dropdown, .lyric-source-menu, #closeBtn, .top-bar, .bottom-bar, .player-deck, .source-menu-item, .device-card-wrapper, .audio-spec-card');
+            const now = performance.now();
+            if (now - lastTapHandledTime < 400) return; // 过滤重复合成点击
+            lastTapHandledTime = now;
+
+            const isMenuOpen = isAnySecondaryMenuOpen();
+            let isInteractive = false;
+            if (e.target && e.target.closest) {
+                if (isMenuOpen) {
+                    isInteractive = !!e.target.closest('button, .btn-ctrl, .vol-btn, .volume-widget, .source-tag, .device-pill, .device-dropdown, .lyric-source-menu, #closeBtn, .font-btn, .lyric-font-widget');
+                } else {
+                    isInteractive = !!e.target.closest('button, .btn-ctrl, .vol-btn, .volume-widget, .source-tag, .device-pill, .device-dropdown, #closeBtn');
+                }
+            }
+
             if (!isInteractive) {
-                const now = performance.now();
-                if (now - lastTapHandledTime < 600) return; // 过滤 300ms 移动端合成点击
-                lastTapHandledTime = now;
                 if (document.body.classList.contains('idle')) {
                     setIdleState(false);
+                } else if (isMenuOpen) {
+                    closeAllSecondaryMenus();
+                    resetIdleTimer();
                 } else {
                     setIdleState(true);
                 }
