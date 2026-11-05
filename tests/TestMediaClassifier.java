@@ -56,6 +56,27 @@ public class TestMediaClassifier {
                 "晴天", "周杰伦", "叶惠美", 269000, MetadataNormalizer.MetadataFormat.UNKNOWN);
         assertTrue("Standard music track recognized as MUSIC", r8.isMusic());
 
+        // 9. Real Bilibili videos where album == title or album is a video category
+        MediaClassifier.ClassificationResult r9 = MediaClassifier.classify(
+                "蔡珂宜 巡演前准备 Chloe Chua", "激素不给你", "蔡珂宜 巡演前准备 Chloe Chua", 180000, MetadataNormalizer.MetadataFormat.UNKNOWN);
+        assertTrue("Bilibili tour prep video (album==title) recognized as VIDEO", r9.isVideo());
+
+        MediaClassifier.ClassificationResult r10 = MediaClassifier.classify(
+                "蔡珂宜 2026.10.20庞塞<小星星>完整版 | 长沙场第1排", "HzCat赫兹猫", "蔡珂宜 2026.10.20庞塞<小星星>完整版 | 长沙场第1排", 240000, MetadataNormalizer.MetadataFormat.UNKNOWN);
+        assertTrue("Bilibili concert clip with date/seat (album==title) recognized as VIDEO", r10.isVideo());
+
+        MediaClassifier.ClassificationResult r11 = MediaClassifier.classify(
+                "「开箱评测」199的RK3566触屏音箱 4+128超大容量 完美Project Treblek可刷GSI 国美云", "郑羊羊", "开箱评测", 600000, MetadataNormalizer.MetadataFormat.UNKNOWN);
+        assertTrue("Bilibili unboxing review with folder album recognized as VIDEO", r11.isVideo());
+
+        MediaClassifier.ClassificationResult r12 = MediaClassifier.classify(
+                "斥巨资！让07后小朋友给我买衣服！结果…！【3】", "宝剑嫂", "斥巨资！让07后小朋友给我买衣服！结果…！【3】", 480000, MetadataNormalizer.MetadataFormat.UNKNOWN);
+        assertTrue("Bilibili numbered vlog with 【3】 recognized as VIDEO", r12.isVideo());
+
+        MediaClassifier.ClassificationResult r13 = MediaClassifier.classify(
+                "“我不是叛逆，这只是我的审美态度”", "拉宏桑", "“我不是叛逆，这只是我的审美态度”", 180000, MetadataNormalizer.MetadataFormat.UNKNOWN);
+        assertTrue("Bilibili quoted sentence title recognized as VIDEO", r13.isVideo());
+
         System.out.println(">>> All MediaClassifier Tests Passed! <<<\n");
     }
 }

@@ -51,6 +51,15 @@ public class TestStep2CacheAndTickets {
         assert "http://generic.jpg".equals(enrichedHit.coverUrl);
         System.out.println("  PASS [5]: Album enrichment inherits generic empty-album cache entry without re-fetch");
 
+        // 6. Default white-background portrait placeholder cover filtering
+        assert !MetadataFetcher.isValidCoverUrl("https://m.kugou.com/static/images/share2014/default_singer.jpg")
+                : "Kugou default_singer.jpg placeholder must be rejected";
+        assert !MetadataFetcher.isValidCoverUrl("http://singerimg.kugou.com/uploadpic/softhead/400/20260128/20260128120704474362.jpg")
+                : "Kugou singerimg avatar must be rejected";
+        assert MetadataFetcher.isValidCoverUrl("https://p4.music.126.net/wqyd40jQQLVTY9nynOwETg==/109951171031632866.jpg?param=600y600")
+                : "Valid NetEase album cover must be accepted";
+        System.out.println("  PASS [6]: Default white-background portrait & singer avatar URLs rejected by isValidCoverUrl");
+
         System.out.println("==================================================");
         System.out.println("All Step 2 Cache & Ticket tests PASSED!");
         System.out.println("==================================================");

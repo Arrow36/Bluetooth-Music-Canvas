@@ -1750,8 +1750,20 @@
             }
         }
 
+        function isValidCoverUrl(url) {
+            if (!url || typeof url !== 'string') return false;
+            const u = url.trim().toLowerCase();
+            if (!u) return false;
+            if (u.includes('default_singer') || u.includes('default_album') || u.includes('default_cover') ||
+                u.includes('default_avatar') || u.includes('share2014/default') || u.includes('singerimg.kugou.com') ||
+                u.includes('nocover') || u.includes('no_cover')) {
+                return false;
+            }
+            return true;
+        }
+
         function setCoverImage(url) {
-            currentCoverUrl = url || "";
+            currentCoverUrl = isValidCoverUrl(url) ? url.trim() : "";
             const img = document.getElementById('vinylCoverImg');
             const bg = document.getElementById('ambientBg');
             if (currentCoverUrl) {
@@ -2700,7 +2712,7 @@
                 lastSourceRequestId[data.source] = data.sourceRequestId;
             }
 
-            // 核心保护：若当前曲目处于视频模式，严禁被滞后的旧音乐歌词渲染覆盖大号律动频谱
+            // 核心保护：若当前曲目处于视频模式，严禁被滞后的旧音乐歌词渲染覆盖大号律动频谱，且黑胶保持空白盘面
             if (currentTrack && currentTrack.isVideo) {
                 const stream = document.getElementById('lyricsStream');
                 const emptyBox = document.getElementById('emptyLyrics');
@@ -2712,26 +2724,19 @@
                 if (emptyBox) emptyBox.style.display = 'none';
                 if (largeViz) largeViz.style.display = 'flex';
                 syncSpectrumVisibility();
-                if (data.coverUrl && data.lyricSource !== '视频模式') {
-                    lastValidMusicCoverUrl = data.coverUrl;
-                    setCoverImage(data.coverUrl);
-                } else if (lastValidMusicCoverUrl) {
-                    setCoverImage(lastValidMusicCoverUrl);
-                }
+                setCoverImage('');
                 return;
             }
 
             const trackKey = data.trackKey || currentSongKey || ((currentTrack ? currentTrack.title : '') + '\t' + (currentTrack ? currentTrack.artist : '')).toLowerCase().trim();
             ensureSongCacheEntry(trackKey);
 
-            if (data.coverUrl) {
-                if (data.lyricSource !== '视频模式') {
-                    lastValidMusicCoverUrl = data.coverUrl;
-                }
+            if (isValidCoverUrl(data.coverUrl) && data.lyricSource !== '视频模式') {
+                lastValidMusicCoverUrl = data.coverUrl;
                 songCache[trackKey].coverUrl = data.coverUrl;
                 setCoverImage(data.coverUrl);
-            } else if (data.lyricSource === '视频模式' && lastValidMusicCoverUrl) {
-                setCoverImage(lastValidMusicCoverUrl);
+            } else if (!songCache[trackKey].coverUrl) {
+                setCoverImage('');
             }
             if (data.lyricSource) {
                 songCache[trackKey].lyricSource = data.lyricSource;
@@ -2855,11 +2860,7 @@
                 if (largeViz) largeViz.style.display = 'flex';
                 syncSpectrumVisibility();
                 updateStatusTag('视频模式', '#5ac8fa');
-                if (lastValidMusicCoverUrl) {
-                    setCoverImage(lastValidMusicCoverUrl);
-                } else {
-                    setCoverImage('');
-                }
+                setCoverImage('');
                 return;
             }
 
@@ -2909,11 +2910,12 @@
                 updateMenuCheckmarks();
 
                 const cached = songCache[trackKey];
-                if (cached && cached.coverUrl) {
-                    if (!isVideo) lastValidMusicCoverUrl = cached.coverUrl;
+                if (cached && isValidCoverUrl(cached.coverUrl)) {
+                    lastValidMusicCoverUrl = cached.coverUrl;
                     setCoverImage(cached.coverUrl);
-                } else if (isVideo && lastValidMusicCoverUrl) {
-                    setCoverImage(lastValidMusicCoverUrl);
+                } else {
+                    // 新曲目尚未检索到封面或无封面时，立即重置为空白黑胶，杜绝残留上一首歌或占位人像图
+                    setCoverImage('');
                 }
 
                 if (currentActiveSource !== 'auto') {

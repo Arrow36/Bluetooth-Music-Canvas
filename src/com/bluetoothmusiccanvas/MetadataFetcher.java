@@ -148,6 +148,19 @@ public class MetadataFetcher {
         });
     }
 
+    public static boolean isValidCoverUrl(String url) {
+        if (url == null) return false;
+        String u = url.trim().toLowerCase();
+        if (u.isEmpty()) return false;
+        // 过滤酷狗/各平台默认占位白底人像图 (default_singer.jpg) 及歌手纯头像占位图
+        if (u.contains("default_singer") || u.contains("default_album") || u.contains("default_cover")
+                || u.contains("default_avatar") || u.contains("share2014/default")
+                || u.contains("singerimg.kugou.com") || u.contains("nocover") || u.contains("no_cover")) {
+            return false;
+        }
+        return true;
+    }
+
     public static boolean isVideoTrack(String rawTitle, String rawArtist, String rawAlbum, long duration) {
         return MediaClassifier.classify(rawTitle, rawArtist, rawAlbum, duration, MetadataNormalizer.MetadataFormat.UNKNOWN).isVideo();
     }
@@ -397,22 +410,32 @@ public class MetadataFetcher {
         String cClean = cTitle.replaceAll("[《》<>\"'“”、,，\\s]", "");
         String rClean = rTitle.replaceAll("[《》<>\"'“”、,，\\s]", "");
 
-        // 1. 歌名匹配
-        if (cClean.equals(rClean)) {
-            score += 160;
-        } else if (cClean.contains(rClean)) {
-            score += 85;
-        } else if (rClean.contains(cClean)) {
-            // 候选歌名被包含在请求名中：必须占比足够长，防止长句视频将几个字词误认成歌名
-            if (cClean.length() >= 4 && (float) cClean.length() / rClean.length() >= 0.5f) {
+        // 1. 歌名匹配（硬性前提：歌名完全不沾边的候选直接淘汰，严禁仅靠歌手名或时长凑分命中）
+        boolean titleMatched = false;
+        if (!cClean.isEmpty() && !rClean.isEmpty()) {
+            if (cClean.equals(rClean)) {
+                score += 160;
+                titleMatched = true;
+            } else if (cClean.contains(rClean) && rClean.length() >= 2) {
                 score += 85;
+                titleMatched = true;
+            } else if (rClean.contains(cClean)) {
+                // 候选歌名被包含在请求名中：必须占比足够长，防止长句视频将几个字词误认成歌名
+                if (cClean.length() >= 4 && (float) cClean.length() / rClean.length() >= 0.5f) {
+                    score += 85;
+                    titleMatched = true;
+                }
+            } else {
+                String cBase = cTitle.split("[:(（【\\[]")[0].trim();
+                String rBase = rTitle.split("[:(（【\\[]")[0].trim();
+                if (!cBase.isEmpty() && !rBase.isEmpty() && (cBase.equals(rBase) || (cBase.contains(rBase) && rBase.length() >= 4))) {
+                    score += 50;
+                    titleMatched = true;
+                }
             }
-        } else {
-            String cBase = cTitle.split("[:(（【\\[]")[0].trim();
-            String rBase = rTitle.split("[:(（【\\[]")[0].trim();
-            if (!cBase.isEmpty() && !rBase.isEmpty() && (cBase.equals(rBase) || (cBase.contains(rBase) && rBase.length() >= 4))) {
-                score += 50;
-            }
+        }
+        if (!titleMatched) {
+            return -999;
         }
 
         // 2. 避免非用户请求的纯伴奏、卡拉OK或钢琴版
@@ -636,8 +659,13 @@ public class MetadataFetcher {
                         JSONObject dObj = new JSONObject(dJson);
                         String img = dObj.optString("imgUrl", "");
                         if (!img.isEmpty()) {
-                            out[0] = img.replace("{size}", "400");
-                            Log.i(TAG, "Kugou cover found: " + out[0]);
+                            String resolvedImg = img.replace("{size}", "400");
+                            if (isValidCoverUrl(resolvedImg)) {
+                                out[0] = resolvedImg;
+                                Log.i(TAG, "Kugou cover found: " + out[0]);
+                            } else {
+                                Log.i(TAG, "Rejected placeholder/avatar Kugou cover: " + resolvedImg);
+                            }
                         }
                     }
                 } catch (Exception ec) {

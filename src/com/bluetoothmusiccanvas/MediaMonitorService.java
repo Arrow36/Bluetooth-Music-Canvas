@@ -312,12 +312,15 @@ public class MediaMonitorService extends NotificationListenerService {
         mRealArtist = "视频 / 媒体声音";
         mRealAlbum = "";
         mDuration = 0;
-        // 保留之前的有效封面 Bitmap，在视频模式不置为 null
+        mCurrentCoverUrl = "";
+        mCurrentCoverBitmap = null;
+        mGeneratedVinylBitmap = null;
+        mLoadedBitmapUrl = "";
         updateFloatingViewContent();
         MainActivity act = MainActivity.getInstance();
         if (act != null) {
             act.dispatchMetadata(mRealTitle, mRealArtist, mRealAlbum, mDuration, "");
-            act.dispatchOnlineResult(MainActivity.sLastValidMusicCoverUrl, "", "视频模式");
+            act.dispatchOnlineResult("", "", "视频模式");
             act.dispatchPlaybackState(mIsPlaying, 0, 1.0f);
         }
     }
@@ -399,7 +402,12 @@ public class MediaMonitorService extends NotificationListenerService {
             mLoadedBitmapUrl = "local:" + capturedGen;
             mGeneratedVinylBitmap = null;
             updateFloatingViewContent();
-        } else if (act == null && (hasStream || !MetadataFetcher.isVideoTrack(mRealTitle, mRealArtist, mRealAlbum, mDuration))) {
+        } else {
+            // 切歌或进入视频且无本地内嵌封面时，先重置为空白黑胶盘面，防止残留上一首歌或默认人像封面
+            mCurrentCoverBitmap = null;
+            mGeneratedVinylBitmap = null;
+            mLoadedBitmapUrl = "";
+            if (act == null && (hasStream || !MetadataFetcher.isVideoTrack(mRealTitle, mRealArtist, mRealAlbum, mDuration))) {
             // Only fetch directly from service when MainActivity is not active;
             // when MainActivity is active, it fetches once and notifies onOnlineCoverResolved().
             final String key = snapshot.songCacheKey;
@@ -413,6 +421,7 @@ public class MediaMonitorService extends NotificationListenerService {
                         }
                     }
                 });
+            }
             }
         }
 

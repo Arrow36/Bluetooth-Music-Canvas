@@ -423,7 +423,7 @@ public class MainActivity extends Activity {
 
             if (sCachedTitle == null || !sCachedTitle.equals("蓝牙媒体音频")) {
                 dispatchMetadata("蓝牙媒体音频", "视频 / 外部音频", "", 0, "", 0, "", false);
-                dispatchOnlineResult(sLastValidMusicCoverUrl, "", "视频模式");
+                dispatchOnlineResult("", "", "视频模式");
             }
         }
     }
@@ -499,11 +499,12 @@ public class MainActivity extends Activity {
 
         // 3. 再分发或检索封面与歌词 (在 mHandler 串行队列中排在 onMetadataChanged 之后)
         if (isVideo) {
-            sCachedCoverUrl = sLastValidMusicCoverUrl;
+            // 视频模式一律展示纯粹的空白黑胶，不沿用上一首歌的专辑图
+            sCachedCoverUrl = "";
             sCachedLyrics = "";
             sCachedLyricSource = "视频模式";
             setSpectrumVisible(true);
-            dispatchOnlineResult(sCachedCoverUrl, "", "视频模式", generation, trackKey, 0, "video");
+            dispatchOnlineResult("", "", "视频模式", generation, trackKey, 0, "video");
         } else {
             MetadataFetcher.CachedMeta cached = MetadataFetcher.getCached(title, artist, album);
             if (cached != null && (cached.coverUrl != null || cached.lyricsLrc != null)) {
