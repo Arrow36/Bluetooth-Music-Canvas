@@ -27,6 +27,11 @@
             display: none !important;
         }
 
+        :root {
+            --lyric-font-size: 20px;
+            --lyric-line-height: 50px;
+        }
+
         html, body {
             width: 100vw;
             height: 100vh;
@@ -742,9 +747,9 @@
            完全水平居中对齐，高亮放大通过 transform-origin: center center 从正中心等比放大，平滑对称！
         */
         .lyric-line {
-            height: 50px;
-            line-height: 50px;
-            font-size: 20px;
+            height: var(--lyric-line-height, 50px);
+            line-height: var(--lyric-line-height, 50px);
+            font-size: var(--lyric-font-size, 20px);
             font-weight: 500;
             color: rgba(255, 255, 255, 0.4);
             opacity: 0.15;
@@ -756,7 +761,7 @@
             overflow: visible;
         }
 
-        /* 当前激活歌词：高亮、实心白、无模糊杂边、适度等比缩放确保左右绝不裁切 */
+        /* 当前激活歌词：高亮、实心白、中心视觉焦点（严格保证大于上下所有歌词） */
         .lyric-line.active {
             font-weight: 700;
             color: #ffffff;
@@ -766,34 +771,34 @@
         }
 
         .lyric-line.near-1 {
-            color: rgba(255, 255, 255, 0.85);
-            opacity: 0.75;
-            transform: scale(1.04);
+            color: rgba(255, 255, 255, 0.80);
+            opacity: 0.65;
+            transform: scale(0.92);
         }
 
         .lyric-line.near-2 {
-            color: rgba(255, 255, 255, 0.65);
-            opacity: 0.45;
-            transform: scale(1.0);
+            color: rgba(255, 255, 255, 0.55);
+            opacity: 0.40;
+            transform: scale(0.85);
         }
 
         .lyric-line.near-3 {
-            color: rgba(255, 255, 255, 0.45);
-            opacity: 0.22;
-            transform: scale(0.98);
+            color: rgba(255, 255, 255, 0.38);
+            opacity: 0.20;
+            transform: scale(0.78);
         }
 
         .lyric-line.near-4 {
-            color: rgba(255, 255, 255, 0.30);
+            color: rgba(255, 255, 255, 0.25);
             opacity: 0.08;
-            transform: scale(0.96);
+            transform: scale(0.72);
         }
 
         .lyric-line.far {
             opacity: 0 !important;
             visibility: hidden !important;
             pointer-events: none;
-            transform: scale(0.94);
+            transform: scale(0.68);
             transition: none !important;
         }
 
@@ -951,6 +956,147 @@
             color: rgba(255, 255, 255, 0.35);
         }
 
+        .bottom-right-cluster {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            position: relative;
+        }
+
+        /* 歌词字号精细调节控件：置于歌词来源控件左侧，极简磨砂毛玻璃胶囊（与音量及底部组件规范统一） */
+        .lyric-font-widget {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0;
+            height: 38px;
+            padding: 0 4px;
+            box-sizing: border-box;
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 19px;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+            opacity: 0;
+            pointer-events: none !important;
+            visibility: hidden;
+            transform: translateX(8px);
+            transition: opacity 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            position: relative;
+            z-index: 20;
+        }
+
+        .lyric-font-widget * {
+            pointer-events: none !important;
+        }
+
+        body.lyric-menu-open .lyric-font-widget {
+            opacity: 1 !important;
+            pointer-events: auto !important;
+            visibility: visible !important;
+            transform: translateX(0);
+        }
+
+        body.lyric-menu-open .lyric-font-widget .font-btn {
+            pointer-events: auto !important;
+        }
+
+        body.idle .lyric-font-widget {
+            opacity: 0 !important;
+            pointer-events: none !important;
+            visibility: hidden !important;
+        }
+
+        /* 参考音量组件 vol-btn 设计规范：无周围常驻圆圈、中心对齐、超大触控热区、点击时微光反馈 */
+        .font-btn {
+            width: 38px;
+            height: 38px;
+            box-sizing: border-box;
+            border: none;
+            background: transparent;
+            color: rgba(255, 255, 255, 0.75);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            outline: none;
+            padding: 0;
+            margin: 0;
+            border-radius: 50%;
+            position: relative;
+            touch-action: manipulation;
+            transition: all 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+            -webkit-tap-highlight-color: transparent;
+            pointer-events: auto !important;
+            user-select: none;
+            z-index: 25;
+        }
+
+        /* 触控命中热区无形扩展：上下各扩 20px，覆盖完整半区，与右侧来源标签互不侵占 */
+        .font-btn::after {
+            content: '';
+            position: absolute;
+            top: -20px;
+            bottom: -20px;
+            z-index: 30;
+        }
+
+        #btnFontDec::after {
+            left: -24px;
+            right: 0;
+        }
+
+        #btnFontInc::after {
+            left: 0;
+            right: 0;
+        }
+
+        .font-btn:hover {
+            color: rgba(255, 255, 255, 0.95);
+        }
+
+        .font-btn:active {
+            background: rgba(255, 255, 255, 0.14);
+            color: #ffffff;
+            transform: scale(0.9);
+        }
+
+        .font-btn svg {
+            width: 18px;
+            height: 18px;
+            display: block;
+            margin: auto;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2.2;
+            stroke-linecap: round;
+            pointer-events: none !important;
+        }
+
+        .font-btn svg * {
+            pointer-events: none !important;
+        }
+
+        .font-size-label {
+            min-width: 44px;
+            height: 38px;
+            line-height: 38px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            font-size: 13.5px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.85);
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 0.3px;
+            user-select: none;
+            pointer-events: none;
+        }
+
         /* 全屏右下角：歌词源切换胶囊（与四个角落及音量组件统一 36px 规格） */
         .source-tag {
             display: inline-flex;
@@ -975,15 +1121,20 @@
             position: relative;
         }
 
-        /* 触控命中热区扩展：在四周增加无形触控垫，大幅提升右下角按钮触控容错率 */
+        /* 触控命中热区舒适扩展（上下各 10px，左右各 8px），杜绝大面积侵占 */
         .source-tag::after {
             content: '';
             position: absolute;
-            top: -30px;
-            bottom: -30px;
-            left: -36px;
-            right: -36px;
+            top: -10px;
+            bottom: -10px;
+            left: -8px;
+            right: -8px;
             z-index: 1;
+        }
+
+        body.lyric-menu-open .source-tag::after {
+            left: 0 !important;
+            right: -8px;
         }
 
         .source-tag * {
@@ -1451,9 +1602,9 @@
                 padding: 0 26px 0 4px;
             }
             .lyric-line {
-                height: 42px;
-                line-height: 42px;
-                font-size: 16px;
+                height: var(--lyric-line-height, 42px);
+                line-height: var(--lyric-line-height, 42px);
+                font-size: var(--lyric-font-size, 16px);
             }
             .lyric-line.active {
                 transform: scale(1.15);
@@ -1491,9 +1642,9 @@
                 margin: -42px 0 -38px 0;
             }
             .lyric-line {
-                height: 36px;
-                line-height: 36px;
-                font-size: 14.5px;
+                height: var(--lyric-line-height, 36px);
+                line-height: var(--lyric-line-height, 36px);
+                font-size: var(--lyric-font-size, 14.5px);
             }
             .lyric-line.active {
                 transform: scale(1.14);
@@ -1524,9 +1675,9 @@
                 font-size: 18px;
             }
             .lyric-line {
-                height: 64px;
-                line-height: 64px;
-                font-size: 25px;
+                height: var(--lyric-line-height, 64px);
+                line-height: var(--lyric-line-height, 64px);
+                font-size: var(--lyric-font-size, 25px);
             }
             .lyric-line.active {
                 transform: scale(1.18);
@@ -1744,7 +1895,7 @@
             </div>
         </div>
 
-        <!-- 底部全宽栏：左下角音频硬件规格，右下角歌词源切换 -->
+        <!-- 底部全宽栏：左下角音频硬件规格，右下角歌词源切换及字号调节 -->
         <div class="bottom-bar">
             <div class="audio-spec-card">
                 <span class="spec-param" id="specCodec">A2DP</span>
@@ -1756,11 +1907,22 @@
                 <span class="spec-param" id="specChannels">立体声</span>
             </div>
 
-            <button class="source-tag" id="statusTag" onclick="toggleLyricMenu(event)" title="点击切换歌词源">
-                <span class="source-dot" id="sourceDot"></span>
-                <span id="statusTagText">正在匹配歌词...</span>
-                <span class="source-switch-icon">▾</span>
-            </button>
+            <div class="bottom-right-cluster">
+                <div class="lyric-font-widget" id="lyricFontWidget">
+                    <button class="font-btn" id="btnFontDec" onclick="adjustLyricFontSize(-1, event)" ontouchend="adjustLyricFontSize(-1, event)" title="缩小歌词字号" aria-label="缩小歌词字号">
+                        <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    </button>
+                    <span class="font-size-label" id="fontSizeLabel">20px</span>
+                    <button class="font-btn" id="btnFontInc" onclick="adjustLyricFontSize(1, event)" ontouchend="adjustLyricFontSize(1, event)" title="放大歌词字号" aria-label="放大歌词字号">
+                        <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    </button>
+                </div>
+                <button class="source-tag" id="statusTag" onclick="toggleLyricMenu(event)" title="点击切换歌词源">
+                    <span class="source-dot" id="sourceDot"></span>
+                    <span id="statusTagText">正在匹配歌词...</span>
+                    <span class="source-switch-icon">▾</span>
+                </button>
+            </div>
         </div>
     </div>
 
@@ -1844,6 +2006,14 @@
         let hasOfficialLyrics = false;
         let activeLyricIndex = -1;
         let renderedLyricIndex = -1;
+        let currentRawLrcText = "";
+        let currentLyricFontSize = 20;
+        try {
+            const savedSize = parseInt(localStorage.getItem('bmc_lyric_font_size'), 10);
+            if (savedSize >= 14 && savedSize <= 52) {
+                currentLyricFontSize = savedSize;
+            }
+        } catch (e) {}
         let currentCoverUrl = "";
         let lastValidMusicCoverUrl = "";
         let lyricMode = 'official'; // 'official' | 'bluetooth'
@@ -2178,21 +2348,215 @@
             return len;
         }
 
-        // 智能切分超长单行歌词：防止文字超出屏幕显示范围或折行导致行高破坏
+        let measureCanvas = null;
+        let measureCtx = null;
+        function measureLyricTextWidth(text, fontSize) {
+            if (!text) return 0;
+            if (typeof document !== 'undefined' && document.createElement) {
+                try {
+                    if (!measureCanvas) {
+                        measureCanvas = document.createElement('canvas');
+                        measureCtx = measureCanvas ? measureCanvas.getContext('2d') : null;
+                    }
+                    if (measureCtx) {
+                        measureCtx.font = `600 ${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+                        const metrics = measureCtx.measureText(text);
+                        if (metrics && typeof metrics.width === 'number') {
+                            return metrics.width;
+                        }
+                    }
+                } catch (e) {}
+            }
+            let w = 0;
+            for (let i = 0; i < text.length; i++) {
+                w += text.charCodeAt(i) > 255 ? (fontSize * 1.05) : (fontSize * 0.58);
+            }
+            return w;
+        }
+
+        function getAvailableLyricWidth() {
+            if (typeof document !== 'undefined') {
+                const vp = document.getElementById('lyricsViewport');
+                if (vp && vp.clientWidth > 100) {
+                    return vp.clientWidth - 28;
+                }
+                if (typeof window !== 'undefined' && window.innerWidth > 100) {
+                    return window.innerWidth * 0.52 - 28;
+                }
+            }
+            return 560;
+        }
+
+        // 歌词字号应用与自适应重算
+        function applyLyricFontSize(size, notifyReparse) {
+            currentLyricFontSize = Math.max(14, Math.min(52, size));
+            try {
+                localStorage.setItem('bmc_lyric_font_size', currentLyricFontSize);
+            } catch (e) {}
+            const lineHeight = Math.max(40, Math.round(currentLyricFontSize * 2.35));
+            document.documentElement.style.setProperty('--lyric-font-size', currentLyricFontSize + 'px');
+            document.documentElement.style.setProperty('--lyric-line-height', lineHeight + 'px');
+
+            const label = document.getElementById('fontSizeLabel');
+            if (label) label.textContent = currentLyricFontSize + 'px';
+
+            if (notifyReparse) {
+                reapplyLyricsAtCurrentFontSize();
+            } else if (activeLyricIndex >= 0) {
+                updateLyricHighlight(activeLyricIndex, true);
+                scrollToLyricIndex(activeLyricIndex, false);
+            }
+        }
+        window.applyLyricFontSize = applyLyricFontSize;
+
+        let lastFontAdjustTime = 0;
+        function adjustLyricFontSize(delta, e) {
+            // 严格门禁：事件触发时当且仅当二级菜单处于展开状态才允许调整字号（杜绝未展开时误触）
+            if (e && !document.body.classList.contains('lyric-menu-open')) {
+                return;
+            }
+            if (e) {
+                if (e.stopPropagation) e.stopPropagation();
+                if (e.preventDefault) e.preventDefault();
+                const now = performance.now();
+                if (now - lastFontAdjustTime < 100) return;
+                lastFontAdjustTime = now;
+            }
+
+            resetIdleTimer();
+            applyLyricFontSize(currentLyricFontSize + delta, true);
+        }
+        window.adjustLyricFontSize = adjustLyricFontSize;
+
+        function initLyricFontWidgetTouch() {
+            const fontWidget = document.getElementById('lyricFontWidget');
+            if (fontWidget) {
+                ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'click'].forEach(evt => {
+                    fontWidget.addEventListener(evt, function(e) {
+                        e.stopPropagation();
+                    }, { passive: false });
+                });
+
+                // 宽容触控兜底：若触碰到了控件中间标签或缝隙，左半区缩小、右半区放大（严格限制仅在二级菜单打开时）
+                const handleWidgetTap = function(e) {
+                    if (!document.body.classList.contains('lyric-menu-open')) return;
+                    if (e.target && (e.target.id === 'btnFontDec' || e.target.id === 'btnFontInc' || (e.target.closest && e.target.closest('.font-btn')))) {
+                        return;
+                    }
+                    const rect = fontWidget.getBoundingClientRect();
+                    const clientX = e.clientX || (e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0));
+                    if (clientX > 0) {
+                        const mid = rect.left + rect.width / 2;
+                        adjustLyricFontSize(clientX < mid ? -1 : 1, e);
+                    }
+                };
+                fontWidget.addEventListener('click', handleWidgetTap);
+                fontWidget.addEventListener('touchend', handleWidgetTap);
+            }
+
+            const btnDec = document.getElementById('btnFontDec');
+            const btnInc = document.getElementById('btnFontInc');
+            if (btnDec) {
+                ['pointerdown', 'touchstart'].forEach(evt => {
+                    btnDec.addEventListener(evt, function(e) {
+                        e.stopPropagation();
+                    }, { passive: true });
+                });
+                ['pointerup', 'touchend', 'click'].forEach(evt => {
+                    btnDec.addEventListener(evt, function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        adjustLyricFontSize(-1, e);
+                    });
+                });
+            }
+            if (btnInc) {
+                ['pointerdown', 'touchstart'].forEach(evt => {
+                    btnInc.addEventListener(evt, function(e) {
+                        e.stopPropagation();
+                    }, { passive: true });
+                });
+                ['pointerup', 'touchend', 'click'].forEach(evt => {
+                    btnInc.addEventListener(evt, function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        adjustLyricFontSize(1, e);
+                    });
+                });
+            }
+        }
+
+        try {
+            applyLyricFontSize(currentLyricFontSize, false);
+            initLyricFontWidgetTouch();
+        } catch (e) {}
+        document.addEventListener('DOMContentLoaded', function() {
+            applyLyricFontSize(currentLyricFontSize, false);
+            initLyricFontWidgetTouch();
+        });
+        setTimeout(initLyricFontWidgetTouch, 200);
+
+        function reapplyLyricsAtCurrentFontSize() {
+            let raw = currentRawLrcText;
+            if ((!raw || raw.trim().length === 0) && currentSongKey && songCache[currentSongKey]) {
+                raw = songCache[currentSongKey].rawLrc || songCache[currentSongKey][currentActiveSource + '_rawLrc'] || "";
+            }
+            if (raw && raw.trim().length > 0) {
+                currentRawLrcText = raw;
+                const curTime = (lyrics && lyrics[activeLyricIndex]) ? lyrics[activeLyricIndex].time : (lastPositionMs || 0);
+                const parsed = parseLRC(raw);
+                if (parsed && parsed.length > 0) {
+                    lyrics = parsed;
+                    parsedOfficialLyrics = parsed;
+                    const stream = document.getElementById('lyricsStream');
+                    if (stream && stream.style.display !== 'none') {
+                        stream.innerHTML = '';
+                        lyrics.forEach((item, index) => {
+                            const div = document.createElement('div');
+                            div.className = 'lyric-line far';
+                            div.id = `line-${index}`;
+                            div.textContent = item.text;
+                            stream.appendChild(div);
+                        });
+                        let newIdx = 0;
+                        for (let i = 0; i < lyrics.length; i++) {
+                            if (curTime >= lyrics[i].time) newIdx = i;
+                            else break;
+                        }
+                        activeLyricIndex = newIdx;
+                        renderedLyricIndex = -1;
+                        updateLyricHighlight(activeLyricIndex, true);
+                        scrollToLyricIndex(activeLyricIndex, false);
+                        return;
+                    }
+                }
+            }
+            if (activeLyricIndex >= 0) {
+                updateLyricHighlight(activeLyricIndex, true);
+                scrollToLyricIndex(activeLyricIndex, false);
+            }
+        }
+        window.reapplyLyricsAtCurrentFontSize = reapplyLyricsAtCurrentFontSize;
+
+        // 智能切分超长单行歌词：动态结合当前字号与视口真实宽度，能完整显示则绝不拆分
         function splitLongLyrics(items) {
             if (!items || items.length === 0) return [];
             const result = [];
             const strongPuncts = [',', '，', ';', '；', '!', '！', '?', '？', '~', '、'];
+
+            const availWidth = getAvailableLyricWidth();
+            const maxAllowedWidth = Math.max(260, availWidth / 1.18);
 
             for (let i = 0; i < items.length; i++) {
                 const item = items[i];
                 let text = (item.text || '').trim();
                 text = text.replace(/[\u2018\u2019\u0060\u00b4]/g, "'");
                 text = text.replace(/\b([a-zA-Z]+)\s*'\s*([a-zA-Z]+)\b/g, "$1'$2");
-                const vlen = getVisualLength(text);
 
-                // 视觉宽度超出单行舒适阈值 (如中文 > 18字 或 西文 > 36字符) 自动智能分句，杜绝左右边缘裁切
-                if (vlen > 36) {
+                const textWidth = measureLyricTextWidth(text, currentLyricFontSize);
+
+                // 核心优化：若整句歌词在当前字号下能完全展示，绝不人为分割！
+                if (textWidth > maxAllowedWidth) {
                     let p1 = '', p2 = '';
 
                     // 1. 优先尝试双语 / 显式分隔符 (如 " // " 或 " / " 或 " | ")
@@ -2349,6 +2713,11 @@
         const waveBars = [];
         let eqBarsAtBaseline = true;
         let lastSyncedSpectrumVisible = null;
+        Object.defineProperty(window, 'lastSyncedSpectrumVisible', {
+            get: () => lastSyncedSpectrumVisible,
+            set: (v) => { lastSyncedSpectrumVisible = v; },
+            configurable: true
+        });
 
         function syncSpectrumVisibility() {
             const emptyBox = document.getElementById('emptyLyrics');
@@ -2452,10 +2821,22 @@
                     let newClass = 'lyric-line';
                     if (dist === 0) {
                         newClass += ' active';
-                    } else if (dist <= 4) {
-                        newClass += ` near near-${dist}`;
+                        const vp = document.getElementById('lyricsViewport');
+                        const avail = vp ? (vp.clientWidth - 24) : (window.innerWidth * 0.52 - 24);
+                        const naturalW = el.scrollWidth || el.clientWidth || 0;
+                        if (naturalW > 0 && avail > 50 && naturalW * 1.18 > avail) {
+                            const fitScale = Math.max(1.08, Math.min(1.18, avail / naturalW));
+                            el.style.transform = `scale(${fitScale.toFixed(3)})`;
+                        } else {
+                            el.style.transform = '';
+                        }
                     } else {
-                        newClass += ' far';
+                        el.style.transform = '';
+                        if (dist <= 4) {
+                            newClass += ` near near-${dist}`;
+                        } else {
+                            newClass += ' far';
+                        }
                     }
                     el.className = newClass;
                 }
@@ -2481,10 +2862,22 @@
                     let newClass = 'lyric-line';
                     if (dist === 0) {
                         newClass += ' active';
-                    } else if (dist <= 4) {
-                        newClass += ` near near-${dist}`;
+                        const vp = document.getElementById('lyricsViewport');
+                        const avail = vp ? (vp.clientWidth - 24) : (window.innerWidth * 0.52 - 24);
+                        const naturalW = el.scrollWidth || el.clientWidth || 0;
+                        if (naturalW > 0 && avail > 50 && naturalW * 1.18 > avail) {
+                            const fitScale = Math.max(1.08, Math.min(1.18, avail / naturalW));
+                            el.style.transform = `scale(${fitScale.toFixed(3)})`;
+                        } else {
+                            el.style.transform = '';
+                        }
                     } else {
-                        newClass += ' far';
+                        el.style.transform = '';
+                        if (dist <= 4) {
+                            newClass += ` near near-${dist}`;
+                        } else {
+                            newClass += ' far';
+                        }
                     }
                     el.className = newClass;
                 });
@@ -2508,35 +2901,47 @@
             stream.style.transform = `translateY(-${targetOffset}px)`;
         }
 
-        // 手松开 3 秒后：优雅淡出当前拖动停留行，瞬间切换到当前播放行并淡入
-        function fadeTransitionToCurrentLyric() {
+        let isLyricFading = false;
+        let lyricFadeTimer = null;
+
+        // 统一歌词淡出淡入过渡动画（复用于：1. 手指拖拽松开归位 2. 手机拖动进度条 seek 跨行跳转）
+        function triggerLyricFadeTransition(targetIdx) {
             const stream = document.getElementById('lyricsStream');
             if (!stream) {
                 isManualScrolling = false;
                 return;
             }
+            const destIndex = (typeof targetIdx === 'number' && targetIdx >= 0) ? targetIdx : activeLyricIndex;
+            if (destIndex < 0 || !lyrics || lyrics.length === 0) return;
 
-            // 1. 拖动停止 3 秒后，当前停留的歌词视口平滑淡出 (0.28s)
-            stream.style.transition = 'opacity 0.28s cubic-bezier(0.4, 0, 1, 1)';
+            if (lyricFadeTimer) clearTimeout(lyricFadeTimer);
+            isLyricFading = true;
+
+            // 1. 平滑淡出视口 (0.22s)
+            stream.style.transition = 'opacity 0.22s cubic-bezier(0.4, 0, 1, 1)';
             stream.style.opacity = '0';
 
-            setTimeout(() => {
-                if (activeLyricIndex >= 0) {
-                    // 2. 在完全隐身状态下无感知直接重定位到当前播放行
-                    // instant=true 保证非激活远端行立即变成 visibility: hidden / opacity: 0，无任何 0.4s 滞后残影！
-                    updateLyricHighlight(activeLyricIndex, true);
-                    scrollToLyricIndex(activeLyricIndex, false);
-                }
-                // 3. 强制重排并等待渲染树完成帧提交后，再淡入当前播放行 (0.35s)
+            lyricFadeTimer = setTimeout(() => {
+                // 2. 在隐身状态下瞬移到目标高亮行与视口偏移
+                updateLyricHighlight(destIndex, true);
+                scrollToLyricIndex(destIndex, false);
+
+                // 3. 强制重排并等待渲染帧后平滑淡入 (0.32s)
                 void stream.offsetHeight;
                 requestAnimationFrame(() => {
                     requestAnimationFrame(() => {
                         isManualScrolling = false;
-                        stream.style.transition = 'opacity 0.35s cubic-bezier(0, 0, 0.2, 1), transform 0.85s cubic-bezier(0.22, 1, 0.36, 1)';
+                        isLyricFading = false;
+                        stream.style.transition = 'opacity 0.32s cubic-bezier(0, 0, 0.2, 1), transform 0.85s cubic-bezier(0.22, 1, 0.36, 1)';
                         stream.style.opacity = '1';
                     });
                 });
-            }, 290);
+            }, 240);
+        }
+        window.triggerLyricFadeTransition = triggerLyricFadeTransition;
+
+        function fadeTransitionToCurrentLyric() {
+            triggerLyricFadeTransition(activeLyricIndex);
         }
 
         function getLyricLineStepPx() {
@@ -2937,7 +3342,12 @@
         let currentSongKey = '';
 
         function toggleLyricMenu(e) {
-            if (e && e.stopPropagation) e.stopPropagation();
+            if (e) {
+                if (e.target && e.target.closest && e.target.closest('#lyricFontWidget, .lyric-font-widget, .font-btn, #btnFontDec, #btnFontInc, #fontSizeLabel')) {
+                    return; // 点击字号控件区域绝不触发歌词源菜单的开闭切换
+                }
+                if (e.stopPropagation) e.stopPropagation();
+            }
             const dropdown = document.getElementById('deviceDropdown');
             const pill = document.getElementById('devicePill');
             if (dropdown) dropdown.classList.remove('show');
@@ -2973,14 +3383,19 @@
             });
         }
 
-        // 点击页面其它任意地方自动收起二级菜单
+        // 点击页面其它任意地方自动收起二级菜单（严格保护右下角控件群）
         document.addEventListener('click', function(e) {
             const menu = document.getElementById('lyricSourceMenu');
+            if (!menu || !menu.classList.contains('show')) return;
+            const x = (typeof e.clientX === 'number') ? e.clientX : 0;
+            const y = (typeof e.clientY === 'number') ? e.clientY : 0;
+            if (x >= window.innerWidth - 420 && y >= window.innerHeight - 130) {
+                return; // 右下角字号控件与歌词源集群安全保护区
+            }
             const btn = document.getElementById('statusTag');
-            if (menu && menu.classList.contains('show')) {
-                if (!menu.contains(e.target) && (!btn || !btn.contains(e.target))) {
-                    closeLyricMenu();
-                }
+            const fontWidget = document.getElementById('lyricFontWidget');
+            if (!menu.contains(e.target) && (!btn || !btn.contains(e.target)) && (!fontWidget || !fontWidget.contains(e.target))) {
+                closeLyricMenu();
             }
         });
 
@@ -3123,6 +3538,7 @@
                 if (parsed.length > 0) {
                     songCache[trackKey][source + '_lyrics'] = parsed;
                     if (userExplicitMode === source) {
+                        currentRawLrcText = rawLrc;
                         parsedOfficialLyrics = parsed;
                         hasOfficialLyrics = true;
                         renderLyrics(parsed);
@@ -3197,6 +3613,7 @@
                     // 仅当用户处于“自动推荐”模式或指定源与当前源匹配时，才更新全屏歌词展示；
                     // 若用户手动锁定了特定源（如 QQ音乐、网易云等），而此为其他来源，切歌时绝不被覆盖！
                     if (currentActiveSource === 'auto' || (data.source && data.source === currentActiveSource)) {
+                        currentRawLrcText = data.lyrics;
                         parsedOfficialLyrics = parsed;
                         hasOfficialLyrics = true;
                         lyricMode = 'official';
@@ -3313,6 +3730,7 @@
 
             if (isNewSong) {
                 // 1. 彻底重置播放时钟与进度，杜绝切歌后继承上一首歌末尾进度
+                currentRawLrcText = "";
                 lastPositionMs = 0;
                 lastSyncTime = performance.now();
                 lastHardwarePosSyncTime = 0;
@@ -3405,10 +3823,24 @@
             if (!data) return;
             const pos = (typeof data.position === 'number') ? data.position : 0;
             if (pos >= 0) {
+                const isBigSeek = isPlaying && lastPositionMs > 0 && Math.abs(pos - lastPositionMs) > 3000;
                 lastPositionMs = pos;
                 lastSyncTime = performance.now();
                 if (pos > 0) {
                     lastHardwarePosSyncTime = lastSyncTime;
+                }
+                if (isBigSeek && lyrics && lyrics.length > 0 && !isManualScrolling) {
+                    const LYRIC_ADVANCE_OFFSET_MS = 450;
+                    const lyricPos = pos + LYRIC_ADVANCE_OFFSET_MS;
+                    let seekTargetIdx = -1;
+                    for (let i = 0; i < lyrics.length; i++) {
+                        if (lyricPos >= lyrics[i].time) seekTargetIdx = i;
+                        else break;
+                    }
+                    if (seekTargetIdx >= 0 && seekTargetIdx !== activeLyricIndex) {
+                        activeLyricIndex = seekTargetIdx;
+                        triggerLyricFadeTransition(seekTargetIdx);
+                    }
                 }
             }
             const incomingSpeed = (typeof data.speed === 'number' && Number.isFinite(data.speed) && data.speed > 0) ? data.speed : 1.0;
@@ -3553,10 +3985,16 @@
                 }
 
                 if (targetIndex !== activeLyricIndex && targetIndex >= 0) {
+                    const prevIndex = activeLyricIndex;
                     activeLyricIndex = targetIndex;
                     if (!isManualScrolling) {
-                        updateLyricHighlight(activeLyricIndex);
-                        scrollToLyricIndex(activeLyricIndex, true);
+                        if (prevIndex >= 0 && Math.abs(targetIndex - prevIndex) > 1) {
+                            // 手机端拖动进度条跳转（跨行跳跃）：复用手拖动歌词归位的淡出淡入动画！
+                            triggerLyricFadeTransition(targetIndex);
+                        } else if (!isLyricFading) {
+                            updateLyricHighlight(activeLyricIndex);
+                            scrollToLyricIndex(activeLyricIndex, true);
+                        }
                     }
                 }
             }
@@ -3807,12 +4245,20 @@
                     }
                     return true;
                 case 21: // KEYCODE_DPAD_LEFT
-                    triggerPrev();
-                    showToastTip('⏮ 上一曲');
+                    if (isLyricMenuOpen) {
+                        adjustLyricFontSize(-1);
+                    } else {
+                        triggerPrev();
+                        showToastTip('⏮ 上一曲');
+                    }
                     return true;
                 case 22: // KEYCODE_DPAD_RIGHT
-                    triggerNext();
-                    showToastTip('⏭ 下一曲');
+                    if (isLyricMenuOpen) {
+                        adjustLyricFontSize(1);
+                    } else {
+                        triggerNext();
+                        showToastTip('⏭ 下一曲');
+                    }
                     return true;
                 case 23: // KEYCODE_DPAD_CENTER
                 case 66: // KEYCODE_ENTER
@@ -3834,7 +4280,10 @@
             }
         };
 
-        // 兼容标准 Web 键盘事件（外接键盘 / 蓝牙遥控器 HID 映射）
+        // 兼容标准 Web 键盘事件（外接键盘 / 蓝牙遥控器 HID 映射）与遥控器长按 OK 键
+        let enterKeyDownTimer = null;
+        let enterLongPressTriggered = false;
+
         document.addEventListener('keydown', function(e) {
             if (!e) return;
             const keyMap = {
@@ -3842,8 +4291,6 @@
                 'ArrowDown': 20,
                 'ArrowLeft': 21,
                 'ArrowRight': 22,
-                'Enter': 23,
-                ' ': 23,
                 'ContextMenu': 82,
                 'm': 82,
                 'M': 82
@@ -3855,9 +4302,33 @@
                 }
                 return;
             }
+            if (e.key === 'Enter' || e.key === ' ') {
+                if (!e.repeat) {
+                    enterLongPressTriggered = false;
+                    clearTimeout(enterKeyDownTimer);
+                    enterKeyDownTimer = setTimeout(function() {
+                        enterLongPressTriggered = true;
+                        window.handleRemoteKey(82);
+                    }, 500);
+                }
+                return;
+            }
             if (keyMap[e.key] !== undefined) {
                 e.preventDefault();
                 window.handleRemoteKey(keyMap[e.key]);
+            }
+        });
+
+        document.addEventListener('keyup', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                clearTimeout(enterKeyDownTimer);
+                if (enterLongPressTriggered) {
+                    enterLongPressTriggered = false;
+                    e.preventDefault();
+                    return;
+                }
+                e.preventDefault();
+                window.handleRemoteKey(23);
             }
         });
 
@@ -3917,23 +4388,49 @@
             const elapsed = now - tapDownTime;
             const dist = Math.hypot(x - tapDownX, y - tapDownY);
 
-            // 智能四角控制区大范围保护（大幅扩展触控范围，点偏也不会意外隐藏控件）
+            // 精准判定右下角控制集群（含二级菜单、字号控件、歌词源胶囊及其外延保护区）
+            const fontWidget = document.getElementById('lyricFontWidget');
+            const lyricMenu = document.getElementById('lyricSourceMenu');
+            const statusTag = document.getElementById('statusTag');
+            const checkRect = (el, pad = 18) => {
+                if (!el) return false;
+                const r = el.getBoundingClientRect();
+                return (x >= r.left - pad && x <= r.right + pad && y >= r.top - pad && y <= r.bottom + pad);
+            };
+
+            const isFontWidgetTouch = checkRect(fontWidget, 28);
+            const isStatusTagTouch = checkRect(statusTag, 24);
+            const isLyricMenuTouch = checkRect(lyricMenu, 12);
+            const isBottomClusterTouch = isFontWidgetTouch || isStatusTagTouch || isLyricMenuTouch;
+
+            // 智能四角控制区防误触保护（点偏也不会意外隐藏常驻控件）
             const isBottomRightZone = (x > window.innerWidth - 300 && y > window.innerHeight - 100);
             const isTopLeftZone = (x < 300 && y < 100);
             const isTopRightZone = (x > window.innerWidth - 120 && y < 100);
 
             const isInteractive = (isBottomRightZone || isTopLeftZone || isTopRightZone) ||
-                (target && target.closest && !!target.closest('button, .btn-ctrl, .vol-btn, .volume-widget, .source-tag, .device-pill, .device-dropdown, .lyric-source-menu, #closeBtn, .top-bar, .bottom-bar, .player-deck, .source-menu-item, .device-card-wrapper, .audio-spec-card'));
+                (target && target.closest && !!target.closest('button, .btn-ctrl, .vol-btn, .volume-widget, .source-tag, .lyric-font-widget, .font-btn, .device-pill, .device-dropdown, .lyric-source-menu, #closeBtn, .top-bar, .bottom-bar, .player-deck, .source-menu-item, .device-card-wrapper, .audio-spec-card'));
 
-            // 若用户触碰的是右下角扩展区域但稍有偏差未命中标签，主动触发歌词源菜单
-            if (isBottomRightZone && (!target || !target.closest('.source-tag, .lyric-source-menu'))) {
-                toggleLyricMenu();
+            // 如果触摸在字号微调控件范围内，且二级菜单已展开，确保绝不触发空白关闭，兜底直接调字号
+            if (isFontWidgetTouch && document.body.classList.contains('lyric-menu-open')) {
+                lastTapHandledTime = now;
+                resetIdleTimer();
+                if (!target || !target.closest('.font-btn')) {
+                    if (fontWidget) {
+                        const r = fontWidget.getBoundingClientRect();
+                        adjustLyricFontSize(x < (r.left + r.width / 2) ? -1 : 1);
+                    }
+                }
                 return;
             }
 
             if (isTapCandidate && elapsed < 500 && dist < 20) {
                 isTapCandidate = false;
                 lastTapHandledTime = now;
+                // 触摸到右下角控制集群（含二级菜单、字号控件、胶囊标签及其保护区）时，阻断空白关闭逻辑
+                if (isBottomClusterTouch || (target && target.closest && target.closest('.lyric-source-menu, .lyric-font-widget, .source-tag, .font-btn, #btnFontDec, #btnFontInc, #fontSizeLabel'))) {
+                    return;
+                }
                 if (!isInteractive) {
                     if (document.body.classList.contains('idle')) {
                         setIdleState(false);
@@ -3994,7 +4491,7 @@
 
         // 点击屏幕空白处保底事件（兼容各种输入设备与电视遥控器）
         document.addEventListener('click', function(e) {
-            const isInteractive = e.target && e.target.closest && !!e.target.closest('button, .btn-ctrl, .vol-btn, .volume-widget, .source-tag, .device-pill, .device-dropdown, .lyric-source-menu, #closeBtn, .top-bar, .bottom-bar, .player-deck, .source-menu-item, .device-card-wrapper, .audio-spec-card');
+            const isInteractive = e.target && e.target.closest && !!e.target.closest('button, .btn-ctrl, .vol-btn, .volume-widget, .source-tag, .lyric-font-widget, .font-btn, .device-pill, .device-dropdown, .lyric-source-menu, #closeBtn, .top-bar, .bottom-bar, .player-deck, .source-menu-item, .device-card-wrapper, .audio-spec-card');
             if (!isInteractive) {
                 const now = performance.now();
                 if (now - lastTapHandledTime < 600) return; // 过滤 300ms 移动端合成点击

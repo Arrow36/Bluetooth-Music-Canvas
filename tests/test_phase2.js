@@ -196,10 +196,16 @@ async function runTests() {
     console.log("\n--- Group 5: Credit Filtering, Clock Anti-Jump & Spectrum Visibility Gating ---");
     {
         let lastBridgeSpectrumVisible = null;
+        window.lastSyncedSpectrumVisible = null;
         window.AndroidApp = {
             setSpectrumVisible(v) {
                 lastBridgeSpectrumVisible = v;
-            }
+            },
+            openNotificationListenerSettings: () => {},
+            skipPrevious: () => {},
+            skipNext: () => {},
+            playPause: () => {},
+            fetchLyricFromSpecificSource: () => {}
         };
 
         const teaLyrics = [
@@ -278,6 +284,67 @@ async function runTests() {
 
         const ambientCanvas = document.getElementById('ambientCanvas');
         assert(!!ambientCanvas && ambientCanvas.width === 64 && ambientCanvas.height === 64, "64x64 pre-baked #ambientCanvas exists in DOM");
+    }
+
+    // =========================================================================
+    // Group 7: Fine-grained Lyric Font Size Control, TV Remote Left/Right & Dynamic Splitting
+    // =========================================================================
+    console.log("\n--- Group 7: Fine-grained Lyric Font Size Control, TV Remote Left/Right & Dynamic Splitting ---");
+    {
+        const widget = document.getElementById('lyricFontWidget');
+        const decBtn = document.getElementById('btnFontDec');
+        const incBtn = document.getElementById('btnFontInc');
+        const label = document.getElementById('fontSizeLabel');
+
+        assert(!!widget, "#lyricFontWidget exists in DOM");
+        assert(!!decBtn && !!incBtn && !!label, "Font dec/inc buttons and size label exist");
+
+        // Reset to base 20px
+        window.applyLyricFontSize(20, false);
+        assert(label.textContent === '20px', "Font size label reflects 20px");
+        assert(document.documentElement.style.getPropertyValue('--lyric-font-size') === '20px', "CSS variable --lyric-font-size is 20px");
+
+        // Step by 1px
+        window.adjustLyricFontSize(-1);
+        assert(label.textContent === '19px', "adjustLyricFontSize(-1) decrements by 1px to 19px");
+        assert(document.documentElement.style.getPropertyValue('--lyric-font-size') === '19px', "CSS variable updated to 19px");
+
+        window.adjustLyricFontSize(1);
+        assert(label.textContent === '20px', "adjustLyricFontSize(1) increments by 1px to 20px");
+
+        // TV Remote Left/Right with lyric source menu open
+        window.closeAllSecondaryMenus();
+        window.handleRemoteKey(82); // Open lyric menu
+        assert(window.isAnySecondaryMenuOpen() === true, "Lyric menu opened via Remote Menu key");
+
+        // Left key (21) decrements font size by 1px
+        window.handleRemoteKey(21);
+        assert(label.textContent === '19px', "Remote DPAD_LEFT (21) decrements font size by 1px while menu is open");
+
+        // Right key (22) increments font size by 1px
+        window.handleRemoteKey(22);
+        assert(label.textContent === '20px', "Remote DPAD_RIGHT (22) increments font size by 1px while menu is open");
+
+        // Close menu: Remote Left/Right should no longer change font size
+        window.closeAllSecondaryMenus();
+        window.handleRemoteKey(21); // Left key when menu is closed -> triggerPrev, not font dec
+        assert(label.textContent === '20px', "Remote DPAD_LEFT does not alter font size when menu is closed");
+
+        // Dynamic long lyric splitting check:
+        // A sentence like 'Just stop your crying, it is fine' (length ~32) easily fits in 600px at 18px -> NOT split!
+        window.applyLyricFontSize(16, false);
+        const singleLineLrc = "[00:10.00] Just stop your crying, it is fine";
+        const parsedUnsplit = window.parseLRC(singleLineLrc);
+        assert(parsedUnsplit.length === 1, "Sentence that fits within available width is NOT split (length 1)");
+        assert(parsedUnsplit[0].text === "Just stop your crying, it is fine", "Unsplit text preserves complete sentence");
+
+        // Extremely long sentence exceeding width is split
+        const veryLongLrc = "[00:10.00] Just stop your crying, it is a sign of the times, we gotta get away from here";
+        const parsedSplit = window.parseLRC(veryLongLrc);
+        assert(parsedSplit.length === 2, "Extremely long sentence exceeding max width is intelligently split into 2 lines");
+
+        // Seek / auto-return transition animation function existence
+        assert(typeof window.triggerLyricFadeTransition === 'function', "triggerLyricFadeTransition exists on window");
     }
 
     console.log("\n==================================================");

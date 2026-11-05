@@ -458,6 +458,48 @@ public class MainActivity extends Activity {
         moveTaskToBack(true);
     }
 
+    private long mOkKeyDownTime = 0;
+    private boolean mOkLongPressTriggered = false;
+
+    @Override
+    public boolean dispatchKeyEvent(android.view.KeyEvent event) {
+        if (mPageLoaded && mWebView != null) {
+            int keyCode = event.getKeyCode();
+            int action = event.getAction();
+
+            // 1. 若系统将 KEYCODE_MENU 分发给了当前窗口，最优先在 dispatchKeyEvent 中消费并阻断系统下拉
+            if (keyCode == android.view.KeyEvent.KEYCODE_MENU) {
+                if (action == android.view.KeyEvent.ACTION_DOWN) {
+                    mWebView.evaluateJavascript("window.handleRemoteKey ? window.handleRemoteKey(82) : (window.toggleLyricMenu && window.toggleLyricMenu());", null);
+                }
+                return true;
+            }
+
+            // 2. 遥控器长按确认键 (OK / DPAD_CENTER / ENTER) >= 500ms 唤出歌词来源与字号微调菜单
+            if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER || keyCode == android.view.KeyEvent.KEYCODE_ENTER) {
+                if (action == android.view.KeyEvent.ACTION_DOWN) {
+                    if (event.getRepeatCount() == 0) {
+                        mOkKeyDownTime = android.os.SystemClock.elapsedRealtime();
+                        mOkLongPressTriggered = false;
+                    } else if (!mOkLongPressTriggered) {
+                        long elapsed = android.os.SystemClock.elapsedRealtime() - mOkKeyDownTime;
+                        if (elapsed >= 500) {
+                            mOkLongPressTriggered = true;
+                            mWebView.evaluateJavascript("window.handleRemoteKey ? window.handleRemoteKey(82) : (window.toggleLyricMenu && window.toggleLyricMenu());", null);
+                            return true;
+                        }
+                    }
+                } else if (action == android.view.KeyEvent.ACTION_UP) {
+                    if (mOkLongPressTriggered) {
+                        mOkLongPressTriggered = false;
+                        return true; // 消费松开事件，防止长按后抬起误触播放/暂停
+                    }
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
     @Override
     public boolean onKeyDown(int keyCode, android.view.KeyEvent event) {
         if (mPageLoaded && mWebView != null) {
