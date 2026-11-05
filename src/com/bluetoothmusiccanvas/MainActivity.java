@@ -41,6 +41,7 @@ public class MainActivity extends Activity {
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private boolean mPageLoaded = false;
     private AudioVisualizerHelper mVisualizerHelper;
+    private volatile boolean mSpectrumVisible = true;
 
     public static String sCachedTitle = "";
     public static String sCachedArtist = "";
@@ -118,16 +119,16 @@ public class MainActivity extends Activity {
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 mPageLoaded = true;
-                if (!sCachedTitle.isEmpty()) {
-                    dispatchMetadata(sCachedTitle, sCachedArtist, sCachedAlbum, sCachedDuration, sCachedStreamLyric);
-                    if (!sCachedCoverUrl.isEmpty() || !sCachedLyrics.isEmpty()) {
-                        dispatchOnlineResult(sCachedCoverUrl, sCachedLyrics, sCachedLyricSource);
-                    }
-                    dispatchPlaybackState(sCachedIsPlaying, sCachedPosition, 1.0f);
-                }
                 if (MediaMonitorService.sInstance != null) {
                     MediaMonitorService.sInstance.syncToActivity(MainActivity.this);
                 } else {
+                    if (!sCachedTitle.isEmpty()) {
+                        dispatchMetadata(sCachedTitle, sCachedArtist, sCachedAlbum, sCachedDuration, sCachedStreamLyric);
+                        if (!sCachedCoverUrl.isEmpty() || !sCachedLyrics.isEmpty()) {
+                            dispatchOnlineResult(sCachedCoverUrl, sCachedLyrics, sCachedLyricSource);
+                        }
+                        dispatchPlaybackState(sCachedIsPlaying, sCachedPosition, 1.0f);
+                    }
                     dispatchBluetoothStatus(MediaMonitorService.getBluetoothInfo(MainActivity.this));
                 }
                 dispatchVolumeChanged();
@@ -158,6 +159,13 @@ public class MainActivity extends Activity {
         }
 
         mWebView.loadUrl("file:///android_asset/index.html");
+    }
+
+    public void setSpectrumVisible(boolean visible) {
+        mSpectrumVisible = visible;
+        if (mVisualizerHelper != null) {
+            mVisualizerHelper.setSpectrumVisible(visible);
+        }
     }
 
     public void dispatchVolumeChanged() {
@@ -266,6 +274,7 @@ public class MainActivity extends Activity {
                     }
                 });
             }
+            mVisualizerHelper.setSpectrumVisible(mSpectrumVisible);
             mVisualizerHelper.start();
         } catch (Throwable t) {
             t.printStackTrace();
@@ -287,7 +296,14 @@ public class MainActivity extends Activity {
         if (MediaMonitorService.sInstance != null) {
             MediaMonitorService.sInstance.hideFloatingView();
         }
+        if (mWebView != null) {
+            try {
+                mWebView.onResume();
+                mWebView.resumeTimers();
+            } catch (Throwable ignored) {}
+        }
         if (mVisualizerHelper != null) {
+            mVisualizerHelper.setSpectrumVisible(mSpectrumVisible);
             mVisualizerHelper.start();
         }
         hideSystemUI();
@@ -298,6 +314,12 @@ public class MainActivity extends Activity {
         super.onPause();
         if (mVisualizerHelper != null) {
             mVisualizerHelper.stop();
+        }
+        if (mWebView != null) {
+            try {
+                mWebView.onPause();
+                mWebView.pauseTimers();
+            } catch (Throwable ignored) {}
         }
         if (MediaMonitorService.sInstance != null) {
             MediaMonitorService.sInstance.onUserDismissed();
@@ -396,6 +418,7 @@ public class MainActivity extends Activity {
             // 蓝牙会话处于暂停或停止且无有效曲目，TV 扬声器检测到实际音频输出（小红书/短视频/外部流）
             sIsAmbientAudioMode = true;
             sCachedIsPlaying = true;
+            setSpectrumVisible(true);
             dispatchPlaybackState(true, 0, 1.0f);
 
             if (sCachedTitle == null || !sCachedTitle.equals("蓝牙媒体音频")) {
@@ -474,11 +497,12 @@ public class MainActivity extends Activity {
             return;
         }
 
-        // 2. 再分发或检索封面与歌词 (在 mHandler 串行队列中排在 onMetadataChanged 之后)
+        // 3. 再分发或检索封面与歌词 (在 mHandler 串行队列中排在 onMetadataChanged 之后)
         if (isVideo) {
             sCachedCoverUrl = sLastValidMusicCoverUrl;
             sCachedLyrics = "";
             sCachedLyricSource = "视频模式";
+            setSpectrumVisible(true);
             dispatchOnlineResult(sCachedCoverUrl, "", "视频模式", generation, trackKey, 0, "video");
         } else {
             MetadataFetcher.CachedMeta cached = MetadataFetcher.getCached(title, artist, album);
@@ -489,6 +513,9 @@ public class MainActivity extends Activity {
                 }
                 sCachedLyrics = cached.lyricsLrc != null ? cached.lyricsLrc : "";
                 sCachedLyricSource = cached.lyricSource != null ? cached.lyricSource : "";
+                if (MediaMonitorService.sInstance != null && !sCachedCoverUrl.isEmpty()) {
+                    MediaMonitorService.sInstance.onOnlineCoverResolved(sCachedCoverUrl, generation);
+                }
                 dispatchOnlineResult(sCachedCoverUrl, sCachedLyrics, sCachedLyricSource, generation, trackKey, 0, "auto");
             } else if (!trackKey.isEmpty() && (!trackKey.equals(sLastFetchedKey) || (sCachedCoverUrl.isEmpty() && sCachedLyrics.isEmpty()))) {
                 sLastFetchedKey = trackKey;
@@ -510,6 +537,9 @@ public class MainActivity extends Activity {
                                 }
                                 sCachedLyrics = lyricsLrc != null ? lyricsLrc : "";
                                 sCachedLyricSource = lyricSource != null ? lyricSource : "";
+                                if (MediaMonitorService.sInstance != null && !sCachedCoverUrl.isEmpty()) {
+                                    MediaMonitorService.sInstance.onOnlineCoverResolved(sCachedCoverUrl, generation);
+                                }
                                 dispatchOnlineResult(sCachedCoverUrl, sCachedLyrics, sCachedLyricSource, generation, trackKey, reqId, "auto");
                             }
                         });
@@ -550,7 +580,6 @@ public class MainActivity extends Activity {
     }
 
     public void dispatchPlaybackState(final boolean isPlaying, final long position, final float speed) {
-        boolean stateChanged = (sCachedIsPlaying != isPlaying);
         sCachedIsPlaying = isPlaying;
         sCachedPosition = position;
 
@@ -569,7 +598,7 @@ public class MainActivity extends Activity {
                     obj.put("speed", speed);
                     mWebView.evaluateJavascript("window.onPlaybackStateChanged && window.onPlaybackStateChanged(" + obj.toString() + ");", null);
                     if (!isPlaying) {
-                        mWebView.evaluateJavascript("window.onAudioSpectrum && window.onAudioSpectrum(0, 0, 0, 0, 0);", null);
+                        mWebView.evaluateJavascript("window.onAudioSpectrum && window.onAudioSpectrum(0, 0, 0, 0, 0, 0, 0, 0, 0);", null);
                     }
                 } catch (Exception e) {
                     e.printStackTrace();

@@ -85,6 +85,11 @@ public class WebAppInterface {
     }
 
     @JavascriptInterface
+    public void setSpectrumVisible(boolean visible) {
+        mActivity.setSpectrumVisible(visible);
+    }
+
+    @JavascriptInterface
     public void requestLyricSource(final String source, final String title, final String artist, final String album) {
         requestLyricSource(source, title, artist, album, -1);
     }
@@ -97,7 +102,8 @@ public class WebAppInterface {
         final long generation = (clientGeneration > 0) ? clientGeneration : mActivity.getCurrentPlaybackGeneration();
         final long reqId = mActivity.nextRequestId();
         final String trackKey = SongIdentity.buildCacheKey(title, artist, album);
-        MetadataFetcher.fetchSpecificLyric(source, title, artist, album, new MetadataFetcher.Callback() {
+        final long duration = MainActivity.sCachedDuration;
+        MetadataFetcher.fetchSpecificLyric(source, title, artist, album, duration, new MetadataFetcher.Callback() {
             @Override
             public void onResult(String coverUrl, final String lyricsLrc, final String lyricSource) {
                 mActivity.runOnUiThread(new Runnable() {

@@ -15,6 +15,7 @@ import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.Shader;
+import android.media.AudioManager;
 import android.media.MediaMetadata;
 import android.media.session.MediaController;
 import android.media.session.MediaSessionManager;
@@ -40,7 +41,6 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.List;
-import java.util.regex.Pattern;
 
 public class MediaMonitorService extends NotificationListenerService {
     private static final String TAG = "BTMusicService";
@@ -63,24 +63,21 @@ public class MediaMonitorService extends NotificationListenerService {
     private int mFloatingX = 40;
     private int mFloatingY = 120;
 
-    // Album cover caching & dynamic vinyl disc
+    // Album cover caching & dynamic vinyl disc (decoded lazily only when floating view is shown)
     private Bitmap mCurrentCoverBitmap = null;
     private Bitmap mGeneratedVinylBitmap = null;
+    private String mCurrentCoverUrl = "";
+    private String mLoadedBitmapUrl = "";
     private String mLastFetchedCoverKey = "";
 
     // Metadata caching
     private String mRealTitle = "";
     private String mRealArtist = "";
-    private String mLastRawArtist = "";
     private String mRealAlbum = "";
     private String mStreamLyric = "";
     private long mDuration = 0;
     private long mCurrentPosition = 0;
     private long mPlaybackGeneration = 0;
-    private String mLastMediaId = null;
-
-    // Pattern for "车载蓝牙歌词" e.g. Artist: "王菲/如愿 (电影《我和我的父辈》主题推广曲)"
-    private static final Pattern BT_LYRIC_PATTERN = Pattern.compile("^([^/]+)/([^\\(（]+)");
 
     private final BroadcastReceiver mBluetoothReceiver = new BroadcastReceiver() {
         @Override
@@ -90,6 +87,7 @@ public class MediaMonitorService extends NotificationListenerService {
             if ("android.bluetooth.device.action.ACL_CONNECTED".equals(action)
                     || "android.bluetooth.device.action.ACL_DISCONNECTED".equals(action)
                     || "android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED".equals(action)
+                    || "android.bluetooth.a2dp-sink.profile.action.CONNECTION_STATE_CHANGED".equals(action)
                     || "android.bluetooth.adapter.action.CONNECTION_STATE_CHANGED".equals(action)) {
                 Log.i(TAG, "Bluetooth state changed (" + action + ")");
                 if ("android.bluetooth.device.action.ACL_CONNECTED".equals(action)) {
@@ -98,20 +96,6 @@ public class MediaMonitorService extends NotificationListenerService {
                 MainActivity act = MainActivity.getInstance();
                 if (act != null) {
                     act.dispatchBluetoothStatus(getBluetoothInfo(context));
-                }
-            }
-        }
-    };
-
-    private final Runnable mAutoCloseRunnable = new Runnable() {
-        @Override
-        public void run() {
-            if (!mIsPlaying) {
-                Log.i(TAG, "Music paused for > 10s, auto-dismissing");
-                hideFloatingView();
-                MainActivity act = MainActivity.getInstance();
-                if (act != null) {
-                    act.finish();
                 }
             }
         }
@@ -162,6 +146,7 @@ public class MediaMonitorService extends NotificationListenerService {
         filter.addAction("android.bluetooth.device.action.ACL_CONNECTED");
         filter.addAction("android.bluetooth.device.action.ACL_DISCONNECTED");
         filter.addAction("android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED");
+        filter.addAction("android.bluetooth.a2dp-sink.profile.action.CONNECTION_STATE_CHANGED");
         filter.addAction("android.bluetooth.adapter.action.CONNECTION_STATE_CHANGED");
         registerReceiver(mBluetoothReceiver, filter);
 
@@ -245,6 +230,7 @@ public class MediaMonitorService extends NotificationListenerService {
         if (state == null) {
             MediaStateStore.getInstance().updatePlaybackState(currentEpoch, false, 0, 0f, System.currentTimeMillis());
             mIsPlaying = false;
+            updateFloatingRotationState();
             MainActivity act = MainActivity.getInstance();
             if (act != null) {
                 act.dispatchPlaybackState(false, 0, 0f);
@@ -281,7 +267,7 @@ public class MediaMonitorService extends NotificationListenerService {
 
         if (isPlaying) {
             mIsPlaying = true;
-            mHandler.removeCallbacks(mAutoCloseRunnable);
+            updateFloatingRotationState();
 
             // Wake screen if sleeping
             if (mWakeLock != null && !mWakeLock.isHeld()) {
@@ -306,23 +292,26 @@ public class MediaMonitorService extends NotificationListenerService {
             }
         } else if (playbackState == PlaybackState.STATE_PAUSED || playbackState == PlaybackState.STATE_STOPPED) {
             mIsPlaying = false;
-            mHandler.removeCallbacks(mAutoCloseRunnable);
+            updateFloatingRotationState();
             MainActivity act = MainActivity.getInstance();
             if (act != null) {
                 act.dispatchPlaybackState(false, estimatedPos, speed);
             }
-            // 用户体验优化：暂停音乐后，保留当前全屏界面，不自动退出
         }
     }
 
     private void onNoMetadataAudio() {
+        // Only enter ambient/video stream mode if playback is genuinely active!
+        // Never pollute idle/boot/disconnected state with "蓝牙媒体音频".
+        if (!mIsPlaying) {
+            return;
+        }
         Log.i(TAG, "Audio stream active with no track metadata (video/app stream, e.g. xhs/tiktok)");
         mStreamLyric = "";
         mRealTitle = "蓝牙媒体音频";
         mRealArtist = "视频 / 媒体声音";
         mRealAlbum = "";
         mDuration = 0;
-        mLastRawArtist = "";
         // 保留之前的有效封面 Bitmap，在视频模式不置为 null
         updateFloatingViewContent();
         MainActivity act = MainActivity.getInstance();
@@ -396,7 +385,7 @@ public class MediaMonitorService extends NotificationListenerService {
         final long capturedGen = snapshot.playbackGeneration;
         mUserDismissed = false;
         mCurrentPosition = 0;
-        mLastMediaId = mediaId;
+        mCurrentCoverUrl = "";
         Log.i(TAG, "New song loaded (gen " + capturedGen + "): [" + mRealTitle + "] by [" + mRealArtist + "]");
 
         // Check local album artwork first
@@ -407,10 +396,12 @@ public class MediaMonitorService extends NotificationListenerService {
         boolean hasStream = mStreamLyric != null && !mStreamLyric.trim().isEmpty();
         if (localArt != null) {
             mCurrentCoverBitmap = localArt;
+            mLoadedBitmapUrl = "local:" + capturedGen;
             mGeneratedVinylBitmap = null;
             updateFloatingViewContent();
-        } else if (hasStream || !MetadataFetcher.isVideoTrack(mRealTitle, mRealArtist, mRealAlbum, mDuration)) {
-            // Fetch online cover for floating vinyl (skip for video tracks)
+        } else if (act == null && (hasStream || !MetadataFetcher.isVideoTrack(mRealTitle, mRealArtist, mRealAlbum, mDuration))) {
+            // Only fetch directly from service when MainActivity is not active;
+            // when MainActivity is active, it fetches once and notifies onOnlineCoverResolved().
             final String key = snapshot.songCacheKey;
             if (!key.isEmpty() && !key.equals(mLastFetchedCoverKey)) {
                 mLastFetchedCoverKey = key;
@@ -418,36 +409,7 @@ public class MediaMonitorService extends NotificationListenerService {
                     @Override
                     public void onResult(final String coverUrl, final String lyricsLrc, final String lyricSource) {
                         if (coverUrl != null && !coverUrl.isEmpty()) {
-                            new Thread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    try {
-                                        URL url = new URL(coverUrl);
-                                        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                                        conn.setConnectTimeout(4000);
-                                        conn.setReadTimeout(4000);
-                                        InputStream is = conn.getInputStream();
-                                        final Bitmap bmp = BitmapFactory.decodeStream(is);
-                                        is.close();
-                                        if (bmp != null) {
-                                            mHandler.post(new Runnable() {
-                                                @Override
-                                                public void run() {
-                                                    if (capturedGen == mPlaybackGeneration) {
-                                                        mCurrentCoverBitmap = bmp;
-                                                        mGeneratedVinylBitmap = null;
-                                                        updateFloatingViewContent();
-                                                    } else {
-                                                        Log.d(TAG, "Discarded stale floating cover for gen " + capturedGen + " (current is " + mPlaybackGeneration + ")");
-                                                    }
-                                                }
-                                            });
-                                        }
-                                    } catch (Exception e) {
-                                        Log.w(TAG, "Failed to load floating cover: " + e.getMessage());
-                                    }
-                                }
-                            }).start();
+                            onOnlineCoverResolved(coverUrl, capturedGen);
                         }
                     }
                 });
@@ -462,14 +424,72 @@ public class MediaMonitorService extends NotificationListenerService {
         }
     }
 
+    public void onOnlineCoverResolved(final String coverUrl, final long generation) {
+        if (coverUrl == null || coverUrl.isEmpty()) return;
+        mHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                if (generation != mPlaybackGeneration) return;
+                mCurrentCoverUrl = coverUrl;
+                if (mIsFloatingShown) {
+                    loadCoverBitmapAsync(coverUrl, generation);
+                }
+            }
+        });
+    }
+
+    private void loadCoverBitmapAsync(final String coverUrl, final long capturedGen) {
+        if (coverUrl == null || coverUrl.isEmpty()) return;
+        if (coverUrl.equals(mLoadedBitmapUrl) && mCurrentCoverBitmap != null) return;
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                HttpURLConnection conn = null;
+                try {
+                    URL url = new URL(coverUrl);
+                    conn = (HttpURLConnection) url.openConnection();
+                    conn.setConnectTimeout(4000);
+                    conn.setReadTimeout(4000);
+                    InputStream is = conn.getInputStream();
+                    final Bitmap bmp = BitmapFactory.decodeStream(is);
+                    is.close();
+                    if (bmp != null) {
+                        mHandler.post(new Runnable() {
+                            @Override
+                            public void run() {
+                                if (capturedGen == mPlaybackGeneration) {
+                                    mCurrentCoverBitmap = bmp;
+                                    mLoadedBitmapUrl = coverUrl;
+                                    mGeneratedVinylBitmap = null;
+                                    updateFloatingViewContent();
+                                } else {
+                                    Log.d(TAG, "Discarded stale floating cover for gen " + capturedGen + " (current is " + mPlaybackGeneration + ")");
+                                }
+                            }
+                        });
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "Failed to load floating cover: " + e.getMessage());
+                } finally {
+                    if (conn != null) {
+                        conn.disconnect();
+                    }
+                }
+            }
+        }).start();
+    }
+
     public void syncToActivity(MainActivity activity) {
         MediaStateStore.MediaSnapshot snap = MediaStateStore.getInstance().getSnapshot();
         if (snap != null && snap.hasTrack()) {
             Log.i(TAG, "Syncing current track to MainActivity from MediaStateStore: " + snap.title);
             activity.dispatchMetadata(snap.title, snap.artist, snap.album, snap.duration, snap.streamLyric,
                     snap.playbackGeneration, snap.songCacheKey, false);
-            activity.dispatchPlaybackState(snap.clock.isPlaying, snap.clock.positionMs, snap.clock.speed);
-        } else if (!mRealTitle.isEmpty()) {
+            long now = android.os.SystemClock.elapsedRealtime();
+            long estPos = snap.clock.getEstimatedPositionMs(now);
+            if (snap.duration > 0 && estPos > snap.duration) estPos = snap.duration;
+            activity.dispatchPlaybackState(snap.clock.isPlaying, estPos, snap.clock.speed);
+        } else if (!mRealTitle.isEmpty() && (!"蓝牙媒体音频".equals(mRealTitle) || mIsPlaying)) {
             activity.dispatchMetadata(mRealTitle, mRealArtist, mRealAlbum, mDuration, mStreamLyric,
                     mPlaybackGeneration, SongIdentity.buildCacheKey(mRealTitle, mRealArtist, mRealAlbum), false);
             activity.dispatchPlaybackState(mIsPlaying, mCurrentPosition, 1.0f);
@@ -529,13 +549,34 @@ public class MediaMonitorService extends NotificationListenerService {
                 }
             }
 
+            String sampleRateLabel = "48.0kHz";
+            int detectedHz = AudioVisualizerHelper.getLastSamplingRateHz();
+            if (detectedHz <= 0 && context != null) {
+                try {
+                    AudioManager am = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+                    if (am != null) {
+                        String prop = am.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE);
+                        if (prop != null && !prop.trim().isEmpty()) {
+                            detectedHz = Integer.parseInt(prop.trim());
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+            if (detectedHz > 0) {
+                if (detectedHz % 1000 == 0) {
+                    sampleRateLabel = (detectedHz / 1000) + ".0kHz";
+                } else {
+                    sampleRateLabel = String.format(java.util.Locale.US, "%.1fkHz", detectedHz / 1000.0f);
+                }
+            }
+
             obj.put("connected", isConnected);
             obj.put("connectionState", connectionState);
             obj.put("deviceName", name);
             obj.put("deviceAddress", address);
             obj.put("codec", "A2DP");
-            obj.put("sampleRate", "蓝牙音频");
-            obj.put("bitDepth", "");
+            obj.put("sampleRate", sampleRateLabel);
+            obj.put("bitDepth", "16bit");
             obj.put("channels", "立体声");
         } catch (Exception e) {
             e.printStackTrace();
@@ -558,6 +599,28 @@ public class MediaMonitorService extends NotificationListenerService {
         Intent i = new Intent(this, MainActivity.class);
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
         startActivity(i);
+    }
+
+    private void updateFloatingRotationState() {
+        mHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                if (mFloatingView == null || !mIsFloatingShown) return;
+                ImageView vinylIv = mFloatingView.findViewById(R.id.floatingVinylIcon);
+                if (vinylIv == null) return;
+                if (mIsPlaying) {
+                    if (vinylIv.getAnimation() == null) {
+                        RotateAnimation rotate = new RotateAnimation(0, 360, Animation.RELATIVE_TO_SELF, 0.5f, Animation.RELATIVE_TO_SELF, 0.5f);
+                        rotate.setDuration(7000);
+                        rotate.setRepeatCount(Animation.INFINITE);
+                        rotate.setInterpolator(new LinearInterpolator());
+                        vinylIv.startAnimation(rotate);
+                    }
+                } else {
+                    vinylIv.clearAnimation();
+                }
+            }
+        });
     }
 
     private void updateFloatingViewContent() {
@@ -687,16 +750,17 @@ public class MediaMonitorService extends NotificationListenerService {
 
                     mFloatingView = LayoutInflater.from(MediaMonitorService.this).inflate(R.layout.floating_vinyl, null);
 
+                    mWindowManager.addView(mFloatingView, params);
+                    mIsFloatingShown = true;
+
+                    // Lazily decode cover bitmap if URL is ready
+                    if (!mCurrentCoverUrl.isEmpty() && (!mCurrentCoverUrl.equals(mLoadedBitmapUrl) || mCurrentCoverBitmap == null)) {
+                        loadCoverBitmapAsync(mCurrentCoverUrl, mPlaybackGeneration);
+                    }
+
                     // Update live track title, artist and album vinyl cover
                     updateFloatingViewContent();
-
-                    // Continuous smooth rotating vinyl animation
-                    ImageView vinylIcon = mFloatingView.findViewById(R.id.floatingVinylIcon);
-                    RotateAnimation rotate = new RotateAnimation(0, 360, Animation.RELATIVE_TO_SELF, 0.5f, Animation.RELATIVE_TO_SELF, 0.5f);
-                    rotate.setDuration(7000);
-                    rotate.setRepeatCount(Animation.INFINITE);
-                    rotate.setInterpolator(new LinearInterpolator());
-                    vinylIcon.startAnimation(rotate);
+                    updateFloatingRotationState();
 
                     mFloatingView.setOnTouchListener(new View.OnTouchListener() {
                         private int initialX, initialY;
@@ -741,8 +805,6 @@ public class MediaMonitorService extends NotificationListenerService {
                         }
                     });
 
-                    mWindowManager.addView(mFloatingView, params);
-                    mIsFloatingShown = true;
                     Log.i(TAG, "Floating vinyl capsule shown at (" + params.x + ", " + params.y + ")");
                 } catch (Exception e) {
                     Log.e(TAG, "Failed to show floating window: " + e.getMessage());
@@ -758,6 +820,10 @@ public class MediaMonitorService extends NotificationListenerService {
             public void run() {
                 if (mIsFloatingShown && mFloatingView != null && mWindowManager != null) {
                     try {
+                        ImageView vinylIv = mFloatingView.findViewById(R.id.floatingVinylIcon);
+                        if (vinylIv != null) {
+                            vinylIv.clearAnimation();
+                        }
                         mWindowManager.removeView(mFloatingView);
                     } catch (Exception e) {
                         e.printStackTrace();

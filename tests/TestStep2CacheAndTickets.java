@@ -45,6 +45,12 @@ public class TestStep2CacheAndTickets {
         assert "http://coverA.jpg".equals(retrievedCase.coverUrl);
         System.out.println("  PASS [4]: Cache lookup handles case and whitespace normalization");
 
+        // 5. Album enrichment inherits initial empty-album cache entry without duplicate network fetch
+        MetadataFetcher.CachedMeta enrichedHit = MetadataFetcher.getCached("Generic Song", "Generic Artist", "Enriched Album");
+        assert enrichedHit != null : "Enriched album query should inherit generic (empty-album) cache entry";
+        assert "http://generic.jpg".equals(enrichedHit.coverUrl);
+        System.out.println("  PASS [5]: Album enrichment inherits generic empty-album cache entry without re-fetch");
+
         System.out.println("==================================================");
         System.out.println("All Step 2 Cache & Ticket tests PASSED!");
         System.out.println("==================================================");

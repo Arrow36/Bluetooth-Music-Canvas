@@ -85,9 +85,15 @@ public class MetadataFetcher {
         String key = SongIdentity.buildCacheKey(rawTitle, rawArtist, rawAlbum);
         CachedMeta m = sCache.get(key);
         if (m != null) return m;
-        // If an explicit album was requested, do NOT cross-pollinate with a fallback from another album
-        if (rawAlbum == null || rawAlbum.trim().isEmpty()) {
-            return sCache.get(key);
+        // If album was enriched after an initial empty-album fetch for the same song,
+        // allow inheriting the generic (empty-album) entry without cross-pollinating between distinct albums.
+        if (rawAlbum != null && !rawAlbum.trim().isEmpty()) {
+            String genericKey = SongIdentity.buildCacheKey(rawTitle, rawArtist, "");
+            CachedMeta genericMeta = sCache.get(genericKey);
+            if (genericMeta != null) {
+                sCache.put(key, genericMeta);
+                return genericMeta;
+            }
         }
         return null;
     }
@@ -103,6 +109,10 @@ public class MetadataFetcher {
     }
 
     public static void fetchSpecificLyric(final String source, final String rawTitle, final String rawArtist, final String rawAlbum, final Callback callback) {
+        fetchSpecificLyric(source, rawTitle, rawArtist, rawAlbum, 0, callback);
+    }
+
+    public static void fetchSpecificLyric(final String source, final String rawTitle, final String rawArtist, final String rawAlbum, final long duration, final Callback callback) {
         final String title = cleanTitle(rawTitle);
         final String fullArtist = (rawArtist != null) ? rawArtist.trim() : "";
         final String album = (rawAlbum != null) ? rawAlbum.trim() : "";
@@ -114,14 +124,14 @@ public class MetadataFetcher {
                 String actualSource = "";
                 try {
                     if ("netease".equalsIgnoreCase(source)) {
-                        String[] res = fetchFromNetEase(title, fullArtist, album, 0);
+                        String[] res = fetchFromNetEase(title, fullArtist, album, duration);
                         lyricsLrc = res[1];
                         actualSource = "网易云音乐";
                     } else if ("qq".equalsIgnoreCase(source)) {
-                        lyricsLrc = fetchFromQQ(title, fullArtist, 0);
+                        lyricsLrc = fetchFromQQ(title, fullArtist, duration);
                         actualSource = "QQ音乐";
                     } else if ("kugou".equalsIgnoreCase(source)) {
-                        String[] res = fetchFromKugou(title, fullArtist, false, true, 0);
+                        String[] res = fetchFromKugou(title, fullArtist, false, true, duration);
                         lyricsLrc = res[1];
                         actualSource = "酷狗音乐";
                     } else if ("lrclib".equalsIgnoreCase(source)) {
@@ -171,8 +181,8 @@ public class MetadataFetcher {
             return;
         }
 
-        // Network request deduplication in-flight
-        final String inFlightKey = key + "\t" + duration;
+        // Network request deduplication in-flight using canonical track key
+        final String inFlightKey = key;
         synchronized (sInFlightRequests) {
             List<Callback> list = sInFlightRequests.get(inFlightKey);
             if (list != null) {
@@ -216,7 +226,7 @@ public class MetadataFetcher {
                     }
                 }
 
-                // 3. 备用歌词：酷狗音乐或 LRCLIB
+                // 3. 备用歌词：QQ音乐 / 酷狗音乐 / LRCLIB
                 if (lyricsLrc == null) {
                     boolean hasChinese = false;
                     for (char c : title.toCharArray()) {
@@ -230,18 +240,30 @@ public class MetadataFetcher {
                     }
 
                     if (hasChinese) {
-                        // 中文歌曲备选酷狗音乐
+                        // 中文歌曲优先备选 QQ 音乐，其次酷狗音乐，最后 LRCLIB
                         try {
-                            String[] kugouRes = fetchFromKugou(title, fullArtist, coverUrl == null, true, duration);
-                            if (coverUrl == null && kugouRes[0] != null) {
-                                coverUrl = kugouRes[0];
-                            }
-                            if (kugouRes[1] != null && !kugouRes[1].isEmpty()) {
-                                lyricsLrc = kugouRes[1];
-                                lyricSource = "酷狗音乐";
+                            String qqLrc = fetchFromQQ(title, fullArtist, duration);
+                            if (qqLrc != null && !qqLrc.isEmpty()) {
+                                lyricsLrc = qqLrc;
+                                lyricSource = "QQ音乐";
                             }
                         } catch (Exception e) {
-                            Log.w(TAG, "Kugou search failed: " + e.getMessage());
+                            Log.w(TAG, "QQ search failed: " + e.getMessage());
+                        }
+
+                        if (lyricsLrc == null) {
+                            try {
+                                String[] kugouRes = fetchFromKugou(title, fullArtist, coverUrl == null, true, duration);
+                                if (coverUrl == null && kugouRes[0] != null) {
+                                    coverUrl = kugouRes[0];
+                                }
+                                if (kugouRes[1] != null && !kugouRes[1].isEmpty()) {
+                                    lyricsLrc = kugouRes[1];
+                                    lyricSource = "酷狗音乐";
+                                }
+                            } catch (Exception e) {
+                                Log.w(TAG, "Kugou search failed: " + e.getMessage());
+                            }
                         }
 
                         if (lyricsLrc == null) {
@@ -253,13 +275,23 @@ public class MetadataFetcher {
                             } catch (Exception ignored) {}
                         }
                     } else {
-                        // 外文歌曲备选 LRCLIB
+                        // 外文歌曲备选 LRCLIB -> QQ音乐 -> 酷狗音乐
                         try {
                             lyricsLrc = fetchLyricsFromLRCLIB(title, fullArtist);
                             if (lyricsLrc != null && !lyricsLrc.isEmpty()) {
                                 lyricSource = "LRCLIB";
                             }
                         } catch (Exception ignored) {}
+
+                        if (lyricsLrc == null) {
+                            try {
+                                String qqLrc = fetchFromQQ(title, fullArtist, duration);
+                                if (qqLrc != null && !qqLrc.isEmpty()) {
+                                    lyricsLrc = qqLrc;
+                                    lyricSource = "QQ音乐";
+                                }
+                            } catch (Exception ignored) {}
+                        }
 
                         if (lyricsLrc == null) {
                             try {

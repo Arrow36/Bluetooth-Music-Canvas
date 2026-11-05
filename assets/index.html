@@ -64,6 +64,7 @@
             overflow: hidden;
             pointer-events: none;
             z-index: 0;
+            contain: strict;
         }
 
         .ambient-bg {
@@ -393,6 +394,20 @@
             justify-content: center;
             align-items: center;
             flex-shrink: 0;
+            isolation: isolate;
+            contain: layout style;
+        }
+
+        /* 静态黑胶投影层：与旋转层分离，避免 GPU 每帧重绘旋转的非对称阴影 */
+        .turntable-container::before {
+            content: '';
+            position: absolute;
+            width: 260px;
+            height: 260px;
+            border-radius: 50%;
+            box-shadow: 0 24px 55px rgba(0, 0, 0, 0.8);
+            pointer-events: none;
+            z-index: 0;
         }
 
         .vinyl-record {
@@ -406,24 +421,23 @@
                 radial-gradient(circle, transparent 76%, rgba(255, 255, 255, 0.035) 77%, transparent 78%),
                 radial-gradient(circle, #0e1013 0%, #17191d 30%, #0d0f12 50%, #1a1d22 70%, #08090a 100%);
             box-shadow:
-                0 22px 55px rgba(0, 0, 0, 0.75),
                 inset 0 0 0 2px rgba(255, 255, 255, 0.08),
                 inset 0 0 16px rgba(0, 0, 0, 0.9);
             display: flex;
             justify-content: center;
             align-items: center;
             position: relative;
+            z-index: 1;
             animation: spinVinyl 24s linear infinite;
             animation-play-state: paused;
-            transition: box-shadow 0.6s ease;
+            will-change: transform;
         }
 
         .vinyl-record.playing {
             animation-play-state: running;
             box-shadow:
-                0 26px 60px rgba(0, 0, 0, 0.82),
-                0 0 30px rgba(255, 255, 255, 0.12),
-                inset 0 0 0 2px rgba(255, 255, 255, 0.12);
+                inset 0 0 0 2px rgba(255, 255, 255, 0.14),
+                inset 0 0 16px rgba(0, 0, 0, 0.9);
         }
 
         @keyframes spinVinyl {
@@ -500,7 +514,6 @@
             width: 100%;
             height: 100%;
             display: block;
-            mix-blend-mode: screen;
             pointer-events: none;
         }
 
@@ -600,7 +613,6 @@
             width: 0%;
             background: linear-gradient(90deg, #ff416c, #ff4b2b);
             border-radius: 3px;
-            transition: width 0.3s linear;
         }
 
         .progress-bar-thumb {
@@ -1269,6 +1281,18 @@
             opacity: 1;
             transform: translate(-50%, -50%) scale(1);
         }
+
+        /* 隐藏状态的浮层与沉浸模式隐藏栏禁用 backdrop-filter，消除透明层的全屏背景采样合成开销 */
+        .device-dropdown:not(.show),
+        .lyric-source-menu:not(.show),
+        .toast-tip:not(.show),
+        body.idle .top-bar .device-pill,
+        body.idle .bottom-bar .audio-spec-card,
+        body.idle .bottom-bar .source-tag,
+        body.idle .volume-widget:not(.force-show) {
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+        }
     </style>
 </head>
 <body>
@@ -1542,9 +1566,22 @@
         let lastValidMusicCoverUrl = "";
         let lyricMode = 'official'; // 'official' | 'bluetooth'
         
-        // 歌曲元数据与歌词内存缓存表（避免返回桌面重新点击时重复请求与闪白）
+        // 歌曲元数据与歌词内存缓存表（避免返回桌面重新点击时重复请求与闪白，上限 50 首防长时运行内存膨胀）
+        const MAX_SONG_CACHE_ENTRIES = 50;
         const songCache = {};
         window.songCache = songCache;
+
+        function ensureSongCacheEntry(key) {
+            if (!key) return {};
+            if (!songCache[key]) {
+                const keys = Object.keys(songCache);
+                if (keys.length >= MAX_SONG_CACHE_ENTRIES) {
+                    delete songCache[keys[0]];
+                }
+                songCache[key] = {};
+            }
+            return songCache[key];
+        }
 
         Object.defineProperty(window, 'lastPositionMs', {
             get: () => lastPositionMs,
@@ -1929,6 +1966,26 @@
         let lastFftTime = 0;
         let realSpectrum = [0.08, 0.08, 0.08, 0.08, 0.08];
         const waveBars = [];
+        let eqBarsAtBaseline = true;
+        let lastSyncedSpectrumVisible = null;
+
+        function syncSpectrumVisibility() {
+            const emptyBox = document.getElementById('emptyLyrics');
+            const largeViz = document.getElementById('largeVisualizer');
+            const emptyVisible = !!(emptyBox && emptyBox.style.display !== 'none' && (!hasOfficialLyrics || emptyBox.style.opacity !== '0'));
+            const largeVisible = !!(largeViz && largeViz.style.display === 'flex');
+            const needSpectrum = emptyVisible || largeVisible;
+            if (needSpectrum !== lastSyncedSpectrumVisible) {
+                if (window.AndroidApp && window.AndroidApp.setSpectrumVisible) {
+                    try {
+                        window.AndroidApp.setSpectrumVisible(needSpectrum);
+                        lastSyncedSpectrumVisible = needSpectrum;
+                    } catch (err) {}
+                }
+            }
+            return { emptyVisible, largeVisible, needSpectrum };
+        }
+        window.syncSpectrumVisibility = syncSpectrumVisibility;
 
         function getEqualizerBars() {
             if (waveBars.length < 5) {
@@ -1945,6 +2002,7 @@
         // Android 原生 Visualizer 实时回调：接收 9 个真实物理频段 (0.08 ~ 1.0)
         window.onAudioSpectrum = function(b0, b1, b2, b3, b4, b5, b6, b7, b8) {
             lastFftTime = performance.now();
+            const isSilenceCall = !isPlaying || (!b0 && !b1 && !b2 && !b3 && !b4);
             const s9 = isPlaying ? [
                 Math.max(0.08, Math.min(1.0, b0 || 0)),
                 Math.max(0.08, Math.min(1.0, b1 || 0)),
@@ -1958,21 +2016,31 @@
             ] : [0.08, 0.08, 0.08, 0.08, 0.08, 0.08, 0.08, 0.08, 0.08];
             realSpectrum = [s9[0], s9[2], s9[4], s9[6], s9[8]];
 
-            // 底部迷你5柱均衡器
-            const bars = getEqualizerBars();
-            if (bars.length >= 5) {
-                bars[0].style.transform = `scaleY(${s9[0].toFixed(3)})`;
-                bars[1].style.transform = `scaleY(${s9[2].toFixed(3)})`;
-                bars[2].style.transform = `scaleY(${s9[4].toFixed(3)})`;
-                bars[3].style.transform = `scaleY(${s9[6].toFixed(3)})`;
-                bars[4].style.transform = `scaleY(${s9[8].toFixed(3)})`;
+            const emptyBox = document.getElementById('emptyLyrics');
+            const largeViz = document.getElementById('largeVisualizer');
+            const emptyVisible = !emptyBox || emptyBox.style.display !== 'none';
+            const largeVisible = !!(largeViz && largeViz.style.display === 'flex');
+
+            // 仅在检索占位频谱可见或静音归零时更新 5 柱迷你均衡器 DOM，杜绝隐藏态 25Hz 无效重绘
+            if (emptyVisible || isSilenceCall) {
+                const bars = getEqualizerBars();
+                if (bars.length >= 5) {
+                    bars[0].style.transform = `scaleY(${s9[0].toFixed(3)})`;
+                    bars[1].style.transform = `scaleY(${s9[2].toFixed(3)})`;
+                    bars[2].style.transform = `scaleY(${s9[4].toFixed(3)})`;
+                    bars[3].style.transform = `scaleY(${s9[6].toFixed(3)})`;
+                    bars[4].style.transform = `scaleY(${s9[8].toFixed(3)})`;
+                    eqBarsAtBaseline = isSilenceCall;
+                }
             }
 
-            // 驱动大号律动频谱柱形（真实 9 频段物理 FFT，无伪造插值）
-            const lbars = getLargeWaveBars();
-            if (lbars.length >= 9) {
-                for (let i = 0; i < 9; i++) {
-                    lbars[i].style.transform = `scaleY(${s9[i].toFixed(3)})`;
+            // 仅在大号律动频谱可见或静音归零时更新 9 柱大频谱 DOM
+            if (largeVisible || isSilenceCall) {
+                const lbars = getLargeWaveBars();
+                if (lbars.length >= 9) {
+                    for (let i = 0; i < 9; i++) {
+                        lbars[i].style.transform = `scaleY(${s9[i].toFixed(3)})`;
+                    }
                 }
             }
         };
@@ -2148,12 +2216,13 @@
         document.addEventListener('DOMContentLoaded', initLyricsDragGesture);
         setTimeout(initLyricsDragGesture, 200);
 
+        // 演职员制作信息与纯音乐占位行统一过滤正则（供纯音乐识别与蓝牙实时歌词校准共用）
+        const CREDIT_LINE_REGEX = /^(作词|作曲|编曲|制作|制作人|监制|混音|混音师|母带|母带工程|录音|录音师|录音棚|录音室|吉他|木吉他|电吉他|贝斯|鼓|键盘|钢琴|弦乐|小提琴|大提琴|古筝|二胡|笛子|箫|琵琶|和声|和音|伴唱|演唱|女声|男声|主唱|合唱|配唱|制作统筹|统筹|企划|文案|宣传|推广|出品|出品人|发行|监制人|封面|设计|鸣谢|特别鸣谢|指导|配音|念白|旁白|语言指导|粤语指导|潮语指导|闽南语指导|方言指导|原唱|翻唱|词|曲|编|混|录|唱|op|sp|written by|composed by|arranged by|produced by|mixed by|mastered by|recorded by|recorded at|vocal|vocals|chorus|guitar|bass|drums|piano|strings|lyrics by|music by|published by)[:：\s]/i;
+        const PURE_MUSIC_REGEX = /(纯音乐|请欣赏|没有填词|暂无歌词|无歌词|享受音乐|instrumental|no lyrics|pure music)/i;
+
         // 智能判断歌词是否为纯音乐（覆盖“作词：... 作曲：... 纯音乐，请欣赏”、无填词、或纯制作演职员信息）
         function isPureMusicLyric(lrcArray) {
             if (!lrcArray || lrcArray.length === 0) return true;
-
-            const creditRegex = /^(作词|作曲|编曲|制作|监制|混音|母带|录音|吉他|贝斯|鼓|键盘|钢琴|弦乐|和声|文案|企划|统筹|出品|发行|原唱|词|曲|op|sp|written by|composed by|arranged by|produced by|mixed by|mastered by|recorded by|lyrics by|music by)[:：\s]/i;
-            const pureMusicRegex = /(纯音乐|请欣赏|没有填词|暂无歌词|无歌词|享受音乐|instrumental|no lyrics|pure music)/i;
 
             let realSingingLines = 0;
             let hasPureMusicMarker = false;
@@ -2162,12 +2231,12 @@
                 const text = (item.text || "").trim();
                 if (!text) continue;
 
-                if (pureMusicRegex.test(text)) {
+                if (PURE_MUSIC_REGEX.test(text)) {
                     hasPureMusicMarker = true;
                     continue;
                 }
 
-                if (creditRegex.test(text)) {
+                if (CREDIT_LINE_REGEX.test(text)) {
                     // 演职员名单/制作信息行，非歌词唱词
                     continue;
                 }
@@ -2194,11 +2263,14 @@
         function crossCheckLyrics(streamLyric) {
             if (!streamLyric || !hasOfficialLyrics || !lyrics || lyrics.length === 0) return;
             if (currentTrack && currentTrack.isVideo) return;
-            // 忽略纯音乐与演职员占位文案
-            if (streamLyric.includes("纯音乐") || streamLyric.includes("请欣赏") || streamLyric.includes("作词") || streamLyric.includes("作曲")) return;
+            const trimmedStream = String(streamLyric).trim();
+            if (!trimmedStream) return;
+            // 忽略纯音乐与演职员制作信息行（如“演唱：...”、“录音师：...”、“录音棚：...”、“潮语指导：...”），防止误将播放时钟拽回片头
+            if (PURE_MUSIC_REGEX.test(trimmedStream) || CREDIT_LINE_REGEX.test(trimmedStream)) return;
+            if (trimmedStream.includes("纯音乐") || trimmedStream.includes("请欣赏") || trimmedStream.includes("作词") || trimmedStream.includes("作曲")) return;
 
             // 纯净文本标准化（去除标点、符号、空格，统一小写）
-            const sClean = streamLyric.toLowerCase().replace(/[^\w\u4e00-\u9fa5]/g, "");
+            const sClean = trimmedStream.toLowerCase().replace(/[^\w\u4e00-\u9fa5]/g, "");
             if (sClean.length < 2) return;
 
             const curEstimated = lastPositionMs + (isPlaying ? (performance.now() - lastSyncTime) * playbackSpeed : 0);
@@ -2208,6 +2280,7 @@
             let matchedIndex = -1;
 
             for (let i = 0; i < lyrics.length; i++) {
+                if (CREDIT_LINE_REGEX.test((lyrics[i].text || "").trim())) continue;
                 const lTime = lyrics[i].time;
                 if (lTime >= curEstimated - WINDOW_MS && lTime <= curEstimated + WINDOW_MS) {
                     const lClean = (lyrics[i].text || "").toLowerCase().replace(/[^\w\u4e00-\u9fa5]/g, "");
@@ -2221,6 +2294,7 @@
             // 第二层（全局兜底窗口）：如果优先窗口未命中，并且当前发生了大幅偏移或未定位
             if (matchedIndex < 0) {
                 for (let i = 0; i < lyrics.length; i++) {
+                    if (CREDIT_LINE_REGEX.test((lyrics[i].text || "").trim())) continue;
                     const lClean = (lyrics[i].text || "").toLowerCase().replace(/[^\w\u4e00-\u9fa5]/g, "");
                     if (lClean && (lClean.includes(sClean) || sClean.includes(lClean))) {
                         // 选取与当前进度绝对距离最近的一个候选行，防止无条件跳回第 0 行
@@ -2238,7 +2312,9 @@
                     updateLyricHighlight(activeLyricIndex);
                     scrollToLyricIndex(activeLyricIndex, true);
                 }
-                if (isPlaying && lyrics[matchedIndex].time > 0) {
+                // 仅当估算时钟与匹配行时间偏差超过 2.5 秒时才强制重设播放时钟，
+                // 杜绝正常播放时因行首时间戳回写导致进度条倒退跳变（如 00:06 跳回 00:04）
+                if (isPlaying && lyrics[matchedIndex].time > 0 && Math.abs(lyrics[matchedIndex].time - curEstimated) > 2500) {
                     lastPositionMs = lyrics[matchedIndex].time;
                     lastSyncTime = performance.now();
                 }
@@ -2262,6 +2338,7 @@
                 }
                 if (emptyBox) emptyBox.style.display = 'none';
                 if (largeViz) largeViz.style.display = 'flex';
+                syncSpectrumVisibility();
                 return;
             }
 
@@ -2269,6 +2346,7 @@
                 if (stream) stream.style.display = 'none';
                 if (emptyBox) emptyBox.style.display = 'none';
                 if (largeViz) largeViz.style.display = 'flex';
+                syncSpectrumVisibility();
                 return;
             }
 
@@ -2295,6 +2373,7 @@
                     }
                     if (largeViz) largeViz.style.display = 'flex';
                     updateStatusTag('纯音乐', '#888888');
+                    syncSpectrumVisibility();
                 }
                 return;
             }
@@ -2311,9 +2390,11 @@
                 setTimeout(() => {
                     if (hasOfficialLyrics && emptyBox) {
                         emptyBox.style.display = 'none';
+                        syncSpectrumVisibility();
                     }
                 }, 260);
             }
+            syncSpectrumVisibility();
 
             // 2. 新歌词直接从第0行开始，平滑淡入展示 (0.35s)
             if (stream) {
@@ -2345,6 +2426,7 @@
             const largeViz = document.getElementById('largeVisualizer');
             if (largeViz) largeViz.style.display = 'none';
             if (emptyBox) emptyBox.style.display = 'none';
+            syncSpectrumVisibility();
             if (stream) {
                 stream.style.display = 'block';
                 stream.style.transform = 'translateY(-24px)';
@@ -2457,8 +2539,7 @@
 
         function applyLyricSourceForCurrentTrack(sourceId, isUserTriggered) {
             const trackKey = currentSongKey || (currentTrack && currentTrack.trackKey) || ((currentTrack ? currentTrack.title : '') + '\t' + (currentTrack ? currentTrack.artist : '')).toLowerCase().trim();
-            if (!songCache[trackKey]) songCache[trackKey] = {};
-            const cached = songCache[trackKey];
+            const cached = ensureSongCacheEntry(trackKey);
 
             const largeViz = document.getElementById('largeVisualizer');
             const stream = document.getElementById('lyricsStream');
@@ -2472,12 +2553,14 @@
                 if (emptyBox) emptyBox.style.display = 'none';
                 if (largeViz) largeViz.style.display = 'flex';
                 updateStatusTag(SOURCE_META.visualizer.label, SOURCE_META.visualizer.color);
+                syncSpectrumVisibility();
                 return;
             }
 
             // 非律动氛围：隐藏大号频谱，恢复歌词视口
             if (largeViz) largeViz.style.display = 'none';
             if (stream) stream.style.display = 'block';
+            syncSpectrumVisibility();
 
             // 模式 2：蓝牙实时歌词
             if (sourceId === 'bluetooth') {
@@ -2574,7 +2657,7 @@
             const meta = SOURCE_META[source] || getSourceMeta(lyricSource);
 
             const trackKey = data.trackKey || currentSongKey || ((currentTrack ? currentTrack.title : '') + '\t' + (currentTrack ? currentTrack.artist : '')).toLowerCase().trim();
-            if (!songCache[trackKey]) songCache[trackKey] = {};
+            ensureSongCacheEntry(trackKey);
 
             if (rawLrc && rawLrc.trim().length > 0) {
                 const parsed = parseLRC(rawLrc);
@@ -2628,6 +2711,7 @@
                 }
                 if (emptyBox) emptyBox.style.display = 'none';
                 if (largeViz) largeViz.style.display = 'flex';
+                syncSpectrumVisibility();
                 if (data.coverUrl && data.lyricSource !== '视频模式') {
                     lastValidMusicCoverUrl = data.coverUrl;
                     setCoverImage(data.coverUrl);
@@ -2638,7 +2722,7 @@
             }
 
             const trackKey = data.trackKey || currentSongKey || ((currentTrack ? currentTrack.title : '') + '\t' + (currentTrack ? currentTrack.artist : '')).toLowerCase().trim();
-            if (!songCache[trackKey]) songCache[trackKey] = {};
+            ensureSongCacheEntry(trackKey);
 
             if (data.coverUrl) {
                 if (data.lyricSource !== '视频模式') {
@@ -2751,7 +2835,7 @@
             document.getElementById('timeTotal').textContent = formatTime(data.duration);
 
             const trackKey = currentSongKey;
-            if (!songCache[trackKey]) songCache[trackKey] = {};
+            ensureSongCacheEntry(trackKey);
             if (streamLyric) songCache[trackKey].streamLyric = streamLyric;
 
             if (isVideo) {
@@ -2769,6 +2853,7 @@
                 }
                 if (emptyBox) emptyBox.style.display = 'none';
                 if (largeViz) largeViz.style.display = 'flex';
+                syncSpectrumVisibility();
                 updateStatusTag('视频模式', '#5ac8fa');
                 if (lastValidMusicCoverUrl) {
                     setCoverImage(lastValidMusicCoverUrl);
@@ -2784,6 +2869,8 @@
                 lastSyncTime = performance.now();
                 activeLyricIndex = 0;
                 renderedLyricIndex = -1;
+                lastRenderedSec = 0;
+                lastRenderedPct = 0;
                 const progressBar = document.getElementById('progressBar');
                 if (progressBar) progressBar.style.width = '0%';
                 const timeCurrent = document.getElementById('timeCurrent');
@@ -2813,6 +2900,7 @@
                 }
 
                 hasOfficialLyrics = false;
+                syncSpectrumVisibility();
                 parsedOfficialLyrics = [];
                 activeLyricIndex = -1;
                 renderedLyricIndex = -1;
@@ -2890,7 +2978,20 @@
             setOptimisticPlaybackState(incomingPlaying);
         };
 
+        let cachedProgressBarEl = null;
+        let cachedTimeCurrentEl = null;
+        let cachedTonearmEl = null;
+        let lastRenderedSec = -1;
+        let lastRenderedPct = -1;
+        let lastRenderedTonearmAngle = -999;
+        let timelineRafId = null;
+
         function updateTimeline() {
+            timelineRafId = null;
+            if (document.hidden) {
+                return;
+            }
+
             let currentPos = lastPositionMs;
             if (isPlaying) {
                 const delta = (performance.now() - lastSyncTime) * playbackSpeed;
@@ -2901,25 +3002,36 @@
                 currentPos = currentTrack.duration;
             }
 
-            // 更新播放进度条
+            // 更新播放进度条（带脏值检测，避免 60fps 重复触发 DOM 布局与文本重绘）
             if (currentTrack.duration > 0) {
                 const pct = Math.min(100, Math.max(0, (currentPos / currentTrack.duration) * 100));
-                document.getElementById('progressBar').style.width = pct + '%';
-                document.getElementById('timeCurrent').textContent = formatTime(currentPos);
+                if (Math.abs(pct - lastRenderedPct) >= 0.15) {
+                    lastRenderedPct = pct;
+                    if (!cachedProgressBarEl) cachedProgressBarEl = document.getElementById('progressBar');
+                    if (cachedProgressBarEl) cachedProgressBarEl.style.width = pct.toFixed(2) + '%';
+                }
+                const sec = Math.floor(currentPos / 1000);
+                if (sec !== lastRenderedSec) {
+                    lastRenderedSec = sec;
+                    if (!cachedTimeCurrentEl) cachedTimeCurrentEl = document.getElementById('timeCurrent');
+                    if (cachedTimeCurrentEl) cachedTimeCurrentEl.textContent = formatTime(currentPos);
+                }
             }
 
-            // 真实唱机唱针物理轨迹：根据当前播放进度从黑胶外圈(-26°)平滑走向内圈(-6°)
-            const tonearm = document.getElementById('tonearm');
-            if (tonearm) {
+            // 真实唱机唱针物理轨迹（带角度阈值检测，避免 60fps 重复重启 0.35s CSS transition）
+            if (!cachedTonearmEl) cachedTonearmEl = document.getElementById('tonearm');
+            if (cachedTonearmEl) {
+                let targetAngle = -16;
                 if (isPlaying) {
                     let progressRatio = 0;
                     if (currentTrack.duration > 0) {
                         progressRatio = Math.min(1.0, Math.max(0.0, currentPos / currentTrack.duration));
                     }
-                    const tonearmAngle = -10 + progressRatio * 10; // 0% at -10deg (outer groove) -> 100% at 0deg (inner groove)
-                    tonearm.style.transform = `rotate(${tonearmAngle.toFixed(2)}deg)`;
-                } else {
-                    tonearm.style.transform = 'rotate(-16deg)'; // Parked outside platter at -16deg
+                    targetAngle = -10 + progressRatio * 10; // 0% at -10deg (outer groove) -> 100% at 0deg (inner groove)
+                }
+                if (Math.abs(targetAngle - lastRenderedTonearmAngle) >= 0.12) {
+                    lastRenderedTonearmAngle = targetAngle;
+                    cachedTonearmEl.style.transform = isPlaying ? `rotate(${targetAngle.toFixed(2)}deg)` : 'rotate(-16deg)';
                 }
             }
 
@@ -2959,33 +3071,37 @@
                 }
             }
 
-            // 动态音乐律动波形驱动
-            const bars = getEqualizerBars();
-            if (bars.length >= 5) {
-                if (!isPlaying) {
-                    for (let i = 0; i < 5; i++) {
-                        bars[i].style.transform = 'scaleY(0.08)';
-                    }
-                } else {
-                    const timeSinceFft = performance.now() - lastFftTime;
-                    if (timeSinceFft > 250) {
+            // 动态音乐律动波形超时归零（仅在尚未归零时执行一次 DOM 写入）
+            if (!eqBarsAtBaseline) {
+                const shouldReset = !isPlaying || (performance.now() - lastFftTime > 250);
+                if (shouldReset) {
+                    const bars = getEqualizerBars();
+                    if (bars.length >= 5) {
                         for (let i = 0; i < 5; i++) {
                             bars[i].style.transform = 'scaleY(0.08)';
                         }
+                        eqBarsAtBaseline = true;
                     }
                 }
             }
 
-            requestAnimationFrame(updateTimeline);
+            timelineRafId = requestAnimationFrame(updateTimeline);
         }
-        requestAnimationFrame(updateTimeline);
+        timelineRafId = requestAnimationFrame(updateTimeline);
+
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden && !timelineRafId) {
+                timelineRafId = requestAnimationFrame(updateTimeline);
+            }
+        });
 
         // 乐观瞬态播控（零延迟响应唱针起落与按键）
         function setOptimisticPlaybackState(playState) {
             isPlaying = playState;
             const vinyl = document.getElementById('vinylRecord');
             const playIcon = document.getElementById('playIcon');
-            const tonearm = document.getElementById('tonearm');
+            if (!cachedTonearmEl) cachedTonearmEl = document.getElementById('tonearm');
+            const tonearm = cachedTonearmEl;
 
             if (isPlaying) {
                 if (vinyl) vinyl.classList.add('playing');
@@ -2996,6 +3112,7 @@
                         progressRatio = Math.min(1.0, Math.max(0.0, lastPositionMs / currentTrack.duration));
                     }
                     const tonearmAngle = -10 + progressRatio * 10;
+                    lastRenderedTonearmAngle = tonearmAngle;
                     tonearm.style.transform = `rotate(${tonearmAngle.toFixed(2)}deg)`;
                 }
             } else {
@@ -3003,12 +3120,14 @@
                 if (playIcon) playIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
                 // 唱针立即起针复位，0ms 感知延迟
                 if (tonearm) {
+                    lastRenderedTonearmAngle = -16;
                     tonearm.style.transform = 'rotate(-16deg)';
                 }
                 const bars = getEqualizerBars();
                 for (let i = 0; i < bars.length; i++) {
                     bars[i].style.transform = 'scaleY(0.08)';
                 }
+                eqBarsAtBaseline = true;
             }
         }
 

@@ -159,6 +159,54 @@ async function runTests() {
         }
     }
 
+    console.log("\n--- Group 5: Credit Filtering, Clock Anti-Jump & Spectrum Visibility Gating ---");
+    {
+        let lastBridgeSpectrumVisible = null;
+        window.AndroidApp = {
+            setSpectrumVisible(v) {
+                lastBridgeSpectrumVisible = v;
+            }
+        };
+
+        const teaLyrics = [
+            { time: 1000, text: "演唱：陈佳" },
+            { time: 2000, text: "录音师：廖志茂" },
+            { time: 3000, text: "录音棚：广州乐喜录音棚" },
+            { time: 4000, text: "潮语指导：林欢欢" },
+            { time: 18000, text: "月下煮茶香满院" },
+            { time: 24000, text: "微风轻拂夜色静" }
+        ];
+
+        window.renderLyrics(teaLyrics);
+        window.hasOfficialLyrics = true;
+        window.lyrics = teaLyrics;
+        window.onPlaybackStateChanged({ isPlaying: true, position: 6100, speed: 1.0 });
+        window.activeLyricIndex = 4;
+
+        // 5.1 Credit lines in streamLyric must be ignored and never pull activeLyricIndex or lastPositionMs back
+        window.crossCheckLyrics("录音棚：广州乐喜录音棚");
+        assert(window.activeLyricIndex === 4, "Credit line '录音棚：...' is ignored by crossCheckLyrics");
+        assert(window.lastPositionMs === 6100, "lastPositionMs remains at 6100ms (no backward jump to 3000ms)");
+
+        window.crossCheckLyrics("潮语指导：林欢欢");
+        assert(window.activeLyricIndex === 4, "Credit line '潮语指导：...' is ignored by crossCheckLyrics");
+        assert(window.lastPositionMs === 6100, "lastPositionMs remains at 6100ms (no backward jump to 4000ms)");
+
+        // 5.2 Small drift (<2.5s) updates lyric highlight without jumping progress clock backward
+        window.onPlaybackStateChanged({ isPlaying: true, position: 19200, speed: 1.0 });
+        window.crossCheckLyrics("月下煮茶香满院");
+        assert(window.activeLyricIndex === 4, "Singing line matched at 18000ms");
+        assert(window.lastPositionMs === 19200, "Small 1.2s delta does not jump lastPositionMs backward from 19200ms to 18000ms");
+
+        // 5.3 Spectrum visibility bridge notifies false after official lyrics hide emptyBox, and true on visualizer mode
+        await new Promise(resolve => setTimeout(resolve, 300));
+        assert(lastBridgeSpectrumVisible === false, "AndroidApp.setSpectrumVisible(false) called when official scrolling lyrics are active");
+
+        window.selectLyricSource('visualizer');
+        assert(lastBridgeSpectrumVisible === true, "AndroidApp.setSpectrumVisible(true) called when switching to visualizer mode");
+        window.selectLyricSource('auto');
+    }
+
     console.log("\n==================================================");
     console.log(`Phase 2 Test Suite Summary: ${passedTests} / ${totalTests} assertions passed.`);
     console.log("==================================================");

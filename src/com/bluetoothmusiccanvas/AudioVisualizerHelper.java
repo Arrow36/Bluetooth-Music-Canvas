@@ -18,6 +18,16 @@ public class AudioVisualizerHelper {
     private final float[] mBandSmooth = new float[]{0.08f, 0.08f, 0.08f, 0.08f, 0.08f, 0.08f, 0.08f, 0.08f, 0.08f};
     private int mSilenceCount = 0;
     private int mActiveCount = 0;
+    private volatile boolean mSpectrumVisible = true;
+    private static volatile int sLastSamplingRateHz = 0;
+
+    public static int getLastSamplingRateHz() {
+        return sLastSamplingRateHz;
+    }
+
+    public void setSpectrumVisible(boolean visible) {
+        this.mSpectrumVisible = visible;
+    }
 
     public interface OnWaveDataListener {
         void onFftBands(float b0, float b1, float b2, float b3, float b4,
@@ -44,7 +54,7 @@ public class AudioVisualizerHelper {
             mVisualizer.setCaptureSize(captureSize);
 
             int rate = Visualizer.getMaxCaptureRate();
-            int targetRate = Math.min(rate, 25000); // 25 Hz in millihertz
+            int targetRate = Math.min(rate, 22000); // 22 Hz in millihertz
 
             mVisualizer.setDataCaptureListener(new Visualizer.OnDataCaptureListener() {
                 @Override
@@ -83,10 +93,16 @@ public class AudioVisualizerHelper {
         if (fft == null || fft.length < 16) return;
 
         long now = System.currentTimeMillis();
-        if (now - mLastDispatchTime < 35) return;
+        // When spectrum bars are hidden (e.g. scrolling lyrics active), throttle ambient check to 250ms
+        // and skip expensive 25Hz WebView evaluateJavascript calls completely.
+        long minInterval = mSpectrumVisible ? 45 : 250;
+        if (now - mLastDispatchTime < minInterval) return;
         mLastDispatchTime = now;
 
         float fs = samplingRate > 0 ? (samplingRate / 1000.0f) : 48000.0f;
+        if (samplingRate > 0) {
+            sLastSamplingRateHz = Math.round(fs);
+        }
         int n = fft.length / 2;
         int fftSize = fft.length;
         float binWidth = fs / fftSize; // Hz per bin
@@ -139,7 +155,7 @@ public class AudioVisualizerHelper {
                     mBandSmooth[i] = 0.08f;
                 }
             }
-            if (hasDecayed || mSilenceCount <= 3) {
+            if (mSpectrumVisible && (hasDecayed || mSilenceCount <= 3)) {
                 final float b0 = mBandSmooth[0], b1 = mBandSmooth[1], b2 = mBandSmooth[2];
                 final float b3 = mBandSmooth[3], b4 = mBandSmooth[4], b5 = mBandSmooth[5];
                 final float b6 = mBandSmooth[6], b7 = mBandSmooth[7], b8 = mBandSmooth[8];
@@ -168,7 +184,7 @@ public class AudioVisualizerHelper {
 
         mSilenceCount = 0;
         mActiveCount++;
-        if (mActiveCount >= 3) {
+        if (mActiveCount == 3 || (mActiveCount > 3 && mActiveCount % 20 == 0)) {
             // 扬声器已持续输出真实音频（覆盖小红书、抖音等未推 MediaSession 状态的视频流）
             mMainHandler.post(new Runnable() {
                 @Override
@@ -178,6 +194,10 @@ public class AudioVisualizerHelper {
                     }
                 }
             });
+        }
+
+        if (!mSpectrumVisible) {
+            return;
         }
 
         // AGC & Adaptive Peak Tracking:
