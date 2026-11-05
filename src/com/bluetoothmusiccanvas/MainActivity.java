@@ -132,6 +132,7 @@ public class MainActivity extends Activity {
                     dispatchBluetoothStatus(MediaMonitorService.getBluetoothInfo(MainActivity.this));
                 }
                 dispatchVolumeChanged();
+                dispatchPermissionStatus();
                 initVisualizer();
             }
         });
@@ -306,6 +307,7 @@ public class MainActivity extends Activity {
             mVisualizerHelper.setSpectrumVisible(mSpectrumVisible);
             mVisualizerHelper.start();
         }
+        dispatchPermissionStatus();
         hideSystemUI();
     }
 
@@ -354,7 +356,93 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        if (mPageLoaded && mWebView != null) {
+            mWebView.evaluateJavascript(
+                    "(function(){ if (window.isAnySecondaryMenuOpen && window.isAnySecondaryMenuOpen()) { window.closeAllSecondaryMenus(); return 'closed_menu'; } return 'minimize'; })()",
+                    new android.webkit.ValueCallback<String>() {
+                        @Override
+                        public void onReceiveValue(String value) {
+                            if (value == null || !value.contains("closed_menu")) {
+                                moveTaskToBack(true);
+                            }
+                        }
+                    });
+            return;
+        }
         moveTaskToBack(true);
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, android.view.KeyEvent event) {
+        if (mPageLoaded && mWebView != null) {
+            switch (keyCode) {
+                case android.view.KeyEvent.KEYCODE_MENU:
+                    mWebView.evaluateJavascript("window.toggleLyricMenu && window.toggleLyricMenu();", null);
+                    return true;
+                case android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+                case android.view.KeyEvent.KEYCODE_MEDIA_PLAY:
+                case android.view.KeyEvent.KEYCODE_MEDIA_PAUSE:
+                    mWebView.evaluateJavascript("window.triggerPlayPause && window.triggerPlayPause();", null);
+                    return true;
+                case android.view.KeyEvent.KEYCODE_MEDIA_NEXT:
+                    mWebView.evaluateJavascript("window.triggerNext && window.triggerNext();", null);
+                    return true;
+                case android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS:
+                    mWebView.evaluateJavascript("window.triggerPrev && window.triggerPrev();", null);
+                    return true;
+                case android.view.KeyEvent.KEYCODE_DPAD_UP:
+                case android.view.KeyEvent.KEYCODE_DPAD_DOWN:
+                case android.view.KeyEvent.KEYCODE_DPAD_LEFT:
+                case android.view.KeyEvent.KEYCODE_DPAD_RIGHT:
+                case android.view.KeyEvent.KEYCODE_DPAD_CENTER:
+                case android.view.KeyEvent.KEYCODE_ENTER:
+                    mWebView.evaluateJavascript("window.handleRemoteKey && window.handleRemoteKey(" + keyCode + ");", null);
+                    return true;
+            }
+        }
+        return super.onKeyDown(keyCode, event);
+    }
+
+    public boolean isNotificationListenerEnabled() {
+        try {
+            String pkg = getPackageName();
+            String flat = Settings.Secure.getString(getContentResolver(), "enabled_notification_listeners");
+            return flat != null && flat.contains(pkg);
+        } catch (Throwable ignored) {
+            return true;
+        }
+    }
+
+    public void openNotificationListenerSettings() {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Intent i = new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS");
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(i);
+                    return;
+                } catch (Throwable ignored) {}
+                try {
+                    Intent fallback = new Intent(Settings.ACTION_SETTINGS);
+                    fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(fallback);
+                } catch (Throwable ignored) {}
+            }
+        });
+    }
+
+    public void dispatchPermissionStatus() {
+        if (!mPageLoaded || mWebView == null) return;
+        final boolean notifGranted = isNotificationListenerEnabled();
+        mHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                if (mWebView != null && mPageLoaded) {
+                    mWebView.evaluateJavascript("window.onPermissionStatusChanged && window.onPermissionStatusChanged(" + notifGranted + ");", null);
+                }
+            }
+        });
     }
 
     private void hideSystemUI() {

@@ -130,4 +130,25 @@ public class WebAppInterface {
             }
         });
     }
+
+    @JavascriptInterface
+    public boolean isLowRamDevice() {
+        try {
+            android.app.ActivityManager am = (android.app.ActivityManager) mActivity.getSystemService(android.content.Context.ACTIVITY_SERVICE);
+            if (am != null && android.os.Build.VERSION.SDK_INT >= 19) {
+                return am.isLowRamDevice();
+            }
+        } catch (Throwable ignored) {}
+        return false;
+    }
+
+    @JavascriptInterface
+    public boolean isNotificationListenerGranted() {
+        return mActivity.isNotificationListenerEnabled();
+    }
+
+    @JavascriptInterface
+    public void openNotificationListenerSettings() {
+        mActivity.openNotificationListenerSettings();
+    }
 }

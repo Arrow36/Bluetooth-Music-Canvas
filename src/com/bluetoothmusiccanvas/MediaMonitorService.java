@@ -290,6 +290,19 @@ public class MediaMonitorService extends NotificationListenerService {
                 break;
             }
         }
+        if (preferred == null) {
+            for (MediaController c : controllers) {
+                String pkg = c.getPackageName();
+                if (pkg != null) {
+                    String lower = pkg.toLowerCase(java.util.Locale.US);
+                    if (lower.contains("bluetooth") || lower.contains("a2dp") || lower.contains("avrcp")
+                            || lower.contains("btmusic") || lower.contains("btaudio") || lower.contains("btsink")) {
+                        preferred = c;
+                        break;
+                    }
+                }
+            }
+        }
         if (preferred == null) preferred = controllers.get(0);
 
         boolean tokenChanged = (mActiveController == null)
