@@ -10,7 +10,7 @@
 [![Platform](https://img.shields.io/badge/Platform-Android%205.0%2B%20(API%2021%2B)-brightgreen.svg)](https://developer.android.com)
 [![Architecture](https://img.shields.io/badge/Arch-Universal-blue.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-orange.svg)](LICENSE)
-[![APK Size](https://img.shields.io/badge/APK%20Size-~450%20KB-success.svg)](BluetoothMusicCanvas.apk)
+[![APK Size](https://img.shields.io/badge/APK%20Size-~460%20KB-success.svg)](BluetoothMusicCanvas.apk)
 
 </div>
 
@@ -20,43 +20,43 @@
 
 ### 💿 1. 拟物级毛玻璃黑胶唱机与物理循迹唱针
 - **现代毛玻璃极简美学**：采用高质量 3D 渲染白透磨砂毛玻璃唱针与圆形基座，通透自然。
-- **真实唱针物理循迹**：根据乐曲实时播放进度，唱针从黑胶外圈导槽平滑向内圈游走；暂停时自动复位升起至外圈休眠座。
-- **超清同心导槽黑胶盘**：随专辑封面动态提取并生成专属微距黑胶唱片，播放时伴随细腻物理动效平滑旋转。
+- **真实唱针物理循迹**：根据乐曲实时播放进度，唱针从黑胶外圈导槽平滑向内圈游走；暂停时自动复位升起至外圈休眠座，内置 1.5s 乐观播控防抖锁杜绝蓝牙 AVRCP 回声引发的唱针抽动。
+- **超清同心导槽黑胶盘**：随专辑封面动态提取并生成专属微距黑胶唱片；采用**静态外投影与旋转纹理分层合成架构**（`isolation: isolate` + `::before` 静态阴影层），在低配电视盒 GPU 上亦能保持丝滑旋转。
 
-### 📊 2. 真·5频段动态频谱仪（1024点真实 FFT 物理频带与静音平息）
-- **1024 点采样与真实物理频宽换算**：捕获尺寸由原先的 128~256 点提升至 1024 点，依据真实采样率 $F_s$ 与频点宽度 $f_k = k \cdot F_s / N$ 计算真实物理频率，彻底分离次重低音：
-  - 第 1 柱：次重低音 / 底鼓 (20Hz ~ 250Hz)
-  - 第 2 柱：中低频 / 贝斯 / 大提琴 (250Hz ~ 600Hz)
-  - 第 3 柱：核心中频 / 人声 / 长笛管乐 (600Hz ~ 2000Hz)
-  - 第 4 柱：中高频 / 泛音明亮度 (2000Hz ~ 6000Hz)
-  - 第 5 柱：高频空气感 / 镲片 (6000Hz ~ 16000Hz)
+### 📊 2. 真·9频段 & 5频段双态动态频谱仪（1024点 FFT 物理频带 + 按需跨桥门控）
+- **1024 点采样与 9 个真实物理频段换算**：依据真实采样率 $F_s$ 与频点宽度 $f_k = k \cdot F_s / N$ 将 20Hz ~ 16kHz 划分为 9 个精细物理频带（次重低音 20~120Hz、底鼓 120~250Hz、中低频 250~500Hz、人声基频 500~1000Hz、人声核心 1~2kHz、泛音 2~4kHz、明亮度 4~7kHz、齿音 7~11kHz、空气感 11~16kHz），同时驱动全屏 9 柱律动音浪与 5 柱迷你均衡器。
 - **彻底脱钩系统音量大小**：内置自适应动态增益控制（AGC），自动跟踪频段能量分布。**无论电视音量调为 100%、5% 甚至静音，频谱波形均可全动态弹性律动**。
-- **静音平滑平息与休眠基底**：无音频或播放暂停时，柱条自适应衰减归位于底座胶囊基线（scale 0.08），彻底消除静音死循环正弦波。
+- **按需跨桥门控（On-Demand Spectrum Gating）**：当正常滚动歌词激活、频谱组件隐藏时，前端自动通知原生层关闭 25Hz `evaluateJavascript` 跨桥推送，转为 250ms 低功耗静默环境音监测，大幅释放 WebView 与主线程 CPU。
+- **静音平滑平息与休眠基底**：无音频或播放暂停时，柱条自适应衰减归位于底座胶囊基线（`scaleY(0.08)`），彻底消除静音死循环正弦波。
 
 ### 🖼️ 3. 多源官方超清封面与智能语义排版
-- **多层级超清原画匹配**：原生多线程聚合检索（NetEase / Apple Music 600×600 / Kugou / QQ），无惧跨域与防盗链。
-- **古典乐长曲名智能分行排版**：智能识别作品编号与乐章号（如 `K. 285: I. Allegro`），将乐章号与速度标记紧密绑定防孤立折行，保证长曲名完整优雅显示。
+- **四平台聚合检索与时长校验**：原生多线程聚合检索（网易云音乐 / QQ音乐 / 酷狗音乐 / Apple Music iTunes 600×600 / LRCLIB），结合曲目时长差值（$\Delta \le 2\text{s}$ 满分，$\Delta > 15\text{s}$ 降权）精准防翻唱/伴奏误配，无惧跨域与防盗链。
+- **古典乐与长曲名智能分行排版**：智能识别作品编号与乐章号（如 `K. 285: I. Allegro`），将乐章号与速度标记紧密绑定防孤立折行；长副标题括号与破折号自动语义断行。
 
-### 🎤 4. 6 大歌词来源自由切换 & 双层时钟权威校准 (Sub-Second Lyric Sync)
-- **多歌词源一键切换**：支持「自动推荐」、「网易云音乐」、「QQ音乐」、「酷狗音乐」、「LRCLIB 全球库」、「蓝牙实时歌词流」及「全屏律动氛围」自由切换，满足小众外语歌与冷门歌曲的匹配需求。
-- **双层时间窗口与自适应权威校准**：
-  - 第一层（优先窗口）：在估计进度 $\pm 15$ 秒内严密匹配，杜绝相同副歌重复段落误跳回第一段；
-  - 第二层（全局兜底）：当大幅 Seek 跳转或进度漂移时，自动选取时间绝对距离最近行归位。
-- **健壮的多精度 LRC 解析**：完美兼容无毫秒 `[mm:ss]`、1~3 位浮点毫秒 `[mm:ss.xxx]` 与 `[offset:+/-ms]` 整体偏移补偿。
-- **多代次身份隔离与局部 DOM 高亮**：引入 `PlaybackGeneration` 与 `SourceRequestId` 严格防串歌乱序；采用 $[old-4..old+4] \cup [new-4..new+4]$ 真正并集局部更新 DOM，告别全量重绘。
+### 🎤 4. 6 大歌词来源自由切换 & 车载蓝牙歌词双层校准 (Sub-Second Lyric Sync)
+- **多歌词源一键切换与偏好记忆**：支持「自动推荐」、「网易云音乐」、「QQ音乐」、「酷狗音乐」、「LRCLIB 全球库」、「蓝牙实时歌词」及「律动氛围」自由切换，切歌时严格保持用户选定的歌词源偏好。
+- **车载蓝牙歌词流原生解析**：完美兼容网易云音乐与 QQ 音乐「车载蓝牙歌词」模式（自动剥离动态歌词头、提取歌名/歌手/内嵌专辑并维持稳态播放代次，不引发假切歌）。
+- **双层时间窗口与防倒跳权威校准**：
+  - **第一层（优先窗口）**：在估计进度 $\pm 15$ 秒内严密匹配，杜绝相同副歌重复段落误跳回第一段；
+  - **第二层（全局兜底）**：当大幅 Seek 跳转或进度漂移时，自动选取时间绝对距离最近行归位；
+  - **演职员过滤与 2.5s 防倒跳锁**：自动过滤 `作词/作曲/编曲/演唱/录音师/录音棚/混音/母带/方言指导` 等片头制作信息行，仅在时钟偏差 $> 2.5\text{s}$ 时重设基准时钟，杜绝正常播放时进度条向后倒跳。
+- **多代次身份隔离与局部 DOM 高亮**：引入 `PlaybackGeneration` 与 `SourceRequestId` 严格防串歌乱序；采用 $[old-4..old+4] \cup [new-4..new+4]$ 邻域并集增量更新 DOM。
 
-### 🎬 5. 智能视频音轨与正规音乐多层漏斗识别
-- **强特征定视频，有专辑保音乐**：针对 B 站等应用，智能识别 UP 主及视频特征；只要包含正规专辑名，无论单曲（Single/EP）标题多长或副标题多复杂，一律强保为正规音乐。
-- **底层硬件音频能量感知**：针对小红书等无 MediaSession 状态但有音频输出的短视频应用，通过底层 Audio Session 原生能量探测自动唤醒大屏“环境音/视频模式”，杜绝黑屏假死。
-- **手动切源权威覆盖**：在右下角手动指定歌词来源时，自动解除视频遮罩，回归唱机面板。
+### 🎬 5. 智能视频音轨与正规音乐多层漏斗识别 (`MediaClassifier`)
+- **单一权威分类器 (`MediaClassifier`)**：集中判定视频与正规音乐——强特征定视频（B站 UP 主、剧集号、视频分区括号），有正规专辑名强保音乐，杜绝前后端双重标准冲突。
+- **底层硬件音频能量感知**：针对无标准 MediaSession 元数据但有音频输出的短视频/投屏应用，仅在处于真实播放态且持续检测到有效音频能量时自动切入“视频模式”律动音浪，待机或刚连接蓝牙时绝不误触发。
 
 ### 🎈 6. 桌面迷你旋转黑胶悬浮球 (Mini Floating Vinyl Widget)
-- 应用退居后台时，在桌面常驻平滑旋转的微缩黑胶悬浮球，支持全屏幕任意拖拽，记忆上次悬浮坐标，轻触即刻秒级拉起全屏看板。
+- 应用退居后台时，在桌面常驻平滑旋转的微缩黑胶悬浮球（暂停播放时自动停止旋转动画，悬浮窗未展示时按需懒加载封面 `Bitmap` 零冗余解码），支持全屏幕任意拖拽与坐标记忆，轻触即刻秒级拉起全屏看板。
 
-### 🚀 7. 极度轻量、低配流畅模式与高能效
-- **低配流畅模式（Performance Mode）**：在左上角设备详情中提供一键流畅开关，针对老旧电视盒/车机芯片禁用高消耗的 `backdrop-filter` 磨砂毛玻璃，大幅降低 GPU 图层合成开销。
-- **50 首 LRU 缓存与网络合并**：内置 50 首容量上限的 LRU 内存缓存与飞行中相同网络请求合并（In-Flight Deduplication），切歌不卡顿、无内存泄漏。
-- **纯原生无重型依赖**：全包体积仅 **~450KB**，基于 Android API 21+ 构建（Target API 28，针对电视大屏与车载设备深度调优），采用标准 v1 签名确保在老旧盒子与各类 Android 终端上平滑安装。
+### 🚀 7. 针对低配电视盒 / 车机的深度渲染与能效优化
+- **WebView & GPU 管线减负**：
+  - 60fps 时间轴更新内置秒数、进度百分比与唱针角度脏值阈值检测，消除无效 DOM 写入与 CSS Transition 抖动；
+  - 隐藏态弹窗与沉浸模式（`body.idle`）自动卸载 `backdrop-filter`，避免透明图层持续触发全屏高斯模糊采样；
+  - 退居后台悬浮球时自动调用 `WebView.onPause()` / `pauseTimers()`，后台 WebView 渲染 CPU 降至 **0%**。
+  - 在四核 ARMv7 Cortex-A53 + Mali-450 电视盒实机测试中，全屏播放总 CPU 占用降低 **47%**，`Chrome_InProcGp` 降低 **88%**，P99 帧耗时缩短 **45%**。
+- **蓝牙 A2DP Sink 真实音频规格透传**：实时监听 `A2DP` / `A2DP_SINK` 连接状态，结合底层输出采样率动态展示真实音频链路规格（如 `A2DP / 48.0kHz / 16bit · 立体声`）。
+- **专辑补全缓存继承与并发请求合并**：原生层 50 首 LRU 缓存 + 前端 50 首容量上限保护 + 飞行中请求合并（In-Flight Deduplication），当 AVRCP 晚到补全专辑名或时长时自动复用已有缓存，零重复网络请求。
 
 ---
 
@@ -67,7 +67,7 @@
   <p><i>（实机运行 1：音乐模式 —— 拟物毛玻璃唱机循迹 + 高清微距黑胶 + 450ms 预读平滑高亮滚动歌词）</i></p>
   <br/>
   <img src="docs/images/screen_video_mode.png" width="92%" alt="Bluetooth Music Canvas 视频与环境音频模式" style="border-radius: 12px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);" />
-  <p><i>（实机运行 2：视频/环境音频模式 —— 智能音轨识别 + 延续高清封面 + 5频段 AGC 动态律动音浪）</i></p>
+  <p><i>（实机运行 2：视频/环境音频模式 —— 智能音轨识别 + 延续高清封面 + 9频段 AGC 动态律动音浪）</i></p>
 </div>
 
 ---
@@ -106,16 +106,25 @@ adb shell appops set com.bluetoothmusiccanvas RUN_IN_BACKGROUND allow
 
 ---
 
-## 🛠️ 自主构建工程 (Zero-Dependency Build)
+## 🛠️ 自主构建、测试与一键部署 (Zero-Dependency Build & Test)
 
-本项目内置完全独立的跨平台自动化构建流水线 [`build.py`](build.py)，**无需安装数十 GB 的重型 Android Studio**，仅依赖标准 JDK（8+ / 11 / 17）与轻量 Android CLI 构建工具（AAPT2, android.jar, D8）：
+本项目内置完全独立的跨平台自动化构建流水线 [`build.py`](build.py) 与前后端回归测试套件 [`tests/run_all.py`](tests/run_all.py)，**无需安装数十 GB 的重型 Android Studio**，仅依赖标准 JDK（8+ / 11 / 17）与轻量 Android CLI 构建工具（`aapt2`, `android.jar`, `d8/r8`）：
 
 ```bash
-# 运行极速构建流水线 (耗时通常仅 3~5 秒)
+# 1. 仅极速编译并签名 APK (耗时通常仅 3~5 秒)
 python build.py
+
+# 2. 先运行全量自动化回归测试 (Node.js JSDOM + Java 原生测试)，通过后再构建 APK
+python build.py --test
+
+# 3. 构建完成后自动通过 ADB 安装到指定实机、授予监听权限并拉起主界面
+python build.py --test --install 192.168.5.18:5555 --launch
+
+# 4. 单独运行全量前后端单元测试与回归测试套件
+python tests/run_all.py
 ```
 
-构建流水线会自动查找系统 JDK，按序执行：资源编译打包 (AAPT2) ➔ Java 编译 (javac) ➔ Dalvik 字节码生成 (D8) ➔ APK 归档与签名 (jarsigner)，并在根目录输出最终的 `BluetoothMusicCanvas.apk`。
+构建流水线会自动查找系统 JDK 与 Android 工具链，按序执行：资源编译打包 (`aapt2 compile/link`) ➔ Java 编译 (`javac`) ➔ Dalvik Release 字节码优化生成 (`D8 --release`) ➔ APK 归档与签名 (`jarsigner`)，并在根目录输出最终的 `BluetoothMusicCanvas.apk`。
 
 ---
 
@@ -123,20 +132,22 @@ python build.py
 
 ```text
 手机 (蓝牙发送端)
-       │ (Bluetooth A2DP Audio + AVRCP Controls & Metadata)
+       │ (Bluetooth A2DP Audio + AVRCP Controls & Dynamic Car Lyrics)
        ▼
 Android 系统底层协议栈 (com.android.bluetooth)
        │
-       ▼ (MediaSessionManager)
+       ▼ (MediaSessionManager / NotificationListenerService.requestRebind)
 MediaMonitorService (com.bluetoothmusiccanvas.MediaMonitorService)
        │
-       ├──> MetadataFetcher (Java 多线程聚合检索 NetEase / Apple Music / Kugou)
-       ├──> AudioVisualizerHelper (原生 DSP FFT 频谱捕获 + AGC 自适应增益)
-       ├──> WindowManager (桌面迷你旋转黑胶悬浮窗 TYPE_APPLICATION_OVERLAY)
-       └──> MainActivity (硬件加速 WebView 沉浸容器)
+       ├──> BluetoothMetadataNormalizer & MediaStateStore (车载歌词剥离、防抖与 PlaybackGeneration 代次状态机)
+       ├──> MediaClassifier (视频/音乐漏斗式单一权威分类器)
+       ├──> MetadataFetcher (网易云 / QQ音乐 / 酷狗 / iTunes / LRCLIB 多线程聚合检索 + 50首 LRU 缓存 + 时长打分)
+       ├──> AudioVisualizerHelper (1024点 FFT 9频段物理频谱 + AGC 动态增益 + 按需跨桥门控)
+       ├──> WindowManager (桌面迷你旋转黑胶悬浮窗 TYPE_APPLICATION_OVERLAY，按需懒加载封面 Bitmap)
+       └──> MainActivity (硬件加速 WebView 沉浸容器，支持后台 onPause/pauseTimers 休眠)
               │
               ▼
-       assets/index.html (3D黑胶唱片、毛玻璃唱针物理循迹、流光背景、逐行歌词、5频段音浪)
+       assets/index.html (分层合成3D黑胶、毛玻璃唱针循迹、双层窗口歌词校准、9/5频段音浪)
 ```
 
 ---

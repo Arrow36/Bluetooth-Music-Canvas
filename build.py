@@ -1,18 +1,25 @@
 #!/usr/bin/env python3
 """
-Bluetooth Music Canvas - Autonomous Build Pipeline
+Bluetooth Music Canvas - Autonomous Build, Test & Deploy Pipeline
 Zero heavy IDE dependencies (Android Studio is NOT required).
 Requires: JDK 8+ (or 11/17) and Android Build Tools (aapt2, android.jar, d8/r8).
+
+Usage examples:
+  python build.py                                      # Build signed APK
+  python build.py --test                               # Run JS + Java test suites, then build APK
+  python build.py --install 192.168.5.18:5555 --launch # Build, install via ADB, grant listener & launch
 """
 
+import argparse
 import os
-import sys
-import subprocess
-import zipfile
 import shutil
+import subprocess
+import sys
+import zipfile
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parent
+
 
 def find_jdk_tools():
     """Locate java, javac, jarsigner, and keytool."""
@@ -63,6 +70,7 @@ def find_jdk_tools():
 
     return tools
 
+
 def find_android_tools():
     """Locate aapt2, android.jar, and d8/r8."""
     tools = {}
@@ -106,12 +114,10 @@ def find_android_tools():
             for root in sdk_roots:
                 if not root.exists():
                     continue
-                # Direct file in root/tools
                 direct = root / ("aapt2" + exe_suffix)
                 if direct.exists():
                     tools["aapt2"] = direct
                     break
-                # Under build-tools/*
                 bt_dir = root / "build-tools"
                 if bt_dir.exists():
                     versions = sorted(bt_dir.glob("*"), reverse=True)
@@ -167,9 +173,12 @@ def find_android_tools():
                     break
 
     missing = []
-    if "aapt2" not in tools: missing.append("aapt2")
-    if "android_jar" not in tools: missing.append("android.jar")
-    if "d8_jar" not in tools: missing.append("d8.jar / r8.jar")
+    if "aapt2" not in tools:
+        missing.append("aapt2")
+    if "android_jar" not in tools:
+        missing.append("android.jar")
+    if "d8_jar" not in tools:
+        missing.append("d8.jar / r8.jar")
 
     if missing:
         print(f"[ERROR] Missing Android build tool(s): {', '.join(missing)}.")
@@ -179,12 +188,14 @@ def find_android_tools():
 
     return tools
 
+
 def ensure_keystore(keytool_bin, keystore_path):
     """Ensure a standard debug keystore exists; create one if missing."""
     if not keystore_path.exists():
         print(f"[*] Generating debug keystore at {keystore_path}...")
         cmd = [
             str(keytool_bin),
+            "-J-Dfile.encoding=UTF-8",
             "-genkeypair",
             "-v",
             "-keystore", str(keystore_path),
@@ -198,7 +209,52 @@ def ensure_keystore(keytool_bin, keystore_path):
         ]
         subprocess.check_call(cmd)
 
-def build():
+
+def run_test_suite():
+    """Execute the frontend (Node.js) and backend (Java) regression test suite."""
+    test_runner = PROJECT_DIR / "tests" / "run_all.py"
+    if not test_runner.exists():
+        print(f"[WARN] Test runner not found at {test_runner}, skipping tests.")
+        return
+    print("=" * 60)
+    print("  Running Automated Regression Test Suite (JS + Java)")
+    print("=" * 60)
+    subprocess.check_call([sys.executable, str(test_runner)], cwd=str(PROJECT_DIR))
+
+
+def deploy_to_device(apk_path, device_serial=None, launch=False):
+    """Install the built APK onto a target Android device via ADB."""
+    adb_bin = shutil.which("adb")
+    if not adb_bin:
+        print("[ERROR] 'adb' not found in PATH. Cannot deploy automatically.")
+        sys.exit(1)
+
+    adb_prefix = [adb_bin]
+    if device_serial and device_serial != "auto":
+        if ":" in device_serial:
+            subprocess.run([adb_bin, "connect", device_serial], check=False)
+        adb_prefix.extend(["-s", device_serial])
+
+    print(f"\n[*] Installing {apk_path.name} via ADB ({device_serial or 'default device'})...")
+    subprocess.check_call(adb_prefix + ["install", "-r", str(apk_path)])
+
+    # Ensure notification listener permission is enabled
+    subprocess.run(
+        adb_prefix + [
+            "shell", "cmd", "notification", "allow_listener",
+            "com.bluetoothmusiccanvas/com.bluetoothmusiccanvas.MediaMonitorService"
+        ],
+        check=False
+    )
+
+    if launch:
+        print("[*] Launching com.bluetoothmusiccanvas/.MainActivity...")
+        subprocess.check_call(
+            adb_prefix + ["shell", "am", "start", "-n", "com.bluetoothmusiccanvas/.MainActivity"]
+        )
+
+
+def build(clean_after=False):
     print("=" * 60)
     print("  Bluetooth Music Canvas - Build System")
     print("=" * 60)
@@ -252,10 +308,15 @@ def build():
 
     # 3. Compile Java with javac
     print("[3/5] Compiling Java classes with javac...")
-    java_files = list((PROJECT_DIR / "src").rglob("*.java")) + list(gen_dir.rglob("*.java"))
+    java_files = sorted(
+        list((PROJECT_DIR / "src").rglob("*.java")) + list(gen_dir.rglob("*.java"))
+    )
     cmd_javac = [
         str(jdk["javac"]),
+        "-J-Dfile.encoding=UTF-8",
         "-encoding", "UTF-8",
+        "-Xlint:-options",
+        "-Xlint:-deprecation",
         "-cp", str(android["android_jar"]),
         "-d", str(bin_dir),
         "-source", "8",
@@ -265,11 +326,13 @@ def build():
 
     # 4. Compile Bytecode with D8
     print("[4/5] Compiling Dalvik bytecode with D8...")
-    class_files = list(bin_dir.rglob("*.class"))
+    class_files = sorted(list(bin_dir.rglob("*.class")))
     cmd_d8 = [
         str(jdk["java"]),
+        "-Dfile.encoding=UTF-8",
         "-cp", str(android["d8_jar"]),
         "com.android.tools.r8.D8",
+        "--release",
         "--lib", str(android["android_jar"]),
         "--output", str(bin_dir),
         "--min-api", "21"
@@ -291,6 +354,7 @@ def build():
 
     cmd_sign = [
         str(jdk["jarsigner"]),
+        "-J-Dfile.encoding=UTF-8",
         "-keystore", str(keystore),
         "-storepass", "android",
         "-keypass", "android",
@@ -302,10 +366,49 @@ def build():
     ]
     subprocess.check_call(cmd_sign)
 
+    if clean_after and build_dir.exists():
+        shutil.rmtree(build_dir)
+
     size = os.path.getsize(final_apk)
     print("=" * 60)
     print(f"SUCCESS! Signed APK built: {final_apk.name} ({size:,} bytes)")
     print("=" * 60)
+    return final_apk
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Bluetooth Music Canvas - Zero-Dependency Build & Deploy Pipeline"
+    )
+    parser.add_argument(
+        "-t", "--test",
+        action="store_true",
+        help="Run JS + Java unit/regression tests before building the APK"
+    )
+    parser.add_argument(
+        "-i", "--install",
+        nargs="?",
+        const="auto",
+        metavar="DEVICE",
+        help="Install the signed APK via ADB (optionally specify device serial or IP:PORT)"
+    )
+    parser.add_argument(
+        "-l", "--launch",
+        action="store_true",
+        help="Launch MainActivity on the target device after installing"
+    )
+    parser.add_argument(
+        "-c", "--clean",
+        action="store_true",
+        help="Remove intermediate build/ directory after generating BluetoothMusicCanvas.apk"
+    )
+    return parser.parse_args()
+
 
 if __name__ == "__main__":
-    build()
+    args = parse_args()
+    if args.test:
+        run_test_suite()
+    apk = build(clean_after=args.clean)
+    if args.install:
+        deploy_to_device(apk, device_serial=args.install, launch=args.launch)
