@@ -166,6 +166,42 @@ public class TestMediaStateStore {
         assert qqSnap3.streamLyric.equals("花开满篱院 芬芳了流年");
         System.out.println("  PASS [12]: MediaStateStore end-to-end handles QQ Music car Bluetooth lyrics with steady generation 1");
 
+        // 13. NetEase mid-song Bluetooth connection or app restart:
+        // When connecting in the middle of a track, Title carries an active lyric line (e.g. "It's a sign of the times")
+        // and Artist is "Harry Styles/Sign of the Times". Must immediately extract real title "Sign of the Times".
+        MetadataNormalizer.NormalizedResult neteaseMidSong = MetadataNormalizer.normalize(
+                "It's a sign of the times", "Harry Styles/Sign of the Times", "Harry Styles", 340000,
+                "", "", MetadataNormalizer.MetadataFormat.UNKNOWN
+        );
+        assert neteaseMidSong != null;
+        assert neteaseMidSong.title.equals("Sign of the Times") : "Real title must be Sign of the Times, got: " + neteaseMidSong.title;
+        assert neteaseMidSong.artist.equals("Harry Styles") : "Performer must be Harry Styles, got: " + neteaseMidSong.artist;
+        assert neteaseMidSong.album.equals("Harry Styles");
+        assert neteaseMidSong.streamLyric.equals("It's a sign of the times") : "Active lyric captured as streamLyric, got: " + neteaseMidSong.streamLyric;
+        assert neteaseMidSong.format == MetadataNormalizer.MetadataFormat.CAR_LYRICS_CONFIRMED;
+        System.out.println("  PASS [13]: NetEase mid-song connection correctly extracts real title instead of dynamic lyric");
+
+        // 14. NetEase mid-song end-to-end MediaStateStore session
+        MediaStateStore neteaseStore = new MediaStateStore();
+        long neEpoch = neteaseStore.getSessionEpoch();
+        MediaStateStore.MediaSnapshot neSnap1 = neteaseStore.handleMetadata(
+                neEpoch, "It's a sign of the times", "Harry Styles/Sign of the Times", "Harry Styles", 340000, "ne1"
+        );
+        assert neSnap1 != null;
+        assert neSnap1.title.equals("Sign of the Times");
+        assert neSnap1.artist.equals("Harry Styles");
+        assert neSnap1.playbackGeneration == 1;
+
+        MediaStateStore.MediaSnapshot neSnap2 = neteaseStore.handleMetadata(
+                neEpoch, "We got to, we got to（away）", "Harry Styles/Sign of the Times", "Harry Styles", 340000, "ne1"
+        );
+        assert neSnap2 != null;
+        assert neSnap2.changeType == MediaStateStore.ChangeType.STREAM_LYRIC;
+        assert neSnap2.playbackGeneration == 1;
+        assert neSnap2.title.equals("Sign of the Times");
+        assert neSnap2.streamLyric.equals("We got to, we got to（away）");
+        System.out.println("  PASS [14]: NetEase mid-song stream lyrics maintain steady track title and generation across subsequent lines");
+
         System.out.println("==================================================");
         System.out.println("All MediaStateStore & Normalizer tests PASSED!");
         System.out.println("==================================================");

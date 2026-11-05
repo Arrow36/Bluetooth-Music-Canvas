@@ -158,6 +158,8 @@ public class MetadataNormalizer {
         boolean hasSubtitle = candidateTitle != null && candidateTitle.matches(".*[\\(（\\[].+[\\)）\\]].*");
 
         boolean albumConfirmsCandidate = false;
+        boolean albumConfirmsPerformer = false;
+        String cleanPerformers = cleanTitle(performers);
         if (!resolvedAlbum.isEmpty() && candidateTitle != null && !title.equalsIgnoreCase(resolvedAlbum)) {
             if (candidateTitle.equalsIgnoreCase(resolvedAlbum)
                     || cleanCandidate.equalsIgnoreCase(cleanAlbum)
@@ -172,6 +174,31 @@ public class MetadataNormalizer {
                 }
             }
         }
+        if (!resolvedAlbum.isEmpty() && performers != null && !title.equalsIgnoreCase(resolvedAlbum)) {
+            if (performers.equalsIgnoreCase(resolvedAlbum)
+                    || cleanPerformers.equalsIgnoreCase(cleanAlbum)
+                    || cleanPerformers.equalsIgnoreCase(resolvedAlbum)
+                    || performers.equalsIgnoreCase(cleanAlbum)) {
+                albumConfirmsPerformer = true;
+            } else if (!cleanAlbum.isEmpty() && !cleanPerformers.isEmpty()) {
+                String lowerPerf = cleanPerformers.toLowerCase(Locale.ROOT);
+                String lowerAlbum = cleanAlbum.toLowerCase(Locale.ROOT);
+                if (lowerPerf.contains(lowerAlbum) || lowerAlbum.contains(lowerPerf)) {
+                    albumConfirmsPerformer = true;
+                }
+            }
+        }
+
+        boolean titleContainsCandidate = false;
+        if (candidateTitle != null && !cleanCandidate.isEmpty()) {
+            String lowerTitle = cleanTitle(title).toLowerCase(Locale.ROOT);
+            String lowerCandidate = cleanCandidate.toLowerCase(Locale.ROOT);
+            if (lowerTitle.contains(lowerCandidate) && !lowerTitle.equals(lowerCandidate)) {
+                titleContainsCandidate = true;
+            }
+        }
+
+        boolean isLyricLike = isLyricLineLike(title);
 
         // Case 1: Active car Bluetooth stream for the currently playing song
         // In car lyric mode, subsequent AVRCP updates keep the same song in Artist (performers / candidateTitle),
@@ -184,7 +211,7 @@ public class MetadataNormalizer {
                     || currentTitle.toLowerCase(Locale.ROOT).contains(cleanCandidate.toLowerCase(Locale.ROOT))
                     || (performers != null && performers.equalsIgnoreCase(currentArtist) && !candidateTitle.equalsIgnoreCase(title));
 
-            if (matchesPlayingSong && (currentFormat == MetadataFormat.CAR_LYRICS_CONFIRMED || isPlaceholder || albumConfirmsCandidate || !candidateTitle.equalsIgnoreCase(title))) {
+            if (matchesPlayingSong && (currentFormat == MetadataFormat.CAR_LYRICS_CONFIRMED || isPlaceholder || albumConfirmsCandidate || albumConfirmsPerformer || titleContainsCandidate || isLyricLike || !candidateTitle.equalsIgnoreCase(title))) {
                 return new NormalizedResult(
                         currentTitle,
                         (performers != null && !performers.isEmpty()) ? performers : currentArtist,
@@ -214,8 +241,8 @@ public class MetadataNormalizer {
                         MetadataFormat.STANDARD,
                         false
                 );
-            } else if (isPlaceholder || albumConfirmsCandidate || hasSubtitle || isEmDashCarFormat) {
-                // Title is an explicit placeholder, album confirms candidate, candidate has subtitle, or em-dash car format
+            } else if (isPlaceholder || albumConfirmsCandidate || albumConfirmsPerformer || titleContainsCandidate || hasSubtitle || isEmDashCarFormat || isLyricLike) {
+                // Title is an explicit placeholder, album confirms candidate/performer, title contains candidate, candidate has subtitle, em-dash car format, or title is lyric-line-like
                 return new NormalizedResult(
                         candidateTitle,
                         performers,
@@ -258,19 +285,57 @@ public class MetadataNormalizer {
      */
     public static boolean isExplicitLyricPlaceholder(String text) {
         if (text == null || text.isEmpty()) return false;
-        String lower = text.toLowerCase(Locale.ROOT);
-        return text.contains("纯音乐") || text.contains("请欣赏") || text.contains("没有填词")
-                || text.contains("享受音乐") || text.contains("作词") || text.contains("作曲")
-                || text.contains("编曲") || text.contains("制作") || text.contains("监制")
-                || text.contains("混音") || text.contains("母带") || text.contains("录音")
-                || text.contains("出品") || text.contains("原唱") || text.contains("和声")
-                || text.contains("编写") || text.contains("策划") || text.contains("统筹")
-                || text.contains("吉他") || text.contains("贝斯") || text.contains("弦乐")
-                || text.contains("伴奏") || text.contains("缩混")
-                || text.contains("OP：") || text.contains("OP:") || text.contains("SP：") || text.contains("SP:")
+        String trimmed = text.trim();
+        if (trimmed.equals("//") || trimmed.equals("...") || trimmed.equals("—") || trimmed.equals("-")
+                || trimmed.startsWith("//") || trimmed.equals("Not Provided")) {
+            return true;
+        }
+        String lower = trimmed.toLowerCase(Locale.ROOT);
+        return trimmed.contains("纯音乐") || trimmed.contains("请欣赏") || trimmed.contains("没有填词")
+                || trimmed.contains("享受音乐") || trimmed.contains("作词") || trimmed.contains("作曲")
+                || trimmed.contains("编曲") || trimmed.contains("制作") || trimmed.contains("监制")
+                || trimmed.contains("混音") || trimmed.contains("母带") || trimmed.contains("录音")
+                || trimmed.contains("出品") || trimmed.contains("原唱") || trimmed.contains("和声")
+                || trimmed.contains("编写") || trimmed.contains("策划") || trimmed.contains("统筹")
+                || trimmed.contains("吉他") || trimmed.contains("贝斯") || trimmed.contains("弦乐")
+                || trimmed.contains("伴奏") || trimmed.contains("缩混")
+                || trimmed.contains("OP：") || trimmed.contains("OP:") || trimmed.contains("SP：") || trimmed.contains("SP:")
                 || lower.contains("producer") || lower.contains("composer")
                 || lower.contains("lyricist") || lower.contains("instrumental")
                 || lower.contains("arranger");
+    }
+
+    /**
+     * Evaluates whether a string has typical characteristics of a dynamic lyric line.
+     * Used when connecting mid-song to prevent interpreting the current active lyric line as the song title.
+     * Punctuation alone (e.g. "Hello, Goodbye") does NOT make a title lyric-like.
+     */
+    public static boolean isLyricLineLike(String text) {
+        if (text == null || text.trim().isEmpty()) return false;
+        String t = text.trim();
+        if (isExplicitLyricPlaceholder(t)) return true;
+        // 1. Chinese spacing between words (standard in NetEase/QQ car dynamic lyrics to mark phrasing/cadence)
+        if (t.matches(".*[\\u4e00-\\u9fa5]+\\s+[\\u4e00-\\u9fa5]+.*")) return true;
+        // 2. Trailing ellipsis, tilde, or Chinese comma with phrasing space
+        if (t.contains("...") || t.contains("…") || t.contains("~") || t.contains("——")) return true;
+        if (t.contains("，") && t.contains(" ")) return true;
+        // 3. Parenthetical backing vocals: e.g. "（away）", "(away)"
+        if (t.matches(".*[\\(（\\[].*(away|chorus|verse|hook|[\\u4e00-\\u9fa5]).*[\\)）\\]].*")) return true;
+        // 4. Typical Western lyric openers and conversational phrases
+        String lower = t.toLowerCase(Locale.ROOT);
+        if (lower.startsWith("i ") || lower.startsWith("i'm ") || lower.startsWith("i’m ")
+                || lower.startsWith("it's ") || lower.startsWith("it’s ")
+                || lower.startsWith("we ") || lower.startsWith("we're ") || lower.startsWith("we've ")
+                || lower.startsWith("you ") || lower.startsWith("you're ") || lower.startsWith("baby ")
+                || lower.startsWith("oh ") || lower.startsWith("yeah ") || lower.startsWith("cause ")
+                || lower.contains(" don't ") || lower.contains(" can't ") || lower.contains(" won't ")
+                || lower.contains(" gotta ") || lower.contains(" wanna ") || lower.contains(" gonna ")
+                || lower.contains(" alright") || lower.contains(" forever") || lower.contains(" tonight")) {
+            return true;
+        }
+        // 5. Long multi-word sentence (> 32 chars with spaces)
+        if (t.length() > 32 && t.contains(" ")) return true;
+        return false;
     }
 
     public static String cleanTitle(String text) {

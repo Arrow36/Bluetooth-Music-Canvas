@@ -35,7 +35,8 @@
             left: 0;
             background-color: #0b0d10;
             color: #ffffff;
-            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            font-feature-settings: "palt", "kern";
             overflow: hidden !important;
             overscroll-behavior: none !important;
             touch-action: none !important;
@@ -2185,7 +2186,9 @@
 
             for (let i = 0; i < items.length; i++) {
                 const item = items[i];
-                const text = (item.text || '').trim();
+                let text = (item.text || '').trim();
+                text = text.replace(/[\u2018\u2019\u0060\u00b4]/g, "'");
+                text = text.replace(/\b([a-zA-Z]+)\s*'\s*([a-zA-Z]+)\b/g, "$1'$2");
                 const vlen = getVisualLength(text);
 
                 // 视觉宽度超出单行舒适阈值 (如中文 > 18字 或 西文 > 36字符) 自动智能分句，杜绝左右边缘裁切
@@ -2308,8 +2311,13 @@
         // 智能优化歌名分行逻辑（古典作品乐章绑定、括号副标题语义换行、破折号断句、防末尾寡字）
         function formatSongTitle(rawTitle) {
             if (!rawTitle) return "";
+            // 0. 规范化弯单双引号并紧凑英文缩写（如 "It’s" -> "It's"，杜绝 CJK 全角单引号占用大字格空白）
+            let t = rawTitle.replace(/[\u2018\u2019\u0060\u00b4]/g, "'");
+            t = t.replace(/[\u201c\u201d]/g, '"');
+            t = t.replace(/\b([a-zA-Z]+)\s*'\s*([a-zA-Z]+)\b/g, "$1'$2");
+
             // 1. 标准化标点符号与其后空格：确保冒号后有空格（如 "K. 285:I. Allegro" -> "K. 285: I. Allegro"）
-            let t = rawTitle.replace(/:([^\s])/g, ': $1');
+            t = t.replace(/:([^\s])/g, ': $1');
             // 2. 乐章罗马数字（I. / II. / III. / IV. 等）与后方速度标记之间绑定不换行空格（\u00A0），
             //    确保 "I." 和 "Allegro" 绝对保持在同一行，绝不孤立分行
             t = t.replace(/\b([IVXLCDM]+\.)\s+/gi, '$1\u00A0');
@@ -2881,7 +2889,10 @@
                 box.className = 'live-stream-box';
                 const lyric = document.createElement('div');
                 lyric.className = 'live-stream-lyric';
-                lyric.textContent = text || '当前蓝牙源暂未投送歌词';
+                let cleanText = (text || '当前蓝牙源暂未投送歌词').trim();
+                cleanText = cleanText.replace(/[\u2018\u2019\u0060\u00b4]/g, "'");
+                cleanText = cleanText.replace(/\b([a-zA-Z]+)\s*'\s*([a-zA-Z]+)\b/g, "$1'$2");
+                lyric.textContent = cleanText;
                 box.appendChild(lyric);
                 stream.appendChild(box);
             }
