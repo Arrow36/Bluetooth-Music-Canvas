@@ -10,7 +10,7 @@
 [![Platform](https://img.shields.io/badge/Platform-Android%205.0%2B%20(API%2021%2B)-brightgreen.svg)](https://developer.android.com)
 [![Architecture](https://img.shields.io/badge/Arch-Universal-blue.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-orange.svg)](LICENSE)
-[![APK Size](https://img.shields.io/badge/APK%20Size-~460%20KB-success.svg)](BluetoothMusicCanvas.apk)
+[![APK Size](https://img.shields.io/badge/APK%20Size-~472%20KB-success.svg)](BluetoothMusicCanvas.apk)
 
 </div>
 
@@ -31,31 +31,48 @@
 
 ### 🖼️ 3. 多源官方超清封面与智能语义排版
 - **四平台聚合检索与时长校验**：原生多线程聚合检索（网易云音乐 / QQ音乐 / 酷狗音乐 / Apple Music iTunes 600×600 / LRCLIB），结合曲目时长差值（$\Delta \le 2\text{s}$ 满分，$\Delta > 15\text{s}$ 降权）精准防翻唱/伴奏误配，无惧跨域与防盗链。
+- **平台默认白底人像/占位封面精准拦截**：原生与前端双层拦截各音乐平台默认歌手头像与默认封面 URL（如 `default_singer`、`default_album`、`default_avatar`、`singerimg.kugou.com` 等），无真实专辑图或切换至 B 站等视频音轨时优雅回退至纯粹微距空白黑胶盘。
 - **古典乐与长曲名智能分行排版**：智能识别作品编号与乐章号（如 `K. 285: I. Allegro`），将乐章号与速度标记紧密绑定防孤立折行；长副标题括号与破折号自动语义断行。
 
 ### 🎤 4. 6 大歌词来源自由切换 & 车载蓝牙歌词双层校准 (Sub-Second Lyric Sync)
 - **多歌词源一键切换与偏好记忆**：支持「自动推荐」、「网易云音乐」、「QQ音乐」、「酷狗音乐」、「LRCLIB 全球库」、「蓝牙实时歌词」及「律动氛围」自由切换，切歌时严格保持用户选定的歌词源偏好。
 - **车载蓝牙歌词流原生解析**：完美兼容网易云音乐与 QQ 音乐「车载蓝牙歌词」模式（自动剥离动态歌词头、提取歌名/歌手/内嵌专辑并维持稳态播放代次，不引发假切歌）。
 - **双层时间窗口与防倒跳权威校准**：
-  - **第一层（优先窗口）**：在估计进度 $\pm 15$ 秒内严密匹配，杜绝相同副歌重复段落误跳回第一段；
+  - **第一层（优先窗口）**：在估计进度 $\pm 15$ 秒内严密匹配（无论精准文本匹配或子串包含匹配均优先约束于 $\pm 15\text{s}$ 邻域），彻底杜绝《Sign of the Times》等长曲目中相同副歌或短句重复段落跨段误跳；
   - **第二层（全局兜底）**：当大幅 Seek 跳转或进度漂移时，自动选取时间绝对距离最近行归位；
   - **演职员过滤与 2.5s 防倒跳锁**：自动过滤 `作词/作曲/编曲/演唱/录音师/录音棚/混音/母带/方言指导` 等片头制作信息行，仅在时钟偏差 $> 2.5\text{s}$ 时重设基准时钟，杜绝正常播放时进度条向后倒跳。
 - **多代次身份隔离与局部 DOM 高亮**：引入 `PlaybackGeneration` 与 `SourceRequestId` 严格防串歌乱序；采用 $[old-4..old+4] \cup [new-4..new+4]$ 邻域并集增量更新 DOM。
 
 ### 🎬 5. 智能视频音轨与正规音乐多层漏斗识别 (`MediaClassifier`)
-- **单一权威分类器 (`MediaClassifier`)**：集中判定视频与正规音乐——强特征定视频（B站 UP 主、剧集号、视频分区括号），有正规专辑名强保音乐，杜绝前后端双重标准冲突。
+- **单一权威分类器 (`MediaClassifier`)**：集中判定视频与正规音乐——强特征定视频（B站 UP 主、剧集号、视频分区括号、B站 `album == title` 特征、开箱评测与序号分P特征），有正规专辑名强保音乐，杜绝前后端双重标准冲突。
 - **底层硬件音频能量感知**：针对无标准 MediaSession 元数据但有音频输出的短视频/投屏应用，仅在处于真实播放态且持续检测到有效音频能量时自动切入“视频模式”律动音浪，待机或刚连接蓝牙时绝不误触发。
 
 ### 🎈 6. 桌面迷你旋转黑胶悬浮球 (Mini Floating Vinyl Widget)
 - 应用退居后台时，在桌面常驻平滑旋转的微缩黑胶悬浮球（暂停播放时自动停止旋转动画，悬浮窗未展示时按需懒加载封面 `Bitmap` 零冗余解码），支持全屏幕任意拖拽与坐标记忆，轻触即刻秒级拉起全屏看板。
 
-### 🚀 7. 针对低配电视盒 / 车机的深度渲染与能效优化
+### 📺 7. 跨设备全场景通用化适配（电视 / 智慧屏 / 带屏智能音箱）
+- **多尺寸屏幕、分辨率与横竖屏自适应布局**：
+  - 自动适配紧凑型带屏音箱（如 `800×480`、`1024×600` 小度/小爱触屏音箱）、标准 `720p/1080p` 智慧屏、`4K` 大屏电视，以及 `max-aspect-ratio: 6/5` 竖屏副屏/方形屏（自动切换上下堆叠布局）；
+  - 唱机容器采用等比矩阵缩放（`transform: scale(...)`），确保任何尺寸下唱针旋转圆心与黑胶盘面严丝合缝；歌词手势拖拽实时动态测量行高（`getLyricLineStepPx`）。
+- **电视遥控器（D-Pad / 媒体键）与触控双栖交互**：
+  - 完整支持红外/蓝牙遥控器方向键（上下预览歌词或导航菜单、左右一键切歌或微调歌词偏移）、确认键（唤醒 UI / 播放暂停 / 确认菜单）、菜单键（呼出歌词源设置）、返回键（优先收起二级弹窗再退回桌面）及独立多媒体键。
+- **多厂商蓝牙协议栈广谱兼容**：
+  - 自动识别标准 Android 蓝牙栈及小米、Realtek、Broadcom、Rockchip、Amlogic、MediaTek、Allwinner 等各家定制 ROM 的蓝牙音频控制器包名（`bluetooth`、`a2dp`、`avrcp`、`btmusic`、`btaudio`、`btsink`）。
+- **免 ADB 首次安装权限自检与一键引导**：
+  - 启动及从后台返回时自动检测 `NotificationListenerService` 通知使用权；若未授权，顶部自动展示醒目引导胶囊，点击即可一键拉起系统设置页完成授权。
+
+### 🚀 8. 针对低配电视盒 / 车机的深度渲染与能效优化
+- **`<canvas>` 离屏预烘焙氛围背景模糊（零实时 GPU 消耗）**：
+  - 切歌封面加载完成时，仅在 `onload` 瞬间通过 `16×16 ➔ 64×64` 双线性降采样/升采样离屏预烘焙一次全屏流体氛围背景（耗时 `< 0.5ms`，零 CORS 跨域报错），并自动卸载 CSS `filter: blur(85px)`，使 **60fps 播放期间背景高斯模糊 GPU 着色器负载降为 0**。
+- **硬件性能自动分级与运行时帧率探针（FPS Watchdog）**：
+  - 首次启动自动查询 `ActivityManager.isLowRamDevice()`，并在播放期间实时监控渲染帧耗时；若连续 90 帧平均低于 ~29 FPS，自动开启 `body.perf-mode` 流畅模式卸载毛玻璃开销。
 - **WebView & GPU 管线减负**：
   - 60fps 时间轴更新内置秒数、进度百分比与唱针角度脏值阈值检测，消除无效 DOM 写入与 CSS Transition 抖动；
   - 隐藏态弹窗与沉浸模式（`body.idle`）自动卸载 `backdrop-filter`，避免透明图层持续触发全屏高斯模糊采样；
   - 退居后台悬浮球时自动调用 `WebView.onPause()` / `pauseTimers()`，后台 WebView 渲染 CPU 降至 **0%**。
   - 在四核 ARMv7 Cortex-A53 + Mali-450 电视盒实机测试中，全屏播放总 CPU 占用降低 **47%**，`Chrome_InProcGp` 降低 **88%**，P99 帧耗时缩短 **45%**。
-- **蓝牙 A2DP Sink 真实音频规格透传**：实时监听 `A2DP` / `A2DP_SINK` 连接状态，结合底层输出采样率动态展示真实音频链路规格（如 `A2DP / 48.0kHz / 16bit · 立体声`）。
+- **100% 真实硬件蓝牙 A2DP 编码与音频参数探测**：
+  - 零硬编码默认值，通过 `BluetoothA2dpSink.getAudioConfig()`、`BluetoothA2dp.getCodecStatus()`、`AudioDeviceInfo`（`A2DP` / `BT_A2DP`）及 Bluedroid 协议栈 `BTA AV` AVDTP SEP 句柄底层探测，实时解析并展示真实蓝牙音频编码（`SBC` / `AAC` / `aptX` / `aptX HD` / `LDAC`）、采样率（如 `44.1kHz` / `48.0kHz`）、位深（`16bit` / `24bit` / `32bit`）与声道数（如 `A2DP · AAC / 44.1kHz / 16bit · 立体声`）。
 - **专辑补全缓存继承与并发请求合并**：原生层 50 首 LRU 缓存 + 前端 50 首容量上限保护 + 飞行中请求合并（In-Flight Deduplication），当 AVRCP 晚到补全专辑名或时长时自动复用已有缓存，零重复网络请求。
 
 ---

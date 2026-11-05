@@ -241,6 +241,37 @@ async function runTests() {
         window.selectLyricSource('auto');
     }
 
+    // =========================================================================
+    // Group 6: TV Remote Navigation, Permission Banner & Pre-Baked Canvas
+    // =========================================================================
+    console.log("\n--- Group 6: TV Remote Navigation, Permission Banner & Pre-Baked Canvas ---");
+    {
+        const permBtn = document.getElementById('permGuideBtn');
+        window.onPermissionStatusChanged(false);
+        assert(permBtn && permBtn.classList.contains('show'), "Permission guide banner shown when notification listener permission is missing");
+        window.onPermissionStatusChanged(true);
+        assert(permBtn && !permBtn.classList.contains('show'), "Permission guide banner hidden when permission is granted");
+
+        // Menu key (82) toggles lyric source menu and focuses first item
+        window.closeAllSecondaryMenus();
+        assert(window.isAnySecondaryMenuOpen() === false, "All secondary menus closed initially");
+        window.handleRemoteKey(82); // KEYCODE_MENU
+        assert(window.isAnySecondaryMenuOpen() === true, "KEYCODE_MENU (82) opens lyric source menu");
+        const firstMenuEl = document.getElementById('menuItem_official');
+        assert(firstMenuEl && firstMenuEl.classList.contains('remote-focus'), "First menu item receives remote-focus highlight");
+
+        // D-Pad Down (20) moves focus to second item (bluetooth)
+        window.handleRemoteKey(20); // KEYCODE_DPAD_DOWN
+        const secondMenuEl = document.getElementById('menuItem_bluetooth');
+        assert(secondMenuEl && secondMenuEl.classList.contains('remote-focus'), "DPAD_DOWN moves remote-focus to menuItem_bluetooth");
+
+        window.closeAllSecondaryMenus();
+        assert(window.isAnySecondaryMenuOpen() === false, "closeAllSecondaryMenus closes lyric menu and clears focus");
+
+        const ambientCanvas = document.getElementById('ambientCanvas');
+        assert(!!ambientCanvas && ambientCanvas.width === 64 && ambientCanvas.height === 64, "64x64 pre-baked #ambientCanvas exists in DOM");
+    }
+
     console.log("\n==================================================");
     console.log(`Phase 2 Test Suite Summary: ${passedTests} / ${totalTests} assertions passed.`);
     console.log("==================================================");
