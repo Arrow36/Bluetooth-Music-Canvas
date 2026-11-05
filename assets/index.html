@@ -699,11 +699,11 @@
             fill: #0b0d10;
         }
 
-        /* 右侧面板：歌词大视口（完全对称居中） */
+        /* 右侧面板：歌词大视口（完全对称居中，右侧仅预留音量条安全间距） */
         .right-panel {
             width: 56%;
             height: 100%;
-            padding: 0 36px;
+            padding: 0 28px 0 8px;
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
@@ -743,22 +743,24 @@
         .lyric-line {
             height: 50px;
             line-height: 50px;
-            font-size: 21px;
+            font-size: 20px;
             font-weight: 500;
             color: rgba(255, 255, 255, 0.4);
             opacity: 0.15;
+            padding: 0 12px;
+            box-sizing: border-box;
             transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.4s cubic-bezier(0.25, 1, 0.5, 1), color 0.4s cubic-bezier(0.25, 1, 0.5, 1);
             transform-origin: center center;
             white-space: nowrap;
             overflow: visible;
         }
 
-        /* 当前激活歌词：高亮、实心白、无模糊杂边、彻底去除发散光晕 */
+        /* 当前激活歌词：高亮、实心白、无模糊杂边、适度等比缩放确保左右绝不裁切 */
         .lyric-line.active {
             font-weight: 700;
             color: #ffffff;
             opacity: 1;
-            transform: scale(1.28);
+            transform: scale(1.18);
             text-shadow: none !important;
         }
 
@@ -1182,6 +1184,13 @@
             transform: translateY(-50%) scale(0.96);
         }
 
+        /* 展开右下角歌词源菜单时自动避让右侧音量条，彻底杜绝控件重叠遮挡 */
+        body.lyric-menu-open .volume-widget:not(.force-show) {
+            opacity: 0 !important;
+            pointer-events: none !important;
+            transform: translateY(-50%) scale(0.92);
+        }
+
         /* 手机端按键调整音量时：仅淡入音量条，四个角的控件保持隐藏 */
         body.idle .volume-widget.force-show {
             opacity: 1;
@@ -1311,38 +1320,74 @@
             -webkit-backdrop-filter: none !important;
         }
 
-        /* 首次安装免 ADB 权限自检引导胶囊 */
+        /* 首次安装免 ADB 权限自检居中弹窗（适配无触屏电视遥控器一键按 OK 开启） */
         .perm-guide-pill {
             display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 950;
+            flex-direction: column;
             align-items: center;
-            gap: 8px;
-            height: 36px;
-            padding: 0 16px;
-            background: rgba(255, 65, 108, 0.22);
-            border: 1px solid rgba(255, 65, 108, 0.55);
-            border-radius: 18px;
+            justify-content: center;
+            gap: 12px;
+            width: 420px;
+            max-width: 88vw;
+            padding: 24px 28px;
+            background: rgba(18, 22, 30, 0.96);
+            border: 1.5px solid rgba(255, 65, 108, 0.65);
+            border-radius: 24px;
             color: #ffffff;
-            font-size: 13px;
-            font-weight: 600;
             cursor: pointer;
-            box-shadow: 0 4px 16px rgba(255, 65, 108, 0.28);
-            transition: all 0.2s ease;
+            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.85), 0 0 0 100vmax rgba(0, 0, 0, 0.62);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            transition: transform 0.2s ease, border-color 0.2s ease;
             outline: none;
             user-select: none;
+            text-align: center;
         }
         .perm-guide-pill.show {
-            display: inline-flex;
+            display: flex;
         }
         .perm-guide-pill:active, .perm-guide-pill:focus {
-            background: rgba(255, 65, 108, 0.38);
-            transform: scale(0.97);
+            border-color: #00d2ff;
+            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.85), 0 0 24px rgba(0, 210, 255, 0.55), 0 0 0 100vmax rgba(0, 0, 0, 0.62);
+        }
+        .perm-guide-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            font-size: 18px;
+            font-weight: 700;
+            color: #ffffff;
+        }
+        .perm-guide-desc {
+            font-size: 13.5px;
+            font-weight: 400;
+            line-height: 1.5;
+            color: rgba(255, 255, 255, 0.78);
+        }
+        .perm-guide-cta {
+            margin-top: 4px;
+            padding: 10px 22px;
+            border-radius: 18px;
+            background: linear-gradient(90deg, #ff416c, #ff4b2b);
+            color: #ffffff;
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+            box-shadow: 0 6px 18px rgba(255, 65, 108, 0.45);
         }
         .perm-guide-dot {
-            width: 8px;
-            height: 8px;
+            width: 10px;
+            height: 10px;
             border-radius: 50%;
             background: #ff416c;
-            box-shadow: 0 0 8px #ff416c;
+            box-shadow: 0 0 10px #ff416c;
+            flex-shrink: 0;
         }
 
         /* 电视遥控器焦点高亮样式 */
@@ -1355,33 +1400,38 @@
         }
 
         /* ===== 多尺寸屏幕、分辨率与横竖屏自适应媒体查询 ===== */
-        /* 1. 紧凑型智慧屏/带屏音箱 (如 800x480 / 1024x600 小度/小爱触屏音箱) */
-        @media (max-height: 540px), (max-width: 960px) {
+        /* 1. 标准 Android TV 2x 缩放视口 (960x540 = 1920x1080 @ 320dpi) 与紧凑型智慧屏 */
+        @media (max-height: 560px), (max-width: 980px) {
             .container {
-                padding: 10px 20px 10px 20px;
+                padding: 12px 26px 10px 26px;
             }
             .main-body {
-                gap: 16px;
+                gap: 14px;
             }
             .left-panel {
                 flex: 0 0 38%;
-                max-width: 340px;
+                max-width: 336px;
+                gap: 4px;
             }
             .turntable-container {
                 transform: scale(0.76);
                 transform-origin: center center;
-                margin: -26px 0 -22px 0;
+                margin: -28px 0 -24px 0;
             }
             .player-deck {
-                padding: 10px 14px 10px 14px;
+                max-width: 330px;
+                padding: 10px 15px 10px 15px;
                 border-radius: 18px;
+            }
+            .meta-container {
+                margin-bottom: 6px;
             }
             .song-title {
                 font-size: 17px;
                 -webkit-line-clamp: 2;
             }
             .song-artist {
-                font-size: 13px;
+                font-size: 12.5px;
                 margin-top: 3px;
             }
             .progress-box {
@@ -1391,17 +1441,45 @@
                 width: 38px;
                 height: 38px;
             }
-            .btn-play {
-                width: 46px;
-                height: 46px;
+            .btn-main {
+                width: 44px;
+                height: 44px;
+            }
+            .right-panel {
+                width: 62%;
+                padding: 0 26px 0 4px;
             }
             .lyric-line {
-                font-size: 17px;
-                min-height: 42px;
-                padding: 7px 0;
+                height: 42px;
+                line-height: 42px;
+                font-size: 16px;
             }
             .lyric-line.active {
-                font-size: 25px;
+                transform: scale(1.15);
+            }
+            .volume-widget {
+                right: 22px;
+            }
+            .vol-track {
+                height: 72px;
+            }
+            .lyric-source-menu {
+                right: 26px;
+                bottom: 50px;
+                width: 204px;
+                padding: 8px;
+            }
+            .source-menu-header {
+                padding: 2px 6px 6px 6px;
+                margin-bottom: 4px;
+            }
+            .source-menu-items {
+                gap: 2px;
+            }
+            .source-menu-item {
+                height: 36px;
+                padding: 0 12px;
+                border-radius: 11px;
             }
         }
 
@@ -1412,16 +1490,16 @@
                 margin: -42px 0 -38px 0;
             }
             .lyric-line {
-                font-size: 15px;
-                min-height: 36px;
-                padding: 5px 0;
+                height: 36px;
+                line-height: 36px;
+                font-size: 14.5px;
             }
             .lyric-line.active {
-                font-size: 21px;
+                transform: scale(1.14);
             }
         }
 
-        /* 3. 大屏 1080p / 4K 智能电视视距增强 */
+        /* 3. 1x DPR 大屏 1080p / 4K 智能电视视距增强 */
         @media (min-width: 1800px) and (min-height: 960px) {
             .container {
                 padding: 28px 56px 24px 56px;
@@ -1445,12 +1523,12 @@
                 font-size: 18px;
             }
             .lyric-line {
-                font-size: 26px;
-                min-height: 64px;
-                padding: 13px 0;
+                height: 64px;
+                line-height: 64px;
+                font-size: 25px;
             }
             .lyric-line.active {
-                font-size: 40px;
+                transform: scale(1.18);
             }
         }
 
@@ -1537,11 +1615,6 @@
                 </div>
             </div>
 
-            <button class="perm-guide-pill" id="permGuideBtn" onclick="openPermGuide(event)" title="点击前往系统设置开启通知使用权">
-                <span class="perm-guide-dot"></span>
-                <span>点击开启「通知监听权限」以同步蓝牙音乐</span>
-            </button>
-
             <button class="btn-close" id="closeBtn" title="短按返回桌面，长按3秒重启App" aria-label="返回桌面">
                 <svg class="close-ring-svg" viewBox="0 0 36 36">
                     <circle class="close-ring-bg" cx="18" cy="18" r="17" />
@@ -1550,6 +1623,16 @@
                 <svg class="close-x-icon" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
             </button>
         </div>
+
+        <!-- 首次安装免 ADB 权限自检居中弹窗：支持电视遥控器直接按【确认/OK键】一键跳转开启 -->
+        <button class="perm-guide-pill" id="permGuideBtn" onclick="openPermGuide(event)" title="按遥控器确认键或点击前往系统设置开启通知访问权限">
+            <div class="perm-guide-header">
+                <span class="perm-guide-dot"></span>
+                <span>需要开启「通知访问权限」</span>
+            </div>
+            <div class="perm-guide-desc">用于实时读取蓝牙音乐曲目、专辑封面、播放进度与动态歌词</div>
+            <div class="perm-guide-cta">按遥控器【确认 / OK 键】立即开启</div>
+        </button>
 
         <!-- 中部主体区：左侧唱机与播控，右侧歌词流 -->
         <div class="main-body">
@@ -1893,6 +1976,7 @@
             if (!btn) return;
             if (granted === false) {
                 btn.classList.add('show');
+                try { btn.focus(); } catch (e) {}
             } else {
                 btn.classList.remove('show');
             }
@@ -2104,8 +2188,8 @@
                 const text = (item.text || '').trim();
                 const vlen = getVisualLength(text);
 
-                // 视觉宽度超出单行舒适阈值 (如中文 > 20字 或 西文 > 40字符) 自动智能分句
-                if (vlen > 40) {
+                // 视觉宽度超出单行舒适阈值 (如中文 > 18字 或 西文 > 36字符) 自动智能分句，杜绝左右边缘裁切
+                if (vlen > 36) {
                     let p1 = '', p2 = '';
 
                     // 1. 优先尝试双语 / 显式分隔符 (如 " // " 或 " / " 或 " | ")
@@ -2850,7 +2934,8 @@
 
             const menu = document.getElementById('lyricSourceMenu');
             if (!menu) return;
-            menu.classList.toggle('show');
+            const isOpen = menu.classList.toggle('show');
+            document.body.classList.toggle('lyric-menu-open', isOpen);
             updateMenuCheckmarks();
             document.body.classList.remove('idle');
             resetIdleTimer();
@@ -2859,6 +2944,7 @@
         function closeLyricMenu() {
             const menu = document.getElementById('lyricSourceMenu');
             if (menu) menu.classList.remove('show');
+            document.body.classList.remove('lyric-menu-open');
             resetIdleTimer();
         }
 
@@ -3622,6 +3708,7 @@
 
             const lyricMenu = document.getElementById('lyricSourceMenu');
             if (lyricMenu) lyricMenu.classList.remove('show');
+            document.body.classList.remove('lyric-menu-open');
             clearRemoteMenuFocus();
         }
         window.closeAllSecondaryMenus = closeAllSecondaryMenus;
@@ -3672,6 +3759,15 @@
         }
 
         window.handleRemoteKey = function(keyCode) {
+            // 若权限引导弹窗正处于居中展示状态，电视遥控器按确认键 (OK/Enter) 直接跳转系统权限设置页
+            const permBtn = document.getElementById('permGuideBtn');
+            if (permBtn && permBtn.classList.contains('show')) {
+                if (keyCode === 23 || keyCode === 66) {
+                    openPermGuide();
+                    return true;
+                }
+            }
+
             // 任何遥控器按键先唤醒 UI 并重置沉浸计时
             if (document.body.classList.contains('idle')) {
                 setIdleState(false);

@@ -137,6 +137,7 @@ public class MediaMonitorService extends NotificationListenerService {
                     sCachedCodecConfig = null;
                     sCachedNegotiatedCodec = "";
                     sCachedNegotiatedPeer = "";
+                    sCachedBtStreamHz = 0;
                 }
                 if ("android.bluetooth.a2dp-sink.profile.action.AUDIO_CONFIG_CHANGED".equals(action)) {
                     Object cfg = intent.getParcelableExtra("android.bluetooth.a2dp-sink.profile.extra.AUDIO_CONFIG");
@@ -365,6 +366,9 @@ public class MediaMonitorService extends NotificationListenerService {
 
         if (isPlaying) {
             boolean wasPlaying = mIsPlaying;
+            if (!wasPlaying) {
+                MainActivity.armVolumeGuard(4000);
+            }
             mIsPlaying = true;
             updateFloatingRotationState();
 
@@ -393,6 +397,9 @@ public class MediaMonitorService extends NotificationListenerService {
                 }
             }
         } else if (playbackState == PlaybackState.STATE_PAUSED || playbackState == PlaybackState.STATE_STOPPED) {
+            if (mIsPlaying) {
+                MainActivity.armVolumeGuard(4000);
+            }
             mIsPlaying = false;
             updateFloatingRotationState();
             MainActivity act = MainActivity.getInstance();
@@ -487,6 +494,7 @@ public class MediaMonitorService extends NotificationListenerService {
         }
 
         // snapshot.changeType == MediaStateStore.ChangeType.NEW_TRACK
+        MainActivity.armVolumeGuard(4000);
         final long capturedGen = snapshot.playbackGeneration;
         mUserDismissed = false;
         mCurrentPosition = 0;
@@ -634,6 +642,9 @@ public class MediaMonitorService extends NotificationListenerService {
 
             java.util.Map<Integer, String> sepCodecMap = new java.util.HashMap<>();
             boolean inMatchingBtaPeer = false;
+            boolean inGdA2dpSinkState = false;
+            boolean hasGdAacCodec = false;
+            String gdPreferredCodecType = "";
             int currentSepHandle = -1;
             String currentCodec = "";
             String line;
@@ -645,6 +656,13 @@ public class MediaMonitorService extends NotificationListenerService {
                     if (!val.isEmpty() && !"None".equalsIgnoreCase(val)) {
                         currentCodec = val;
                     }
+                } else if (trimmed.startsWith("A2DP AAC State:")) {
+                    hasGdAacCodec = true;
+                } else if (trimmed.startsWith("A2DP Sink State:")) {
+                    inGdA2dpSinkState = true;
+                } else if (inGdA2dpSinkState && trimmed.startsWith("Codec Preferred:")) {
+                    gdPreferredCodecType = trimmed.substring("Codec Preferred:".length()).trim();
+                    inGdA2dpSinkState = false;
                 } else if (trimmed.startsWith("BTA ID:")) {
                     String lower = trimmed.toLowerCase(java.util.Locale.US);
                     if (!normPeer.isEmpty() && !"—".equals(normPeer)) {
@@ -679,6 +697,15 @@ public class MediaMonitorService extends NotificationListenerService {
                 }
             }
 
+            if (currentCodec.isEmpty() && !gdPreferredCodecType.isEmpty()) {
+                if (gdPreferredCodecType.toLowerCase(java.util.Locale.US).contains("optional") && hasGdAacCodec) {
+                    currentCodec = "AAC";
+                } else if (gdPreferredCodecType.toLowerCase(java.util.Locale.US).contains("mandatory")
+                        || gdPreferredCodecType.toLowerCase(java.util.Locale.US).contains("default")) {
+                    currentCodec = "SBC";
+                }
+            }
+
             if (!currentCodec.isEmpty()) {
                 sCachedNegotiatedCodec = currentCodec;
                 return currentCodec;
@@ -694,6 +721,95 @@ public class MediaMonitorService extends NotificationListenerService {
             }
         }
         return "";
+    }
+
+    private static int sCachedBtStreamHz = 0;
+    private static long sLastBtStreamHzProbeMs = 0;
+
+    /**
+     * 在 Android 11–14 (Gabeldorsche 蓝牙协议栈已移除 BluetoothA2dpSink.getAudioConfig) 上，
+     * 从 AudioManager.getActivePlaybackConfigurations() 或 dumpsys audio 的 PlaybackActivityMonitor 中
+     * 提取 com.android.bluetooth (UID 1002) 当前活动 AAudio/AudioTrack 播放流的真实采样率（如 44100Hz）。
+     */
+    private static int probeActiveBluetoothStreamSampleRateHz(AudioManager am) {
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (sCachedBtStreamHz > 0 && now - sLastBtStreamHzProbeMs < 5000) {
+            return sCachedBtStreamHz;
+        }
+        sLastBtStreamHzProbeMs = now;
+        int foundHz = 0;
+
+        // 1. 优先尝试公开 API AudioManager.getActivePlaybackConfigurations() (API 26+)
+        if (am != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                java.util.List<android.media.AudioPlaybackConfiguration> configs = am.getActivePlaybackConfigurations();
+                if (configs != null) {
+                    int fallbackHz = 0;
+                    for (android.media.AudioPlaybackConfiguration cfg : configs) {
+                        if (cfg == null) continue;
+                        String s = cfg.toString();
+                        java.util.regex.Matcher m = java.util.regex.Pattern.compile("sampleRate=(\\d+)").matcher(s);
+                        if (m.find()) {
+                            int hz = Integer.parseInt(m.group(1));
+                            if (hz > 0) {
+                                if (s.contains("com.android.bluetooth") || s.contains("u/pid:1002/")) {
+                                    foundHz = hz;
+                                    if (s.contains("state:started")) break;
+                                } else if (s.contains("state:started") && fallbackHz == 0) {
+                                    fallbackHz = hz;
+                                }
+                            }
+                        }
+                    }
+                    if (foundHz <= 0 && fallbackHz > 0) {
+                        foundHz = fallbackHz;
+                    }
+                }
+            } catch (Throwable ignored) {}
+        }
+
+        // 2. 若公开 API 因匿名化隐藏了 sampleRate 或 UID，从 dumpsys audio 读取真实蓝牙播放流采样率
+        if (foundHz <= 0) {
+            java.lang.Process proc = null;
+            java.io.BufferedReader reader = null;
+            try {
+                proc = Runtime.getRuntime().exec(new String[]{"dumpsys", "audio"});
+                reader = new java.io.BufferedReader(new java.io.InputStreamReader(proc.getInputStream()));
+                String line;
+                int startedBtHz = 0;
+                int anyBtHz = 0;
+                java.util.regex.Pattern srPattern = java.util.regex.Pattern.compile("sampleRate=(\\d+)");
+                while ((line = reader.readLine()) != null) {
+                    if (line.contains("com.android.bluetooth") || line.contains("u/pid:1002/")) {
+                        java.util.regex.Matcher m = srPattern.matcher(line);
+                        if (m.find()) {
+                            int hz = Integer.parseInt(m.group(1));
+                            if (hz > 0) {
+                                anyBtHz = hz;
+                                if (line.contains("state:started")) {
+                                    startedBtHz = hz;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                foundHz = (startedBtHz > 0) ? startedBtHz : anyBtHz;
+            } catch (Throwable ignored) {
+            } finally {
+                if (reader != null) {
+                    try { reader.close(); } catch (Exception ignored) {}
+                }
+                if (proc != null) {
+                    try { proc.destroy(); } catch (Exception ignored) {}
+                }
+            }
+        }
+
+        if (foundHz > 0) {
+            sCachedBtStreamHz = foundHz;
+        }
+        return foundHz;
     }
 
     private static String mapAudioFormatToBitDepth(int audioFormat) {
@@ -897,6 +1013,14 @@ public class MediaMonitorService extends NotificationListenerService {
                         specSource += "+BTA_AV(" + btaCodec + ")";
                     } else if (sA2dpSinkProxy != null) {
                         codecLabel = "A2DP";
+                    }
+                }
+                if (detectedHz <= 0 && context != null) {
+                    AudioManager btAm = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+                    int btStreamHz = probeActiveBluetoothStreamSampleRateHz(btAm);
+                    if (btStreamHz > 0) {
+                        detectedHz = btStreamHz;
+                        specSource += "+BtAudioTrack(" + btStreamHz + "Hz)";
                     }
                 }
             }
@@ -1273,6 +1397,7 @@ public class MediaMonitorService extends NotificationListenerService {
     }
 
     public void sendPlayPause() {
+        MainActivity.armVolumeGuard(4000);
         if (mActiveController != null && mActiveController.getTransportControls() != null) {
             if (mIsPlaying) {
                 mActiveController.getTransportControls().pause();
@@ -1283,12 +1408,14 @@ public class MediaMonitorService extends NotificationListenerService {
     }
 
     public void sendNext() {
+        MainActivity.armVolumeGuard(4000);
         if (mActiveController != null && mActiveController.getTransportControls() != null) {
             mActiveController.getTransportControls().skipToNext();
         }
     }
 
     public void sendPrevious() {
+        MainActivity.armVolumeGuard(4000);
         if (mActiveController != null && mActiveController.getTransportControls() != null) {
             mActiveController.getTransportControls().skipToPrevious();
         }

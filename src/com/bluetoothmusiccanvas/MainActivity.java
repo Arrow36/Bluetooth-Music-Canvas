@@ -57,10 +57,22 @@ public class MainActivity extends Activity {
     public static long sCachedPosition = 0;
     public static String sLastFetchedKey = "";
 
+    // 电视端音量记忆与防手机端 AVRCP 绝对音量回弹保护锁
+    private static volatile int sUserTargetVolume = -1;
+    private static volatile long sLastLocalVolumeSetMs = 0;
+    private static volatile long sVolumeGuardUntilMs = 0;
+
+    public static void armVolumeGuard(long durationMs) {
+        long until = android.os.SystemClock.elapsedRealtime() + durationMs;
+        if (until > sVolumeGuardUntilMs) {
+            sVolumeGuardUntilMs = until;
+        }
+    }
+
     private final BroadcastReceiver mVolumeReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            dispatchVolumeChanged();
+            handleSystemVolumeBroadcast();
         }
     };
 
@@ -150,7 +162,7 @@ public class MainActivity extends Activity {
                 @Override
                 public void onChange(boolean selfChange) {
                     super.onChange(selfChange);
-                    dispatchVolumeChanged();
+                    handleSystemVolumeBroadcast();
                 }
             };
             getContentResolver().registerContentObserver(
@@ -169,6 +181,39 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void handleSystemVolumeBroadcast() {
+        try {
+            AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
+            if (am == null) return;
+            int cur = am.getStreamVolume(AudioManager.STREAM_MUSIC);
+            long now = android.os.SystemClock.elapsedRealtime();
+
+            // 若当前处于暂停/恢复播放或切歌的 4 秒保护窗口内，且非用户在电视端主动调节音量，
+            // 拦截手机蓝牙 AVRCP SetAbsoluteVolume 淡入淡出或旧音量覆盖请求，立即恢复电视端设定音量！
+            if (sUserTargetVolume >= 0 && now < sVolumeGuardUntilMs && (now - sLastLocalVolumeSetMs) > 450) {
+                if (cur != sUserTargetVolume) {
+                    Log.i(TAG, "Volume guard intercepted phone AVRCP volume reset (" + cur + " -> restoring " + sUserTargetVolume + ")");
+                    am.setStreamVolume(AudioManager.STREAM_MUSIC, sUserTargetVolume, 0);
+                    mHandler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                AudioManager a = (AudioManager) getSystemService(AUDIO_SERVICE);
+                                if (a != null && sUserTargetVolume >= 0 && a.getStreamVolume(AudioManager.STREAM_MUSIC) != sUserTargetVolume) {
+                                    a.setStreamVolume(AudioManager.STREAM_MUSIC, sUserTargetVolume, 0);
+                                }
+                            } catch (Exception ignored) {}
+                        }
+                    }, 120);
+                    return;
+                }
+            } else {
+                sUserTargetVolume = cur;
+            }
+        } catch (Exception ignored) {}
+        dispatchVolumeChanged();
+    }
+
     public void dispatchVolumeChanged() {
         if (!mPageLoaded || mWebView == null) return;
         try {
@@ -176,6 +221,9 @@ public class MainActivity extends Activity {
             if (am != null) {
                 int max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
                 int cur = am.getStreamVolume(AudioManager.STREAM_MUSIC);
+                if (sUserTargetVolume < 0) {
+                    sUserTargetVolume = cur;
+                }
                 final int pct = max > 0 ? Math.round((cur * 100.0f) / max) : cur;
                 mHandler.post(new Runnable() {
                     @Override
@@ -191,6 +239,40 @@ public class MainActivity extends Activity {
         }
     }
 
+    private final Runnable mDelayedAvrcpVolumeSync = new Runnable() {
+        @Override
+        public void run() {
+            try {
+                AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
+                if (am != null && sUserTargetVolume >= 0) {
+                    // 二次触发无 FLAG_BLUETOOTH_ABS_VOLUME 的音量设置广播，确保 AvrcpControllerStateMachine
+                    // 在收到手机重新注册的 AVRC_EVT_VOLUME_CHANGE 标签后将最终音量同步回手机
+                    am.setStreamVolume(AudioManager.STREAM_MUSIC, sUserTargetVolume, 0);
+                }
+            } catch (Exception ignored) {}
+        }
+    };
+
+    public int setVolumePercent(int percent) {
+        try {
+            AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
+            if (am != null) {
+                int max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                int target = Math.round((percent / 100.0f) * max);
+                target = Math.max(0, Math.min(max, target));
+                sUserTargetVolume = target;
+                sLastLocalVolumeSetMs = android.os.SystemClock.elapsedRealtime();
+                am.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0);
+                mHandler.removeCallbacks(mDelayedAvrcpVolumeSync);
+                mHandler.postDelayed(mDelayedAvrcpVolumeSync, 280);
+                return max > 0 ? Math.round((target * 100.0f) / max) : target;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return percent;
+    }
+
     public int changeVolumeBy(int deltaPercent) {
         try {
             AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
@@ -201,7 +283,11 @@ public class MainActivity extends Activity {
                 if (step == 0 && deltaPercent > 0) step = 1;
                 if (step == 0 && deltaPercent < 0) step = -1;
                 int target = Math.max(0, Math.min(max, cur + step));
+                sUserTargetVolume = target;
+                sLastLocalVolumeSetMs = android.os.SystemClock.elapsedRealtime();
                 am.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0);
+                mHandler.removeCallbacks(mDelayedAvrcpVolumeSync);
+                mHandler.postDelayed(mDelayedAvrcpVolumeSync, 280);
                 return max > 0 ? Math.round((target * 100.0f) / max) : target;
             }
         } catch (Exception e) {
@@ -376,6 +462,12 @@ public class MainActivity extends Activity {
     public boolean onKeyDown(int keyCode, android.view.KeyEvent event) {
         if (mPageLoaded && mWebView != null) {
             switch (keyCode) {
+                case android.view.KeyEvent.KEYCODE_VOLUME_UP:
+                case android.view.KeyEvent.KEYCODE_VOLUME_DOWN:
+                    sLastLocalVolumeSetMs = android.os.SystemClock.elapsedRealtime();
+                    mHandler.removeCallbacks(mDelayedAvrcpVolumeSync);
+                    mHandler.postDelayed(mDelayedAvrcpVolumeSync, 320);
+                    break;
                 case android.view.KeyEvent.KEYCODE_MENU:
                     mWebView.evaluateJavascript("window.toggleLyricMenu && window.toggleLyricMenu();", null);
                     return true;

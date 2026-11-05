@@ -49,19 +49,7 @@ public class WebAppInterface {
 
     @JavascriptInterface
     public int setVolumePercent(int percent) {
-        try {
-            android.media.AudioManager am = (android.media.AudioManager) mActivity.getSystemService(android.content.Context.AUDIO_SERVICE);
-            if (am != null) {
-                int max = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC);
-                int targetVol = Math.round((percent / 100.0f) * max);
-                targetVol = Math.max(0, Math.min(max, targetVol));
-                am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, targetVol, 0);
-                return Math.round((targetVol * 100.0f) / max);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return percent;
+        return mActivity.setVolumePercent(percent);
     }
 
     @JavascriptInterface

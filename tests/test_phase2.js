@@ -246,17 +246,24 @@ async function runTests() {
     // =========================================================================
     console.log("\n--- Group 6: TV Remote Navigation, Permission Banner & Pre-Baked Canvas ---");
     {
+        let permSettingsOpened = false;
+        window.AndroidApp.openNotificationListenerSettings = function() {
+            permSettingsOpened = true;
+        };
         const permBtn = document.getElementById('permGuideBtn');
         window.onPermissionStatusChanged(false);
-        assert(permBtn && permBtn.classList.contains('show'), "Permission guide banner shown when notification listener permission is missing");
+        assert(permBtn && permBtn.classList.contains('show'), "Permission guide modal shown when notification listener permission is missing");
+        window.handleRemoteKey(23); // KEYCODE_DPAD_CENTER while modal is shown
+        assert(permSettingsOpened === true, "Pressing OK (23) on TV remote when permission modal is shown opens notification listener settings");
         window.onPermissionStatusChanged(true);
-        assert(permBtn && !permBtn.classList.contains('show'), "Permission guide banner hidden when permission is granted");
+        assert(permBtn && !permBtn.classList.contains('show'), "Permission guide modal hidden when permission is granted");
 
-        // Menu key (82) toggles lyric source menu and focuses first item (auto)
+        // Menu key (82) toggles lyric source menu, adds lyric-menu-open (hiding volume bar), and focuses first item (auto)
         window.closeAllSecondaryMenus();
         assert(window.isAnySecondaryMenuOpen() === false, "All secondary menus closed initially");
         window.handleRemoteKey(82); // KEYCODE_MENU
         assert(window.isAnySecondaryMenuOpen() === true, "KEYCODE_MENU (82) opens lyric source menu");
+        assert(document.body.classList.contains('lyric-menu-open'), "body.lyric-menu-open set when lyric menu opens to prevent volume widget overlap");
         const firstMenuEl = document.getElementById('menuItem-auto');
         assert(firstMenuEl && firstMenuEl.classList.contains('remote-focus'), "First menu item (menuItem-auto) receives remote-focus highlight");
 
@@ -267,6 +274,7 @@ async function runTests() {
 
         window.closeAllSecondaryMenus();
         assert(window.isAnySecondaryMenuOpen() === false, "closeAllSecondaryMenus closes lyric menu and clears focus");
+        assert(!document.body.classList.contains('lyric-menu-open'), "body.lyric-menu-open cleared when lyric menu closes");
 
         const ambientCanvas = document.getElementById('ambientCanvas');
         assert(!!ambientCanvas && ambientCanvas.width === 64 && ambientCanvas.height === 64, "64x64 pre-baked #ambientCanvas exists in DOM");
