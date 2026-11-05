@@ -238,11 +238,18 @@ def deploy_to_device(apk_path, device_serial=None, launch=False):
     print(f"\n[*] Installing {apk_path.name} via ADB ({device_serial or 'default device'})...")
     subprocess.check_call(adb_prefix + ["install", "-r", str(apk_path)])
 
-    # Ensure notification listener permission is enabled
+    # Ensure notification listener and Bluetooth dump permissions are enabled
     subprocess.run(
         adb_prefix + [
             "shell", "cmd", "notification", "allow_listener",
             "com.bluetoothmusiccanvas/com.bluetoothmusiccanvas.MediaMonitorService"
+        ],
+        check=False
+    )
+    subprocess.run(
+        adb_prefix + [
+            "shell", "pm", "grant",
+            "com.bluetoothmusiccanvas", "android.permission.DUMP"
         ],
         check=False
     )

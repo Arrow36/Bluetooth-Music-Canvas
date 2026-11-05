@@ -85,6 +85,9 @@ public class MediaMonitorService extends NotificationListenerService {
     private static volatile android.bluetooth.BluetoothProfile sA2dpSourceProxy = null;
     private static volatile Object sCachedSinkAudioConfig = null;
     private static volatile Object sCachedCodecConfig = null;
+    private static volatile String sCachedNegotiatedCodec = "";
+    private static volatile String sCachedNegotiatedPeer = "";
+    private static volatile long sLastCodecProbeTimeMs = 0;
 
     private final android.bluetooth.BluetoothProfile.ServiceListener mProfileListener =
             new android.bluetooth.BluetoothProfile.ServiceListener() {
@@ -132,6 +135,8 @@ public class MediaMonitorService extends NotificationListenerService {
                 if ("android.bluetooth.device.action.ACL_DISCONNECTED".equals(action)) {
                     sCachedSinkAudioConfig = null;
                     sCachedCodecConfig = null;
+                    sCachedNegotiatedCodec = "";
+                    sCachedNegotiatedPeer = "";
                 }
                 if ("android.bluetooth.a2dp-sink.profile.action.AUDIO_CONFIG_CHANGED".equals(action)) {
                     Object cfg = intent.getParcelableExtra("android.bluetooth.a2dp-sink.profile.extra.AUDIO_CONFIG");
@@ -590,6 +595,94 @@ public class MediaMonitorService extends NotificationListenerService {
         activity.dispatchBluetoothStatus(getBluetoothInfo(this));
     }
 
+    /**
+     * 从 Android Bluedroid 协议栈底层状态 (dumpsys bluetooth_manager) 解析当前活动连接的真实 AVDTP 协商编码器：
+     * 1. 若 A2DP Source 处于活动态，读取 "Current Codec: <SBC|AAC|aptX|aptX-HD|LDAC>"；
+     * 2. 若 A2DP Sink 处于活动态，解析对应 peer 的 BTA AV Stream Control Block 中各 SEP 的
+     *    "SEP AVDTP handle: <H>" -> "Codec: <C>" 映射表，并与当前激活流句柄 "AVDTP handle: <H>" 精确匹配。
+     */
+    private static String probeActiveA2dpCodec(String peerAddress) {
+        String normPeer = (peerAddress != null) ? peerAddress.trim().toLowerCase(java.util.Locale.US) : "";
+        if (!sCachedNegotiatedCodec.isEmpty() && normPeer.equals(sCachedNegotiatedPeer)) {
+            return sCachedNegotiatedCodec;
+        }
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (now - sLastCodecProbeTimeMs < 5000 && sLastCodecProbeTimeMs > 0 && normPeer.equals(sCachedNegotiatedPeer)) {
+            return sCachedNegotiatedCodec;
+        }
+        sLastCodecProbeTimeMs = now;
+        sCachedNegotiatedPeer = normPeer;
+
+        java.lang.Process proc = null;
+        java.io.BufferedReader reader = null;
+        try {
+            proc = Runtime.getRuntime().exec(new String[]{"dumpsys", "bluetooth_manager"});
+            reader = new java.io.BufferedReader(new java.io.InputStreamReader(proc.getInputStream()));
+
+            java.util.Map<Integer, String> sepCodecMap = new java.util.HashMap<>();
+            boolean inMatchingBtaPeer = false;
+            int currentSepHandle = -1;
+            String currentCodec = "";
+            String line;
+
+            while ((line = reader.readLine()) != null) {
+                String trimmed = line.trim();
+                if (trimmed.startsWith("Current Codec:")) {
+                    String val = trimmed.substring("Current Codec:".length()).trim();
+                    if (!val.isEmpty() && !"None".equalsIgnoreCase(val)) {
+                        currentCodec = val;
+                    }
+                } else if (trimmed.startsWith("BTA ID:")) {
+                    String lower = trimmed.toLowerCase(java.util.Locale.US);
+                    if (!normPeer.isEmpty() && !"—".equals(normPeer)) {
+                        inMatchingBtaPeer = lower.contains(normPeer);
+                    } else {
+                        inMatchingBtaPeer = !lower.contains("00:00:00:00:00:00");
+                    }
+                    sepCodecMap.clear();
+                    currentSepHandle = -1;
+                } else if (inMatchingBtaPeer) {
+                    if (trimmed.startsWith("SEP AVDTP handle:")) {
+                        try {
+                            currentSepHandle = Integer.parseInt(trimmed.substring("SEP AVDTP handle:".length()).trim());
+                        } catch (NumberFormatException ignored) {
+                            currentSepHandle = -1;
+                        }
+                    } else if (trimmed.startsWith("Codec:") && currentSepHandle >= 0) {
+                        String c = trimmed.substring("Codec:".length()).trim();
+                        if (!c.isEmpty()) {
+                            sepCodecMap.put(currentSepHandle, c);
+                        }
+                    } else if (trimmed.startsWith("AVDTP handle:")) {
+                        try {
+                            int activeAvdtpHandle = Integer.parseInt(trimmed.substring("AVDTP handle:".length()).trim());
+                            String matchedCodec = sepCodecMap.get(activeAvdtpHandle);
+                            if (matchedCodec != null && !matchedCodec.isEmpty()) {
+                                currentCodec = matchedCodec;
+                                break;
+                            }
+                        } catch (NumberFormatException ignored) {}
+                    }
+                }
+            }
+
+            if (!currentCodec.isEmpty()) {
+                sCachedNegotiatedCodec = currentCodec;
+                return currentCodec;
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "probeActiveA2dpCodec failed: " + t.getMessage());
+        } finally {
+            if (reader != null) {
+                try { reader.close(); } catch (Exception ignored) {}
+            }
+            if (proc != null) {
+                try { proc.destroy(); } catch (Exception ignored) {}
+            }
+        }
+        return "";
+    }
+
     private static String mapAudioFormatToBitDepth(int audioFormat) {
         switch (audioFormat) {
             case android.media.AudioFormat.ENCODING_PCM_8BIT:
@@ -781,11 +874,17 @@ public class MediaMonitorService extends NotificationListenerService {
                         if (!mappedBits.isEmpty()) bitDepthLabel = mappedBits;
                         String mappedCh = mapChannelConfigToLabel(chCfg);
                         if (!mappedCh.isEmpty()) channelsLabel = mappedCh;
-                        if (codecLabel.isEmpty()) codecLabel = "A2DP";
                         specSource = "BluetoothAudioConfig(" + sinkAudioCfg + ")";
                     } catch (Throwable ignored) {}
-                } else if (codecLabel.isEmpty() && sA2dpSinkProxy != null) {
-                    codecLabel = "A2DP";
+                }
+                if (codecLabel.isEmpty()) {
+                    String btaCodec = probeActiveA2dpCodec(address);
+                    if (!btaCodec.isEmpty()) {
+                        codecLabel = "A2DP · " + btaCodec;
+                        specSource += "+BTA_AV(" + btaCodec + ")";
+                    } else if (sA2dpSinkProxy != null) {
+                        codecLabel = "A2DP";
+                    }
                 }
             }
 
