@@ -79,6 +79,39 @@ public class MediaMonitorService extends NotificationListenerService {
     private long mCurrentPosition = 0;
     private long mPlaybackGeneration = 0;
 
+    // Real Bluetooth & Audio hardware profile proxies (A2DP_SINK = 11, A2DP = 2)
+    private static final int PROFILE_A2DP_SINK = 11;
+    private static volatile android.bluetooth.BluetoothProfile sA2dpSinkProxy = null;
+    private static volatile android.bluetooth.BluetoothProfile sA2dpSourceProxy = null;
+    private static volatile Object sCachedSinkAudioConfig = null;
+    private static volatile Object sCachedCodecConfig = null;
+
+    private final android.bluetooth.BluetoothProfile.ServiceListener mProfileListener =
+            new android.bluetooth.BluetoothProfile.ServiceListener() {
+                @Override
+                public void onServiceConnected(int profile, android.bluetooth.BluetoothProfile proxy) {
+                    Log.i(TAG, "BluetoothProfile connected: profile=" + profile + " proxy=" + proxy);
+                    if (profile == PROFILE_A2DP_SINK) {
+                        sA2dpSinkProxy = proxy;
+                    } else if (profile == android.bluetooth.BluetoothProfile.A2DP) {
+                        sA2dpSourceProxy = proxy;
+                    }
+                    MainActivity act = MainActivity.getInstance();
+                    if (act != null) {
+                        act.dispatchBluetoothStatus(getBluetoothInfo(MediaMonitorService.this));
+                    }
+                }
+
+                @Override
+                public void onServiceDisconnected(int profile) {
+                    if (profile == PROFILE_A2DP_SINK) {
+                        sA2dpSinkProxy = null;
+                    } else if (profile == android.bluetooth.BluetoothProfile.A2DP) {
+                        sA2dpSourceProxy = null;
+                    }
+                }
+            };
+
     private final BroadcastReceiver mBluetoothReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -88,10 +121,31 @@ public class MediaMonitorService extends NotificationListenerService {
                     || "android.bluetooth.device.action.ACL_DISCONNECTED".equals(action)
                     || "android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED".equals(action)
                     || "android.bluetooth.a2dp-sink.profile.action.CONNECTION_STATE_CHANGED".equals(action)
+                    || "android.bluetooth.a2dp-sink.profile.action.AUDIO_CONFIG_CHANGED".equals(action)
+                    || "android.bluetooth.a2dp-sink.profile.action.PLAYING_STATE_CHANGED".equals(action)
+                    || "android.bluetooth.a2dp.profile.action.CODEC_CONFIG_CHANGED".equals(action)
                     || "android.bluetooth.adapter.action.CONNECTION_STATE_CHANGED".equals(action)) {
-                Log.i(TAG, "Bluetooth state changed (" + action + ")");
+                Log.i(TAG, "Bluetooth state/audio config changed (" + action + ")");
                 if ("android.bluetooth.device.action.ACL_CONNECTED".equals(action)) {
                     mUserDismissed = false;
+                }
+                if ("android.bluetooth.device.action.ACL_DISCONNECTED".equals(action)) {
+                    sCachedSinkAudioConfig = null;
+                    sCachedCodecConfig = null;
+                }
+                if ("android.bluetooth.a2dp-sink.profile.action.AUDIO_CONFIG_CHANGED".equals(action)) {
+                    Object cfg = intent.getParcelableExtra("android.bluetooth.a2dp-sink.profile.extra.AUDIO_CONFIG");
+                    if (cfg != null) {
+                        sCachedSinkAudioConfig = cfg;
+                    }
+                }
+                if ("android.bluetooth.a2dp.profile.action.CODEC_CONFIG_CHANGED".equals(action)) {
+                    Object status = intent.getParcelableExtra("android.bluetooth.codec.extra.CODEC_STATUS");
+                    if (status != null) {
+                        try {
+                            sCachedCodecConfig = status.getClass().getMethod("getCodecConfig").invoke(status);
+                        } catch (Exception ignored) {}
+                    }
                 }
                 MainActivity act = MainActivity.getInstance();
                 if (act != null) {
@@ -147,8 +201,21 @@ public class MediaMonitorService extends NotificationListenerService {
         filter.addAction("android.bluetooth.device.action.ACL_DISCONNECTED");
         filter.addAction("android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED");
         filter.addAction("android.bluetooth.a2dp-sink.profile.action.CONNECTION_STATE_CHANGED");
+        filter.addAction("android.bluetooth.a2dp-sink.profile.action.AUDIO_CONFIG_CHANGED");
+        filter.addAction("android.bluetooth.a2dp-sink.profile.action.PLAYING_STATE_CHANGED");
+        filter.addAction("android.bluetooth.a2dp.profile.action.CODEC_CONFIG_CHANGED");
         filter.addAction("android.bluetooth.adapter.action.CONNECTION_STATE_CHANGED");
         registerReceiver(mBluetoothReceiver, filter);
+
+        try {
+            android.bluetooth.BluetoothAdapter btAdapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+            if (btAdapter != null) {
+                btAdapter.getProfileProxy(this, mProfileListener, PROFILE_A2DP_SINK);
+                btAdapter.getProfileProxy(this, mProfileListener, android.bluetooth.BluetoothProfile.A2DP);
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Failed to bind Bluetooth profile proxies: " + t.getMessage());
+        }
 
         Log.i(TAG, "MediaMonitorService created");
     }
@@ -183,6 +250,19 @@ public class MediaMonitorService extends NotificationListenerService {
         try {
             unregisterReceiver(mBluetoothReceiver);
         } catch (Exception ignored) {}
+        try {
+            android.bluetooth.BluetoothAdapter btAdapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+            if (btAdapter != null) {
+                if (sA2dpSinkProxy != null) {
+                    btAdapter.closeProfileProxy(PROFILE_A2DP_SINK, sA2dpSinkProxy);
+                    sA2dpSinkProxy = null;
+                }
+                if (sA2dpSourceProxy != null) {
+                    btAdapter.closeProfileProxy(android.bluetooth.BluetoothProfile.A2DP, sA2dpSourceProxy);
+                    sA2dpSourceProxy = null;
+                }
+            }
+        } catch (Throwable ignored) {}
     }
 
     private void inspectControllers(List<MediaController> controllers) {
@@ -266,6 +346,7 @@ public class MediaMonitorService extends NotificationListenerService {
         mCurrentPosition = estimatedPos;
 
         if (isPlaying) {
+            boolean wasPlaying = mIsPlaying;
             mIsPlaying = true;
             updateFloatingRotationState();
 
@@ -289,6 +370,9 @@ public class MediaMonitorService extends NotificationListenerService {
             MainActivity act = MainActivity.getInstance();
             if (act != null) {
                 act.dispatchPlaybackState(true, estimatedPos, speed);
+                if (!wasPlaying || sCachedSinkAudioConfig == null) {
+                    act.dispatchBluetoothStatus(getBluetoothInfo(this));
+                }
             }
         } else if (playbackState == PlaybackState.STATE_PAUSED || playbackState == PlaybackState.STATE_STOPPED) {
             mIsPlaying = false;
@@ -506,6 +590,42 @@ public class MediaMonitorService extends NotificationListenerService {
         activity.dispatchBluetoothStatus(getBluetoothInfo(this));
     }
 
+    private static String mapAudioFormatToBitDepth(int audioFormat) {
+        switch (audioFormat) {
+            case android.media.AudioFormat.ENCODING_PCM_8BIT:
+                return "8bit";
+            case android.media.AudioFormat.ENCODING_PCM_16BIT:
+                return "16bit";
+            case 21: // AudioFormat.ENCODING_PCM_24BIT_PACKED
+                return "24bit";
+            case 22: // AudioFormat.ENCODING_PCM_32BIT
+            case android.media.AudioFormat.ENCODING_PCM_FLOAT:
+                return "32bit";
+            default:
+                return "";
+        }
+    }
+
+    private static String mapChannelConfigToLabel(int channelConfig) {
+        if (channelConfig == android.media.AudioFormat.CHANNEL_IN_STEREO
+                || channelConfig == android.media.AudioFormat.CHANNEL_OUT_STEREO
+                || channelConfig == 0x03) {
+            return "立体声";
+        }
+        if (channelConfig == android.media.AudioFormat.CHANNEL_IN_MONO
+                || channelConfig == android.media.AudioFormat.CHANNEL_OUT_MONO
+                || channelConfig == 0x01) {
+            return "单声道";
+        }
+        int bits = Integer.bitCount(channelConfig);
+        if (bits == 2) return "立体声";
+        if (bits == 1) return "单声道";
+        if (bits == 6) return "5.1声道";
+        if (bits == 8) return "7.1声道";
+        if (bits > 2) return bits + "声道";
+        return "";
+    }
+
     public static org.json.JSONObject getBluetoothInfo(Context context) {
         org.json.JSONObject obj = new org.json.JSONObject();
         try {
@@ -513,12 +633,31 @@ public class MediaMonitorService extends NotificationListenerService {
             String connectionState = "disconnected";
             String name = "—";
             String address = "—";
+            android.bluetooth.BluetoothDevice connectedDevice = null;
 
             android.bluetooth.BluetoothAdapter adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
             if (adapter == null || !adapter.isEnabled()) {
                 connectionState = "off";
                 name = "蓝牙已关闭";
             } else {
+                // 1. 优先从已绑定的 A2DP Sink / Source Profile Proxy 获取真实活动连接设备
+                if (sA2dpSinkProxy != null) {
+                    try {
+                        List<android.bluetooth.BluetoothDevice> sinkDevs = sA2dpSinkProxy.getConnectedDevices();
+                        if (sinkDevs != null && !sinkDevs.isEmpty()) {
+                            connectedDevice = sinkDevs.get(0);
+                        }
+                    } catch (Throwable ignored) {}
+                }
+                if (connectedDevice == null && sA2dpSourceProxy != null) {
+                    try {
+                        List<android.bluetooth.BluetoothDevice> srcDevs = sA2dpSourceProxy.getConnectedDevices();
+                        if (srcDevs != null && !srcDevs.isEmpty()) {
+                            connectedDevice = srcDevs.get(0);
+                        }
+                    } catch (Throwable ignored) {}
+                }
+
                 java.util.Set<android.bluetooth.BluetoothDevice> bonded = adapter.getBondedDevices();
                 if (bonded != null && !bonded.isEmpty()) {
                     String firstBondedName = null;
@@ -530,17 +669,20 @@ public class MediaMonitorService extends NotificationListenerService {
                                 firstBondedName = d.getName();
                                 firstBondedAddress = d.getAddress();
                             }
-                            boolean connected = false;
-                            try {
-                                java.lang.reflect.Method isConnectedMethod = d.getClass().getMethod("isConnected");
-                                Object res = isConnectedMethod.invoke(d);
-                                if (res instanceof Boolean && (Boolean) res) {
-                                    connected = true;
-                                }
-                            } catch (Exception ignored) {}
+                            boolean connected = (connectedDevice != null && connectedDevice.equals(d));
+                            if (!connected) {
+                                try {
+                                    java.lang.reflect.Method isConnectedMethod = d.getClass().getMethod("isConnected");
+                                    Object res = isConnectedMethod.invoke(d);
+                                    if (res instanceof Boolean && (Boolean) res) {
+                                        connected = true;
+                                    }
+                                } catch (Exception ignored) {}
+                            }
 
                             if (connected) {
                                 isConnected = true;
+                                connectedDevice = d;
                                 connectionState = "connected";
                                 name = d.getName() != null ? d.getName() : "已连接设备";
                                 address = d.getAddress() != null ? d.getAddress() : "—";
@@ -558,12 +700,181 @@ public class MediaMonitorService extends NotificationListenerService {
                 }
             }
 
-            String sampleRateLabel = "48.0kHz";
-            int detectedHz = AudioVisualizerHelper.getLastSamplingRateHz();
-            if (detectedHz <= 0 && context != null) {
+            // 2. 真实读取蓝牙协议栈与音频硬件参数（绝不使用写死假常量）
+            String codecLabel = "";
+            String sampleRateLabel = "";
+            String bitDepthLabel = "";
+            String channelsLabel = "";
+            int detectedHz = 0;
+            String specSource = "none";
+
+            // 2.1 尝试从 BluetoothA2dp.getCodecStatus (BluetoothCodecConfig) 读取真实协商编码器 (SBC/AAC/aptX/LDAC) 与规格
+            Object codecCfg = sCachedCodecConfig;
+            if (codecCfg == null && sA2dpSourceProxy != null) {
+                try {
+                    Object codecStatus = null;
+                    try {
+                        java.lang.reflect.Method m = sA2dpSourceProxy.getClass().getMethod("getCodecStatus", android.bluetooth.BluetoothDevice.class);
+                        codecStatus = m.invoke(sA2dpSourceProxy, connectedDevice);
+                    } catch (NoSuchMethodException e) {
+                        java.lang.reflect.Method m = sA2dpSourceProxy.getClass().getMethod("getCodecStatus");
+                        codecStatus = m.invoke(sA2dpSourceProxy);
+                    }
+                    if (codecStatus != null) {
+                        codecCfg = codecStatus.getClass().getMethod("getCodecConfig").invoke(codecStatus);
+                        if (codecCfg != null) sCachedCodecConfig = codecCfg;
+                    }
+                } catch (Throwable ignored) {}
+            }
+            if (codecCfg != null && isConnected) {
+                try {
+                    int codecType = (Integer) codecCfg.getClass().getMethod("getCodecType").invoke(codecCfg);
+                    switch (codecType) {
+                        case 0: codecLabel = "SBC"; break;
+                        case 1: codecLabel = "AAC"; break;
+                        case 2: codecLabel = "aptX"; break;
+                        case 3: codecLabel = "aptX HD"; break;
+                        case 4: codecLabel = "LDAC"; break;
+                    }
+                    int srMask = (Integer) codecCfg.getClass().getMethod("getSampleRate").invoke(codecCfg);
+                    if ((srMask & 1) != 0) detectedHz = 44100;
+                    else if ((srMask & 2) != 0) detectedHz = 48000;
+                    else if ((srMask & 4) != 0) detectedHz = 88200;
+                    else if ((srMask & 8) != 0) detectedHz = 96000;
+                    else if ((srMask & 16) != 0) detectedHz = 176400;
+                    else if ((srMask & 32) != 0) detectedHz = 192000;
+
+                    int bpsMask = (Integer) codecCfg.getClass().getMethod("getBitsPerSample").invoke(codecCfg);
+                    if ((bpsMask & 1) != 0) bitDepthLabel = "16bit";
+                    else if ((bpsMask & 2) != 0) bitDepthLabel = "24bit";
+                    else if ((bpsMask & 4) != 0) bitDepthLabel = "32bit";
+
+                    int chMask = (Integer) codecCfg.getClass().getMethod("getChannelMode").invoke(codecCfg);
+                    if ((chMask & 2) != 0) channelsLabel = "立体声";
+                    else if ((chMask & 1) != 0) channelsLabel = "单声道";
+                    specSource = "BluetoothCodecConfig";
+                } catch (Throwable ignored) {}
+            }
+
+            // 2.2 尝试从 BluetoothA2dpSink.getAudioConfig(device) (BluetoothAudioConfig) 读取蓝牙接收端真实解码流规格
+            if (isConnected) {
+                Object sinkAudioCfg = null;
+                if (sA2dpSinkProxy != null && connectedDevice != null) {
+                    try {
+                        java.lang.reflect.Method getAudioCfg = sA2dpSinkProxy.getClass().getMethod("getAudioConfig", android.bluetooth.BluetoothDevice.class);
+                        sinkAudioCfg = getAudioCfg.invoke(sA2dpSinkProxy, connectedDevice);
+                        if (sinkAudioCfg != null) {
+                            sCachedSinkAudioConfig = sinkAudioCfg;
+                        }
+                    } catch (Throwable ignored) {}
+                }
+                if (sinkAudioCfg == null) {
+                    sinkAudioCfg = sCachedSinkAudioConfig;
+                }
+                if (sinkAudioCfg != null) {
+                    try {
+                        int sr = (Integer) sinkAudioCfg.getClass().getMethod("getSampleRate").invoke(sinkAudioCfg);
+                        int fmt = (Integer) sinkAudioCfg.getClass().getMethod("getAudioFormat").invoke(sinkAudioCfg);
+                        int chCfg = (Integer) sinkAudioCfg.getClass().getMethod("getChannelConfig").invoke(sinkAudioCfg);
+                        if (sr > 0) detectedHz = sr;
+                        String mappedBits = mapAudioFormatToBitDepth(fmt);
+                        if (!mappedBits.isEmpty()) bitDepthLabel = mappedBits;
+                        String mappedCh = mapChannelConfigToLabel(chCfg);
+                        if (!mappedCh.isEmpty()) channelsLabel = mappedCh;
+                        if (codecLabel.isEmpty()) codecLabel = "A2DP";
+                        specSource = "BluetoothAudioConfig(" + sinkAudioCfg + ")";
+                    } catch (Throwable ignored) {}
+                } else if (codecLabel.isEmpty() && sA2dpSinkProxy != null) {
+                    codecLabel = "A2DP";
+                }
+            }
+
+            // 2.3 从 Android AudioManager 真实输出硬件设备 (AudioDeviceInfo) 与 Visualizer 补齐未由蓝牙层提供的物理参数
+            if (context != null) {
                 try {
                     AudioManager am = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
-                    if (am != null) {
+                    if (am != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        android.media.AudioDeviceInfo[] outDevices = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS);
+                        if (outDevices != null && outDevices.length > 0) {
+                            android.media.AudioDeviceInfo activeDev = outDevices[0];
+                            for (android.media.AudioDeviceInfo dev : outDevices) {
+                                int t = dev.getType();
+                                if (t == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                                        || t == android.media.AudioDeviceInfo.TYPE_HDMI
+                                        || t == android.media.AudioDeviceInfo.TYPE_HDMI_ARC
+                                        || t == android.media.AudioDeviceInfo.TYPE_USB_DEVICE
+                                        || t == android.media.AudioDeviceInfo.TYPE_USB_HEADSET
+                                        || t == android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) {
+                                    activeDev = dev;
+                                    if (t == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP) break;
+                                }
+                            }
+
+                            if (codecLabel.isEmpty()) {
+                                if (isConnected) {
+                                    codecLabel = "A2DP";
+                                } else {
+                                    int t = activeDev.getType();
+                                    if (t == android.media.AudioDeviceInfo.TYPE_HDMI || t == android.media.AudioDeviceInfo.TYPE_HDMI_ARC) {
+                                        codecLabel = "HDMI";
+                                    } else if (t == android.media.AudioDeviceInfo.TYPE_USB_DEVICE || t == android.media.AudioDeviceInfo.TYPE_USB_HEADSET) {
+                                        codecLabel = "USB";
+                                    } else {
+                                        codecLabel = "PCM";
+                                    }
+                                }
+                            }
+
+                            if (bitDepthLabel.isEmpty()) {
+                                int[] encodings = activeDev.getEncodings();
+                                if (encodings != null && encodings.length > 0) {
+                                    for (int enc : encodings) {
+                                        String b = mapAudioFormatToBitDepth(enc);
+                                        if (!b.isEmpty()) {
+                                            bitDepthLabel = b;
+                                            if ("16bit".equals(b) || "24bit".equals(b)) break;
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (channelsLabel.isEmpty()) {
+                                int[] counts = activeDev.getChannelCounts();
+                                if (counts != null && counts.length > 0) {
+                                    boolean hasStereo = false;
+                                    int maxCh = 0;
+                                    for (int c : counts) {
+                                        if (c == 2) hasStereo = true;
+                                        if (c > maxCh) maxCh = c;
+                                    }
+                                    if (hasStereo) channelsLabel = "立体声";
+                                    else if (maxCh == 1) channelsLabel = "单声道";
+                                    else if (maxCh > 2) channelsLabel = maxCh + "声道";
+                                }
+                                if (channelsLabel.isEmpty()) {
+                                    int[] masks = activeDev.getChannelMasks();
+                                    if (masks != null && masks.length > 0) {
+                                        channelsLabel = mapChannelConfigToLabel(masks[0]);
+                                    }
+                                }
+                            }
+
+                            if (detectedHz <= 0) {
+                                int[] rates = activeDev.getSampleRates();
+                                if (rates != null && rates.length == 1 && rates[0] > 0) {
+                                    detectedHz = rates[0];
+                                }
+                            }
+                            if ("none".equals(specSource)) {
+                                specSource = "AudioDeviceInfo(type=" + activeDev.getType() + ")";
+                            }
+                        }
+                    }
+
+                    if (detectedHz <= 0) {
+                        detectedHz = AudioVisualizerHelper.getLastSamplingRateHz();
+                    }
+                    if (detectedHz <= 0 && am != null) {
                         String prop = am.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE);
                         if (prop != null && !prop.trim().isEmpty()) {
                             detectedHz = Integer.parseInt(prop.trim());
@@ -571,6 +882,7 @@ public class MediaMonitorService extends NotificationListenerService {
                     }
                 } catch (Exception ignored) {}
             }
+
             if (detectedHz > 0) {
                 if (detectedHz % 1000 == 0) {
                     sampleRateLabel = (detectedHz / 1000) + ".0kHz";
@@ -579,14 +891,17 @@ public class MediaMonitorService extends NotificationListenerService {
                 }
             }
 
+            Log.i(TAG, "Real Audio/BT Spec resolved [" + specSource + "]: codec=" + codecLabel
+                    + ", sampleRate=" + sampleRateLabel + ", bitDepth=" + bitDepthLabel + ", channels=" + channelsLabel);
+
             obj.put("connected", isConnected);
             obj.put("connectionState", connectionState);
             obj.put("deviceName", name);
             obj.put("deviceAddress", address);
-            obj.put("codec", "A2DP");
+            obj.put("codec", codecLabel);
             obj.put("sampleRate", sampleRateLabel);
-            obj.put("bitDepth", "16bit");
-            obj.put("channels", "立体声");
+            obj.put("bitDepth", bitDepthLabel);
+            obj.put("channels", channelsLabel);
         } catch (Exception e) {
             e.printStackTrace();
         }
