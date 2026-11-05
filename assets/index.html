@@ -2272,6 +2272,32 @@
 
         // 蓝牙实时歌词与网络拉取官方歌词的双层时间窗口与权威校准引擎
         let isOfficialLyricVerified = false;
+        let lastHardwarePosSyncTime = 0;
+
+        function normalizeLyricForMatch(text) {
+            return String(text || "")
+                .toLowerCase()
+                .replace(/[\u2018\u2019\u0060\u00b4]/g, "'")
+                .replace(/'(ve|re|ll|d|m|s)\b/g, "")
+                .replace(/\bgotta\b/g, "gotto")
+                .replace(/\bwanna\b/g, "wantto")
+                .replace(/\bgonna\b/g, "goingto")
+                .replace(/[^\w\u4e00-\u9fa5]/g, "");
+        }
+
+        function evaluateLyricMatch(lClean, sClean) {
+            if (!lClean || !sClean) return 0; // 0: 不匹配, 3: 精确匹配, 2: 高置信子串匹配
+            if (lClean === sClean) return 3;
+            if (lClean.includes(sClean) || sClean.includes(lClean)) {
+                const minLen = Math.min(lClean.length, sClean.length);
+                const maxLen = Math.max(lClean.length, sClean.length);
+                if (minLen >= 2 && (minLen / maxLen) >= 0.65) {
+                    return 2;
+                }
+            }
+            return 0;
+        }
+
         function crossCheckLyrics(streamLyric) {
             if (!streamLyric || !hasOfficialLyrics || !lyrics || lyrics.length === 0) return;
             if (currentTrack && currentTrack.isVideo) return;
@@ -2281,36 +2307,62 @@
             if (PURE_MUSIC_REGEX.test(trimmedStream) || CREDIT_LINE_REGEX.test(trimmedStream)) return;
             if (trimmedStream.includes("纯音乐") || trimmedStream.includes("请欣赏") || trimmedStream.includes("作词") || trimmedStream.includes("作曲")) return;
 
-            // 纯净文本标准化（去除标点、符号、空格，统一小写）
-            const sClean = trimmedStream.toLowerCase().replace(/[^\w\u4e00-\u9fa5]/g, "");
+            // 纯净文本标准化（去除标点、符号、空格，统一小写与常见英语缩略词如 we've/we、gotta/got to）
+            const sClean = normalizeLyricForMatch(trimmedStream);
             if (sClean.length < 2) return;
 
             const curEstimated = lastPositionMs + (isPlaying ? (performance.now() - lastSyncTime) * playbackSpeed : 0);
 
-            // 第一层（优先窗口）：在当前估计进度前后 ±15 秒窗口内匹配，解决重复副歌句子总是命中第一遍的 bug
+            // 第一层（优先窗口）：在当前估计进度前后 ±15 秒窗口内全局评估所有匹配候选行，
+            // 严禁命中第一个候选就提前 break（否则如《Sign of the Times》中密集重复的 "The bullets" / "We gotta get away"
+            // 会始终命中窗口最前方的历史旧句，导致歌词与进度条反复回跳并同硬件时钟拉锯乱跳）。
             const WINDOW_MS = 15000;
             let matchedIndex = -1;
+            let bestWindowScoreDist = Infinity;
 
             for (let i = 0; i < lyrics.length; i++) {
-                if (CREDIT_LINE_REGEX.test((lyrics[i].text || "").trim())) continue;
+                const rawLine = (lyrics[i].text || "").trim();
+                if (CREDIT_LINE_REGEX.test(rawLine)) continue;
                 const lTime = lyrics[i].time;
                 if (lTime >= curEstimated - WINDOW_MS && lTime <= curEstimated + WINDOW_MS) {
-                    const lClean = (lyrics[i].text || "").toLowerCase().replace(/[^\w\u4e00-\u9fa5]/g, "");
-                    if (lClean && (lClean.includes(sClean) || sClean.includes(lClean))) {
-                        matchedIndex = i;
-                        break;
+                    const lClean = normalizeLyricForMatch(rawLine);
+                    const matchType = evaluateLyricMatch(lClean, sClean);
+                    if (matchType > 0) {
+                        let scoreDist = Math.abs(lTime - curEstimated);
+                        // 精确匹配绝对优先于子串包含匹配（如 "Stop your crying" 优先于 "Just stop your crying"）
+                        if (matchType < 3) {
+                            scoreDist += 3500;
+                        }
+                        // 顺向播放单调偏置：对落后于当前已激活行 (i < activeLyricIndex) 的历史重复句施加逆向惩罚，
+                        // 防止每 4 秒重复一次的相同短句误回跳到上一句
+                        if (activeLyricIndex >= 0 && i < activeLyricIndex && curEstimated >= (lyrics[activeLyricIndex].time - 2000)) {
+                            scoreDist += 4500;
+                        }
+                        if (scoreDist < bestWindowScoreDist) {
+                            bestWindowScoreDist = scoreDist;
+                            matchedIndex = i;
+                        }
                     }
                 }
             }
 
-            // 第二层（全局兜底窗口）：如果优先窗口未命中，并且当前发生了大幅偏移或未定位
-            if (matchedIndex < 0) {
+            // 第二层（全局兜底窗口）：仅当优先窗口未命中，且硬件 AVRCP 时钟未处于实时高频同步锁定态时，
+            // 使用严格的高置信度匹配寻找全局最近候选行（杜绝如 01:04 的长句因细微词差落入全局窗口后，
+            // 误命中 04:20 处的短句引发跨分钟远距离乱跳）。
+            const hardwarePosLocked = (lastHardwarePosSyncTime > 0 && (performance.now() - lastHardwarePosSyncTime) < 3500 && lastPositionMs > 0);
+            if (matchedIndex < 0 && !hardwarePosLocked) {
+                let bestFallbackScoreDist = Infinity;
                 for (let i = 0; i < lyrics.length; i++) {
-                    if (CREDIT_LINE_REGEX.test((lyrics[i].text || "").trim())) continue;
-                    const lClean = (lyrics[i].text || "").toLowerCase().replace(/[^\w\u4e00-\u9fa5]/g, "");
-                    if (lClean && (lClean.includes(sClean) || sClean.includes(lClean))) {
-                        // 选取与当前进度绝对距离最近的一个候选行，防止无条件跳回第 0 行
-                        if (matchedIndex < 0 || Math.abs(lyrics[i].time - curEstimated) < Math.abs(lyrics[matchedIndex].time - curEstimated)) {
+                    const rawLine = (lyrics[i].text || "").trim();
+                    if (CREDIT_LINE_REGEX.test(rawLine)) continue;
+                    const lClean = normalizeLyricForMatch(rawLine);
+                    const matchType = evaluateLyricMatch(lClean, sClean);
+                    // 全局跨窗口兜底要求精确匹配或极高长度占比 (>= 0.8)
+                    const lenRatio = (lClean && sClean) ? (Math.min(lClean.length, sClean.length) / Math.max(lClean.length, sClean.length)) : 0;
+                    if (matchType === 3 || (matchType === 2 && lenRatio >= 0.8)) {
+                        const scoreDist = Math.abs(lyrics[i].time - curEstimated) + (matchType < 3 ? 3500 : 0);
+                        if (scoreDist < bestFallbackScoreDist) {
+                            bestFallbackScoreDist = scoreDist;
                             matchedIndex = i;
                         }
                     }
@@ -2319,15 +2371,26 @@
 
             if (matchedIndex >= 0) {
                 isOfficialLyricVerified = true;
+                const matchedTime = lyrics[matchedIndex].time;
+                const timeDiff = Math.abs(matchedTime - curEstimated);
+
+                // 防回跳保护：当播放时钟正常顺向推进且偏差在合理范围内（<= 3500ms）时，
+                // 若蓝牙延后或重复推送了上一句歌词（matchedIndex < activeLyricIndex），绝不将已顺向推进的歌词行往回拽，
+                // 避免与 60fps updateTimeline 产生“跳回上一行 -> 16ms 后又跳回下一行”的乒乓闪跳。
+                if (activeLyricIndex >= 0 && matchedIndex < activeLyricIndex && timeDiff <= 3500 && curEstimated >= (lyrics[activeLyricIndex].time - 3500)) {
+                    return;
+                }
+
                 activeLyricIndex = matchedIndex;
                 if (!isManualScrolling) {
                     updateLyricHighlight(activeLyricIndex);
                     scrollToLyricIndex(activeLyricIndex, true);
                 }
-                // 仅当估算时钟与匹配行时间偏差超过 2.5 秒时才强制重设播放时钟，
+                // 仅当估算时钟与匹配行时间偏差超过阈值时才重设播放时钟，
                 // 杜绝正常播放时因行首时间戳回写导致进度条倒退跳变（如 00:06 跳回 00:04）
-                if (isPlaying && lyrics[matchedIndex].time > 0 && Math.abs(lyrics[matchedIndex].time - curEstimated) > 2500) {
-                    lastPositionMs = lyrics[matchedIndex].time;
+                const reanchorThreshold = hardwarePosLocked ? 5000 : 2500;
+                if (isPlaying && matchedTime > 0 && timeDiff > reanchorThreshold) {
+                    lastPositionMs = matchedTime;
                     lastSyncTime = performance.now();
                 }
             }
@@ -2336,6 +2399,7 @@
 
         function renderLyrics(lrcArray) {
             lyrics = lrcArray;
+            lastHardwarePosSyncTime = 0;
             const stream = document.getElementById('lyricsStream');
             const emptyBox = document.getElementById('emptyLyrics');
             const emptyText = document.getElementById('emptyText');
@@ -2868,6 +2932,7 @@
                 // 1. 彻底重置播放时钟与进度，杜绝切歌后继承上一首歌末尾进度
                 lastPositionMs = 0;
                 lastSyncTime = performance.now();
+                lastHardwarePosSyncTime = 0;
                 activeLyricIndex = 0;
                 renderedLyricIndex = -1;
                 lastRenderedSec = 0;
@@ -2959,6 +3024,9 @@
             if (pos >= 0) {
                 lastPositionMs = pos;
                 lastSyncTime = performance.now();
+                if (pos > 0) {
+                    lastHardwarePosSyncTime = lastSyncTime;
+                }
             }
             const incomingSpeed = (typeof data.speed === 'number' && Number.isFinite(data.speed) && data.speed > 0) ? data.speed : 1.0;
             playbackSpeed = incomingSpeed;
@@ -3054,11 +3122,11 @@
 
                 // 严格单调防抖迟滞锁：
                 // 严禁因手机蓝牙 AVRCP 传输延时微弱抖动导致 targetIndex 往回掉引发的歌词上下颠簸。
-                // 仅当用户手动拖动倒退超过 3 秒时才允许回退；新歌前3秒内允许重设回开头。
+                // 仅当用户手动拖动倒退超过 3.5 秒时才允许回退；新歌前3秒内允许重设回开头。
                 if (activeLyricIndex >= 0 && targetIndex < activeLyricIndex) {
                     if (currentPos >= 3000) {
                         const activeTime = lyrics[activeLyricIndex] ? lyrics[activeLyricIndex].time : 0;
-                        if (currentPos > (activeTime - 3000)) {
+                        if (currentPos > (activeTime - 3500)) {
                             targetIndex = activeLyricIndex;
                         }
                     }

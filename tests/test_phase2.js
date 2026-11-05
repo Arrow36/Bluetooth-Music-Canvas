@@ -147,6 +147,40 @@ async function runTests() {
 
         window.crossCheckLyrics("My emptiness is full of you,");
         assert(window.activeLyricIndex === 1, "Priority window matches first chorus at 42000ms when near 12000ms-40000ms");
+
+        // 3.3 Repeated dense lines & contraction differences (Sign of the Times regression)
+        const signLyrics = [
+            { time: 48760, text: "We never learn, we been here before" },
+            { time: 52480, text: "Why are we always stuck and running from" },
+            { time: 56350, text: "The bullets?" },
+            { time: 59910, text: "The bullets" },
+            { time: 64680, text: "We never learn, we been here before" },
+            { time: 68510, text: "Why are we always stuck and running from" },
+            { time: 71980, text: "The bullets?" },
+            { time: 75820, text: "The bullets" },
+            { time: 260870, text: "We've been here before" }
+        ];
+        window.renderLyrics(signLyrics);
+        window.hasOfficialLyrics = true;
+        window.lyrics = signLyrics;
+
+        // At 01:04.67 (64,672ms), phone sends "We never learn, we've been here before" (with 've)
+        window.onPlaybackStateChanged({ isPlaying: true, position: 64672, speed: 1.0 });
+        window.activeLyricIndex = 3;
+        window.crossCheckLyrics("We never learn, we've been here before");
+        assert(window.activeLyricIndex === 4, "Matches [01:04.68] 'We never learn, we been here before' (index 4), NOT [04:20.87] 'We've been here before' (index 8)");
+
+        // At 01:12.79 (72,790ms), phone sends "The bullets?" -> must match index 6 (71,980ms), NOT index 3 (59,910ms)
+        window.onPlaybackStateChanged({ isPlaying: true, position: 72790, speed: 1.0 });
+        window.activeLyricIndex = 5;
+        window.crossCheckLyrics("The bullets?");
+        assert(window.activeLyricIndex === 6, "Closest match in ±15s window selects [01:11.98] 'The bullets?' (index 6), NOT [00:59.91] (index 3)");
+
+        // At 01:16.79 (76,797ms), phone sends "The bullets" -> must match index 7 (75,820ms), NOT index 6 (71,980ms)
+        window.onPlaybackStateChanged({ isPlaying: true, position: 76797, speed: 1.0 });
+        window.activeLyricIndex = 6;
+        window.crossCheckLyrics("The bullets");
+        assert(window.activeLyricIndex === 7, "Closest match in ±15s window selects [01:15.82] 'The bullets' (index 7), NOT [01:11.98] (index 6)");
     }
 
     console.log("\n--- Group 4: Spectrum Baseline & No Fake Sine Wave on Silence ---");
