@@ -189,7 +189,7 @@ async function runTests() {
         window.onAudioSpectrum(0, 0, 0, 0, 0);
         const bars = window.getEqualizerBars();
         for (let i = 0; i < 5; i++) {
-            assert(bars[i].style.transform.includes('0.08'), `Bar ${i} is at resting baseline 0.08 on silence`);
+            assert(bars[i].style.height === '8%', `Bar ${i} is at resting baseline 0.08 on silence`);
         }
     }
 
@@ -263,6 +263,20 @@ async function runTests() {
         assert(permSettingsOpened === true, "Pressing OK (23) on TV remote when permission modal is shown opens notification listener settings");
         window.onPermissionStatusChanged(true);
         assert(permBtn && !permBtn.classList.contains('show'), "Permission guide modal hidden when permission is granted");
+
+        window.onPermissionStatusChanged(false);
+        window.handleRemoteKey(22);
+        window.handleRemoteKey(23);
+        window.onPermissionStatusChanged(false);
+        assert(!permBtn.classList.contains('show'), "Choosing Later suppresses repeated notification guides this session");
+        let manualRequests = 0;
+        window.AndroidApp.updateMusicPermission = (visible, manual) => {
+            if (visible && manual) manualRequests++;
+        };
+        window.selectLyricSource('visualizer');
+        window.applyLyricSourceForCurrentTrack('visualizer', false);
+        assert(manualRequests === 1, "Only explicit selection requests another music permission prompt");
+        window.selectLyricSource('auto');
 
         // Menu key (82) toggles lyric source menu, adds lyric-menu-open (hiding volume bar), and focuses first item (auto)
         window.closeAllSecondaryMenus();
@@ -342,6 +356,20 @@ async function runTests() {
         const veryLongLrc = "[00:10.00] Just stop your crying, it is a sign of the times, we gotta get away from here";
         const parsedSplit = window.parseLRC(veryLongLrc);
         assert(parsedSplit.length === 2, "Extremely long sentence exceeding max width is intelligently split into 2 lines");
+
+        window.applyLyricFontSize(36, false);
+        const longText = '这是一句很长而且没有空格的歌词'.repeat(8);
+        const rows = window.parseLRC('[00:01]' + longText + '\n[00:09]下一句');
+        const parts = rows.slice(0, -1);
+        assert(parts.length > 2 && parts.map(row => row.text).join('') === longText,
+            "Large-font wrapping keeps every character across multiple lines");
+        assert(parts.every((row, i) => window.measureLyricTextWidth(row.text, 36) <= window.getAvailableLyricWidth() / 1.18
+            && row.time < 9000 && (!i || row.time > parts[i - 1].time)), "Wrapped parts fit and stay within the lyric interval");
+        window.selectLyricSource('auto');
+        window.showStreamLyric('Instrumental');
+        assert(document.getElementById('largeVisualizer').style.display === 'flex', "Stream placeholder keeps auto spectrum visible");
+        window.showStreamLyric('第一句唱词');
+        assert(document.getElementById('largeVisualizer').style.display === 'none', "Singing resumes after instrumental fallback");
 
         // Seek / auto-return transition animation function existence
         assert(typeof window.triggerLyricFadeTransition === 'function', "triggerLyricFadeTransition exists on window");

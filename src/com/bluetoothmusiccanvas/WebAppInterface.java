@@ -73,6 +73,11 @@ public class WebAppInterface {
     }
 
     @JavascriptInterface
+    public void updateMusicPermission(boolean visible, boolean manual) {
+        mActivity.updateMusicPermission(visible, manual);
+    }
+
+    @JavascriptInterface
     public void setSpectrumVisible(boolean visible) {
         mActivity.setSpectrumVisible(visible);
     }

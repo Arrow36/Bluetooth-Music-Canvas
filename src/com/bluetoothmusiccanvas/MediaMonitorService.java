@@ -46,6 +46,8 @@ public class MediaMonitorService extends NotificationListenerService {
     private static final String TAG = "BTMusicService";
     public static MediaMonitorService sInstance;
 
+    private BluetoothVolumeSync mVolumeSync;
+    private static final String VOLUME_CHANGED = "android.media.VOLUME_CHANGED_ACTION";
     private MediaSessionManager mSessionManager;
     private MediaController mActiveController;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
@@ -108,6 +110,7 @@ public class MediaMonitorService extends NotificationListenerService {
                 @Override
                 public void onServiceDisconnected(int profile) {
                     if (profile == PROFILE_A2DP_SINK) {
+                        if (mVolumeSync != null) mVolumeSync.reset();
                         sA2dpSinkProxy = null;
                     } else if (profile == android.bluetooth.BluetoothProfile.A2DP) {
                         sA2dpSourceProxy = null;
@@ -120,6 +123,24 @@ public class MediaMonitorService extends NotificationListenerService {
         public void onReceive(Context context, Intent intent) {
             if (intent == null) return;
             String action = intent.getAction();
+            if (VOLUME_CHANGED.equals(action)) {
+                if (mVolumeSync != null
+                        && intent.getIntExtra("android.media.EXTRA_VOLUME_STREAM_TYPE", -1) == AudioManager.STREAM_MUSIC
+                        && mActiveController != null && "com.android.bluetooth".equals(mActiveController.getPackageName())
+                        && sA2dpSinkProxy != null) {
+                    try {
+                        if (sA2dpSinkProxy.getConnectedDevices().size() == 1) {
+                            mVolumeSync.changed(intent.getIntExtra("android.media.EXTRA_PREV_VOLUME_STREAM_VALUE", -1),
+                                    intent.getIntExtra("android.media.EXTRA_VOLUME_STREAM_VALUE", -1));
+                        }
+                    } catch (SecurityException ignored) {}
+                }
+                return;
+            }
+            if (mVolumeSync != null && "android.bluetooth.a2dp-sink.profile.action.CONNECTION_STATE_CHANGED".equals(action)) {
+                mVolumeSync.reset();
+            }
+
             if ("android.bluetooth.device.action.ACL_CONNECTED".equals(action)
                     || "android.bluetooth.device.action.ACL_DISCONNECTED".equals(action)
                     || "android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED".equals(action)
@@ -211,6 +232,10 @@ public class MediaMonitorService extends NotificationListenerService {
         filter.addAction("android.bluetooth.a2dp-sink.profile.action.PLAYING_STATE_CHANGED");
         filter.addAction("android.bluetooth.a2dp.profile.action.CODEC_CONFIG_CHANGED");
         filter.addAction("android.bluetooth.adapter.action.CONNECTION_STATE_CHANGED");
+        if (checkCallingOrSelfPermission(android.Manifest.permission.DUMP) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            mVolumeSync = new BluetoothVolumeSync(this);
+            filter.addAction(VOLUME_CHANGED);
+        }
         registerReceiver(mBluetoothReceiver, filter);
 
         try {
@@ -245,6 +270,7 @@ public class MediaMonitorService extends NotificationListenerService {
     @Override
     public void onDestroy() {
         super.onDestroy();
+        if (mVolumeSync != null) mVolumeSync.close();
         sInstance = null;
         hideFloatingView();
         if (mSessionManager != null) {
@@ -278,6 +304,7 @@ public class MediaMonitorService extends NotificationListenerService {
                     mActiveController.unregisterCallback(mControllerCallback);
                 } catch (Exception ignored) {}
                 mActiveController = null;
+                if (mVolumeSync != null) mVolumeSync.reset();
             }
             MediaStateStore.getInstance().startNewSession("empty");
             handlePlaybackState(null);
@@ -310,6 +337,7 @@ public class MediaMonitorService extends NotificationListenerService {
                 || !mActiveController.getSessionToken().equals(preferred.getSessionToken());
 
         if (tokenChanged) {
+            if (mVolumeSync != null) mVolumeSync.reset();
             if (mActiveController != null) {
                 try {
                     mActiveController.unregisterCallback(mControllerCallback);
@@ -366,9 +394,6 @@ public class MediaMonitorService extends NotificationListenerService {
 
         if (isPlaying) {
             boolean wasPlaying = mIsPlaying;
-            if (!wasPlaying) {
-                MainActivity.armVolumeGuard(4000);
-            }
             mIsPlaying = true;
             updateFloatingRotationState();
 
@@ -397,9 +422,6 @@ public class MediaMonitorService extends NotificationListenerService {
                 }
             }
         } else if (playbackState == PlaybackState.STATE_PAUSED || playbackState == PlaybackState.STATE_STOPPED) {
-            if (mIsPlaying) {
-                MainActivity.armVolumeGuard(4000);
-            }
             mIsPlaying = false;
             updateFloatingRotationState();
             MainActivity act = MainActivity.getInstance();
@@ -494,7 +516,6 @@ public class MediaMonitorService extends NotificationListenerService {
         }
 
         // snapshot.changeType == MediaStateStore.ChangeType.NEW_TRACK
-        MainActivity.armVolumeGuard(4000);
         final long capturedGen = snapshot.playbackGeneration;
         mUserDismissed = false;
         mCurrentPosition = 0;
@@ -523,7 +544,7 @@ public class MediaMonitorService extends NotificationListenerService {
             final String key = snapshot.songCacheKey;
             if (!key.isEmpty() && !key.equals(mLastFetchedCoverKey)) {
                 mLastFetchedCoverKey = key;
-                MetadataFetcher.fetch(mRealTitle, mRealArtist, mRealAlbum, mDuration, new MetadataFetcher.Callback() {
+                MetadataFetcher.fetchForTrack(capturedGen, mRealTitle, mRealArtist, mRealAlbum, mDuration, new MetadataFetcher.Callback() {
                     @Override
                     public void onResult(final String coverUrl, final String lyricsLrc, final String lyricSource) {
                         if (coverUrl != null && !coverUrl.isEmpty()) {
@@ -1397,7 +1418,6 @@ public class MediaMonitorService extends NotificationListenerService {
     }
 
     public void sendPlayPause() {
-        MainActivity.armVolumeGuard(4000);
         if (mActiveController != null && mActiveController.getTransportControls() != null) {
             if (mIsPlaying) {
                 mActiveController.getTransportControls().pause();
@@ -1408,14 +1428,12 @@ public class MediaMonitorService extends NotificationListenerService {
     }
 
     public void sendNext() {
-        MainActivity.armVolumeGuard(4000);
         if (mActiveController != null && mActiveController.getTransportControls() != null) {
             mActiveController.getTransportControls().skipToNext();
         }
     }
 
     public void sendPrevious() {
-        MainActivity.armVolumeGuard(4000);
         if (mActiveController != null && mActiveController.getTransportControls() != null) {
             mActiveController.getTransportControls().skipToPrevious();
         }

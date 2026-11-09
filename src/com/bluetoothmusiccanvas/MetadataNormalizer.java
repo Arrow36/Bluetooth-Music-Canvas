@@ -198,20 +198,20 @@ public class MetadataNormalizer {
             }
         }
 
-        boolean isLyricLike = isLyricLineLike(title);
+        // Bare slashes commonly delimit a list of performers. A long or translated
+        // title alone is insufficient evidence for extracting a song from that list.
+        boolean isLyricLike = artist.contains(" / ") && isLyricLineLike(title);
 
         // Case 1: Active car Bluetooth stream for the currently playing song
         // In car lyric mode, subsequent AVRCP updates keep the same song in Artist (performers / candidateTitle),
         // while Title carries the next line of real-time lyrics.
         if (currentTitle != null && !currentTitle.isEmpty() && candidateTitle != null && !candidateTitle.isEmpty()) {
-            String cleanCur = cleanTitle(currentTitle);
-            boolean matchesPlayingSong = candidateTitle.equalsIgnoreCase(currentTitle)
-                    || cleanCandidate.equalsIgnoreCase(cleanCur)
-                    || candidateTitle.toLowerCase(Locale.ROOT).contains(cleanCur.toLowerCase(Locale.ROOT))
-                    || currentTitle.toLowerCase(Locale.ROOT).contains(cleanCandidate.toLowerCase(Locale.ROOT))
-                    || (performers != null && performers.equalsIgnoreCase(currentArtist) && !candidateTitle.equalsIgnoreCase(title));
-
-            if (matchesPlayingSong && (currentFormat == MetadataFormat.CAR_LYRICS_CONFIRMED || isPlaceholder || albumConfirmsCandidate || albumConfirmsPerformer || titleContainsCandidate || isLyricLike || !candidateTitle.equalsIgnoreCase(title))) {
+            // The player alternates ordinary metadata with "performers/song" + a lyric.
+            // Both identity fields must match; a shared performer or a title prefix
+            // alone can also be a different track.
+            boolean sameIdentity = candidateTitle.equalsIgnoreCase(currentTitle)
+                    && performers.equalsIgnoreCase(currentArtist);
+            if (sameIdentity && !title.equalsIgnoreCase(currentTitle)) {
                 return new NormalizedResult(
                         currentTitle,
                         (performers != null && !performers.isEmpty()) ? performers : currentArtist,
@@ -320,7 +320,7 @@ public class MetadataNormalizer {
         if (t.contains("...") || t.contains("…") || t.contains("~") || t.contains("——")) return true;
         if (t.contains("，") && t.contains(" ")) return true;
         // 3. Parenthetical backing vocals: e.g. "（away）", "(away)"
-        if (t.matches(".*[\\(（\\[].*(away|chorus|verse|hook|[\\u4e00-\\u9fa5]).*[\\)）\\]].*")) return true;
+        if (t.matches(".*[\\(（\\[].*(away|chorus|verse|hook).*[\\)）\\]].*")) return true;
         // 4. Typical Western lyric openers and conversational phrases
         String lower = t.toLowerCase(Locale.ROOT);
         if (lower.startsWith("i ") || lower.startsWith("i'm ") || lower.startsWith("i’m ")
@@ -333,8 +333,7 @@ public class MetadataNormalizer {
                 || lower.contains(" alright") || lower.contains(" forever") || lower.contains(" tonight")) {
             return true;
         }
-        // 5. Long multi-word sentence (> 32 chars with spaces)
-        if (t.length() > 32 && t.contains(" ")) return true;
+
         return false;
     }
 

@@ -71,6 +71,31 @@ public class TestMediaStateStore {
         assert normPunct.format == MetadataNormalizer.MetadataFormat.STANDARD : "Must be STANDARD format";
         System.out.println("  PASS [6]: Song with punctuation correctly preserved without false inversion");
 
+        String concerto = "Butterfly Lovers Violin Concerto: I. Adagio cantabile (梁祝小提琴协奏曲 - 第1乐章)";
+        String ensemble = "Chloe Chua/Singapore Symphony Orchestra/Rodolfo Barráez/Jin Ta";
+        for (String credits : new String[]{ensemble, ensemble.replace("/", " / ")}) {
+            MetadataNormalizer.NormalizedResult movement = MetadataNormalizer.normalize(concerto, credits,
+                    "Butterfly Lovers Concerto & Paganini", 331000, "", "", MetadataNormalizer.MetadataFormat.UNKNOWN);
+            assert movement.title.equals(concerto) && movement.artist.equals(credits);
+            assert movement.format == MetadataNormalizer.MetadataFormat.STANDARD;
+        }
+
+        store = new MediaStateStore();
+        long liveEpoch = store.getSessionEpoch();
+        MediaStateStore.MediaSnapshot song = store.handleMetadata(liveEpoch, "吴哥窟", "吴雨霏", "我本人", 235000, null);
+        for (String line : new String[]{"制作人: 梁荣骏", "庆祝正日", "两个人 多挤迫"}) {
+            MediaStateStore.MediaSnapshot update = store.handleMetadata(liveEpoch, line, "吴雨霏/吴哥窟", "我本人", 235000, null);
+            assert update != null && update.changeType == MediaStateStore.ChangeType.STREAM_LYRIC;
+            assert update.playbackGeneration == song.playbackGeneration && update.streamLyric.equals(line);
+        }
+        store = new MediaStateStore();
+        long joinEpoch = store.getSessionEpoch();
+        store.handleMetadata(joinEpoch, "庆祝正日", "吴雨霏/吴哥窟", "我本人", 235000, "avrcp-row-1");
+        MediaStateStore.MediaSnapshot joined = store.handleMetadata(joinEpoch, "两个人 多挤迫", "吴雨霏/吴哥窟", "我本人", 235000, "avrcp-row-2");
+        assert joined.title.equals("吴哥窟") && joined.artist.equals("吴雨霏");
+        MediaStateStore.MediaSnapshot continued = store.handleMetadata(joinEpoch, "难容纳多一番秘密", "吴雨霏/吴哥窟", "我本人", 235000, null);
+        assert continued.changeType == MediaStateStore.ChangeType.STREAM_LYRIC && continued.playbackGeneration == joined.playbackGeneration;
+
         // 8. Real car Bluetooth lyric stream (NetEase style: Artist / Title)
         MetadataNormalizer.NormalizedResult carInit = MetadataNormalizer.normalize(
                 "纯音乐，请欣赏", "王菲 / 如愿", "如愿", 240000,

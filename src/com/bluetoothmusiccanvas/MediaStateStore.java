@@ -116,6 +116,7 @@ public class MediaStateStore {
     private long mDuration = 0;
     private String mStreamLyric = "";
     private String mSongCacheKey = "";
+    private long mLastRawEpoch = -1;
     private MetadataNormalizer.MetadataFormat mFormat = MetadataNormalizer.MetadataFormat.UNKNOWN;
     private MediaClassifier.ClassificationResult mClassification = new MediaClassifier.ClassificationResult(
             MediaClassifier.ContentKind.UNKNOWN, MediaClassifier.EvidenceLevel.NONE, "INIT");
@@ -217,6 +218,23 @@ public class MediaStateStore {
                 rawTitle, rawArtist, rawAlbum, duration, mTitle, mArtist, mFormat
         );
 
+        // When joining mid-song, the first title may already be a lyric. Two
+        // changing titles within the same packed credits, album and duration
+        // distinguish that stream from one static multi-performer title.
+        boolean sameSession = sessionEpoch == mLastRawEpoch;
+        mLastRawEpoch = sessionEpoch;
+        if (sameSession && normalized != null && normalized.format == MetadataNormalizer.MetadataFormat.STANDARD
+                && rawArtist != null && mArtist.equalsIgnoreCase(rawArtist.trim())
+                && mFormat == MetadataNormalizer.MetadataFormat.STANDARD
+                && mDuration > 0 && mDuration == duration && mAlbum.equalsIgnoreCase(normalized.album)
+                && !mTitle.equalsIgnoreCase(normalized.title)) {
+            MetadataNormalizer.CandidateTrack packed = MetadataNormalizer.parseCandidate(rawArtist, rawAlbum);
+            if (packed != null) {
+                normalized = new MetadataNormalizer.NormalizedResult(packed.title, packed.artist,
+                        packed.album, duration, rawTitle, MetadataNormalizer.MetadataFormat.CAR_LYRICS_CONFIRMED, false);
+            }
+        }
+
         if (normalized == null || normalized.title.isEmpty()) {
             return null;
         }
@@ -230,6 +248,7 @@ public class MediaStateStore {
                 return null; // duplicate line
             }
             mStreamLyric = normalized.streamLyric;
+            mFormat = normalized.format;
             mSnapshotRevision++;
             MediaSnapshot snapshot = buildSnapshot(ChangeType.STREAM_LYRIC);
             notifyListeners(snapshot);

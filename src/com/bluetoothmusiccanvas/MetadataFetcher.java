@@ -104,6 +104,27 @@ public class MetadataFetcher {
         sCache.put(key, meta);
     }
 
+    /** Give ambiguous "artist/song" metadata a chance to deliver the next lyric
+     * before looking up the provisional title. Real multi-artist credits still
+     * get their normal lookup when the title remains stable. */
+    public static void fetchForTrack(final long generation, final String title, final String artist,
+                                     final String album, final long duration, final Callback callback) {
+        MediaStateStore store = MediaStateStore.getInstance();
+        MediaStateStore.MediaSnapshot track = store.getSnapshot();
+        if (track.format == MetadataNormalizer.MetadataFormat.STANDARD &&
+                MetadataNormalizer.parseCandidate(artist, album) != null) {
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                MediaStateStore.MediaSnapshot current = store.getSnapshot();
+                if (current.sessionEpoch == track.sessionEpoch && current.playbackGeneration == generation
+                        && current.title.equals(title) && current.artist.equals(artist)) {
+                    fetch(title, artist, album, duration, callback);
+                }
+            }, 8000);
+        } else {
+            fetch(title, artist, album, duration, callback);
+        }
+    }
+
     public static void fetch(final String rawTitle, final String rawArtist, final Callback callback) {
         fetch(rawTitle, rawArtist, "", callback);
     }

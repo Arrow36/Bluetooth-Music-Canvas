@@ -10,11 +10,27 @@
 [![Platform](https://img.shields.io/badge/Platform-Android%205.0%2B%20(API%2021%2B)-brightgreen.svg)](https://developer.android.com)
 [![Architecture](https://img.shields.io/badge/Arch-Universal-blue.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-orange.svg)](LICENSE)
-[![APK Size](https://img.shields.io/badge/APK%20Size-~472%20KB-success.svg)](BluetoothMusicCanvas.apk)
+[![APK Size](https://img.shields.io/badge/APK%20Size-~484%20KB-success.svg)](BluetoothMusicCanvas.apk)
 
 </div>
 
 ---
+
+## 最近更新
+
+1.1.1 修复切歌时封面背景闪现、大字号歌词截断、自动推荐模式的纯音乐律动，以及动态歌词触发重复搜歌的问题。录音权限改为在需要律动时说明用途并申请；拒绝后自动播放纯音乐不会重复询问，手动选择「律动氛围」可再次申请。详细变更与验证范围见 [更新记录](CHANGELOG.md)。
+
+### 实验性蓝牙音量回跳修正
+
+在已通过 ADB 授予 `DUMP` 权限、能够读取兼容格式 AudioService 音量事件的设备上，应用会识别手机重复下发的旧音量，尝试恢复电视遥控器的微调值。手机下发不同的新音量时按新值播放。此功能随蓝牙媒体监听服务运行。
+
+```bash
+adb shell pm grant com.bluetoothmusiccanvas android.permission.DUMP
+```
+
+授权后重新启动应用。构建脚本的 `--install` 流程已包含此授权步骤。常规安装的权限引导不提供此授权。
+
+当前实现默认随上述权限生效，尚无独立开关。修正发生在系统音量改变之后，可能出现短暂变响。识别依赖厂商系统日志，当前只适配并安装到一台小米电视；APK 内实现的实机行为由用户继续验收。支持正常音量回传的电视尚未验证，可能出现手机主动调回旧值被误判的情况。该功能尚未恢复 iPhone 滑块的双向同步。
 
 ## 🌟 核心特性 (Features)
 
@@ -27,7 +43,7 @@
 - **1024 点采样与 9 个真实物理频段换算**：依据真实采样率 $F_s$ 与频点宽度 $f_k = k \cdot F_s / N$ 将 20Hz ~ 16kHz 划分为 9 个精细物理频带（次重低音 20~120Hz、底鼓 120~250Hz、中低频 250~500Hz、人声基频 500~1000Hz、人声核心 1~2kHz、泛音 2~4kHz、明亮度 4~7kHz、齿音 7~11kHz、空气感 11~16kHz），同时驱动全屏 9 柱律动音浪与 5 柱迷你均衡器。
 - **彻底脱钩系统音量大小**：内置自适应动态增益控制（AGC），自动跟踪频段能量分布。**无论电视音量调为 100%、5% 甚至静音，频谱波形均可全动态弹性律动**。
 - **按需跨桥门控（On-Demand Spectrum Gating）**：当正常滚动歌词激活、频谱组件隐藏时，前端自动通知原生层关闭 25Hz `evaluateJavascript` 跨桥推送，转为 250ms 低功耗静默环境音监测，大幅释放 WebView 与主线程 CPU。
-- **静音平滑平息与休眠基底**：无音频或播放暂停时，柱条自适应衰减归位于底座胶囊基线（`scaleY(0.08)`），彻底消除静音死循环正弦波。
+- **静音平滑平息与休眠基底**：无音频或播放暂停时，柱条自适应衰减归位于底座胶囊基线（通过柱高变化保留圆角），彻底消除静音死循环正弦波。
 
 ### 🖼️ 3. 多源官方超清封面与智能语义排版
 - **四平台聚合检索与时长校验**：原生多线程聚合检索（网易云音乐 / QQ音乐 / 酷狗音乐 / Apple Music iTunes 600×600 / LRCLIB），结合曲目时长差值（$\Delta \le 2\text{s}$ 满分，$\Delta > 15\text{s}$ 降权）精准防翻唱/伴奏误配，无惧跨域与防盗链。
@@ -59,7 +75,7 @@
 - **多厂商蓝牙协议栈广谱兼容**：
   - 自动识别标准 Android 蓝牙栈及小米、Realtek、Broadcom、Rockchip、Amlogic、MediaTek、Allwinner 等各家定制 ROM 的蓝牙音频控制器包名（`bluetooth`、`a2dp`、`avrcp`、`btmusic`、`btaudio`、`btsink`）。
 - **免 ADB 首次安装权限自检与一键引导**：
-  - 启动及从后台返回时自动检测 `NotificationListenerService` 通知使用权；若未授权，顶部自动展示醒目引导胶囊，点击即可一键拉起系统设置页完成授权。
+  - 启动及从后台返回时自动检测 `NotificationListenerService` 通知使用权；若未授权，顶部自动展示醒目引导胶囊，选择「前往系统设置」后手动授权，也可选择「稍后」暂时关闭引导。
 
 ### 🚀 8. 针对低配电视盒 / 车机的深度渲染与能效优化
 - **`<canvas>` 离屏预烘焙氛围背景模糊（零实时 GPU 消耗）**：
