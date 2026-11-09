@@ -1886,11 +1886,11 @@
 
             <div class="bottom-right-cluster">
                 <div class="lyric-font-widget" id="lyricFontWidget">
-                    <button class="font-btn" id="btnFontDec" onclick="adjustLyricFontSize(-1, event)" ontouchend="adjustLyricFontSize(-1, event)" title="缩小歌词字号" aria-label="缩小歌词字号">
+                    <button class="font-btn" id="btnFontDec" title="缩小歌词字号" aria-label="缩小歌词字号">
                         <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                     </button>
                     <span class="font-size-label" id="fontSizeLabel">20px</span>
-                    <button class="font-btn" id="btnFontInc" onclick="adjustLyricFontSize(1, event)" ontouchend="adjustLyricFontSize(1, event)" title="放大歌词字号" aria-label="放大歌词字号">
+                    <button class="font-btn" id="btnFontInc" title="放大歌词字号" aria-label="放大歌词字号">
                         <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                     </button>
                 </div>
@@ -2380,7 +2380,6 @@
         }
         window.applyLyricFontSize = applyLyricFontSize;
 
-        let lastFontAdjustTime = 0;
         function adjustLyricFontSize(delta, e) {
             // 严格门禁：事件触发时当且仅当二级菜单处于展开状态才允许调整字号（杜绝未展开时误触）
             if (e && !document.body.classList.contains('lyric-menu-open')) {
@@ -2389,9 +2388,6 @@
             if (e) {
                 if (e.stopPropagation) e.stopPropagation();
                 if (e.preventDefault) e.preventDefault();
-                const now = performance.now();
-                if (now - lastFontAdjustTime < 100) return;
-                lastFontAdjustTime = now;
             }
 
             resetIdleTimer();
@@ -2400,61 +2396,27 @@
         window.adjustLyricFontSize = adjustLyricFontSize;
 
         function initLyricFontWidgetTouch() {
-            const fontWidget = document.getElementById('lyricFontWidget');
-            if (fontWidget) {
-                ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'click'].forEach(evt => {
-                    fontWidget.addEventListener(evt, function(e) {
-                        e.stopPropagation();
-                    }, { passive: false });
-                });
-
-                // 宽容触控兜底：若触碰到了控件中间标签或缝隙，左半区缩小、右半区放大（严格限制仅在二级菜单打开时）
-                const handleWidgetTap = function(e) {
-                    if (!document.body.classList.contains('lyric-menu-open')) return;
-                    if (e.target && (e.target.id === 'btnFontDec' || e.target.id === 'btnFontInc' || (e.target.closest && e.target.closest('.font-btn')))) {
-                        return;
-                    }
-                    const rect = fontWidget.getBoundingClientRect();
-                    const clientX = e.clientX || (e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0));
-                    if (clientX > 0) {
-                        const mid = rect.left + rect.width / 2;
-                        adjustLyricFontSize(clientX < mid ? -1 : 1, e);
-                    }
-                };
-                fontWidget.addEventListener('click', handleWidgetTap);
-                fontWidget.addEventListener('touchend', handleWidgetTap);
-            }
-
-            const btnDec = document.getElementById('btnFontDec');
-            const btnInc = document.getElementById('btnFontInc');
-            if (btnDec) {
-                ['pointerdown', 'touchstart'].forEach(evt => {
-                    btnDec.addEventListener(evt, function(e) {
-                        e.stopPropagation();
-                    }, { passive: true });
-                });
-                ['pointerup', 'touchend', 'click'].forEach(evt => {
-                    btnDec.addEventListener(evt, function(e) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        adjustLyricFontSize(-1, e);
-                    });
-                });
-            }
-            if (btnInc) {
-                ['pointerdown', 'touchstart'].forEach(evt => {
-                    btnInc.addEventListener(evt, function(e) {
-                        e.stopPropagation();
-                    }, { passive: true });
-                });
-                ['pointerup', 'touchend', 'click'].forEach(evt => {
-                    btnInc.addEventListener(evt, function(e) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        adjustLyricFontSize(1, e);
-                    });
-                });
-            }
+            const widget = document.getElementById('lyricFontWidget');
+            if (!widget || widget.dataset.touchInitialized) return;
+            widget.dataset.touchInitialized = 'true';
+            ['pointerdown', 'pointerup', 'touchstart', 'touchend'].forEach(type => {
+                widget.addEventListener(type, e => e.stopPropagation(), { passive: true });
+            });
+            // A tap produces one click, including on WebViews with delayed
+            // compatibility mouse events. Pointer/touch events only isolate UI.
+            widget.addEventListener('click', e => {
+                e.stopPropagation();
+                if (!document.body.classList.contains('lyric-menu-open')) return;
+                const button = e.target.closest('.font-btn');
+                if (button) {
+                    adjustLyricFontSize(button.id === 'btnFontDec' ? -1 : 1, e);
+                    return;
+                }
+                const rect = widget.getBoundingClientRect();
+                if (e.clientX > 0) {
+                    adjustLyricFontSize(e.clientX < rect.left + rect.width / 2 ? -1 : 1, e);
+                }
+            });
         }
 
         try {

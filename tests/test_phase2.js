@@ -331,6 +331,19 @@ async function runTests() {
         window.handleRemoteKey(82); // Open lyric menu
         assert(window.isAnySecondaryMenuOpen() === true, "Lyric menu opened via Remote Menu key");
 
+        window.initLyricFontWidgetTouch();
+        window.initLyricFontWidgetTouch();
+        incBtn.dispatchEvent(new window.Event('pointerup', { bubbles: true }));
+        incBtn.dispatchEvent(new window.Event('touchend', { bubbles: true }));
+        assert(label.textContent === '20px', "Touch release waits for one canonical click");
+        await new Promise(resolve => setTimeout(resolve, 350));
+        incBtn.click();
+        assert(label.textContent === '21px', "Delayed compatibility click changes size once after repeated initialization");
+        decBtn.click();
+        decBtn.click();
+        assert(label.textContent === '19px', "Two rapid taps each change size by exactly one pixel");
+        window.applyLyricFontSize(20, false);
+
         // Left key (21) decrements font size by 1px
         window.handleRemoteKey(21);
         assert(label.textContent === '19px', "Remote DPAD_LEFT (21) decrements font size by 1px while menu is open");
