@@ -47,15 +47,6 @@
             touch-action: none !important;
         }
 
-        /* 低配图形降级模式 (针对低端电视盒与老旧车机，禁用高消耗的 backdrop-filter 模糊与 GPU 重合运算) */
-        body.perf-mode, body.perf-mode * {
-            backdrop-filter: none !important;
-            -webkit-backdrop-filter: none !important;
-        }
-        body.perf-mode .lyrics-stream {
-            contain: content;
-        }
-
         /* 动态全屏氛围背景约束容器 */
         .ambient-wrapper {
             position: absolute;
@@ -136,6 +127,7 @@
             font-weight: 600;
             cursor: pointer;
             backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
             transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
             outline: none;
             user-select: none;
@@ -299,6 +291,8 @@
             align-items: center;
             justify-content: center;
             cursor: pointer;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
             transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
             outline: none;
             padding: 0;
@@ -539,6 +533,7 @@
             padding: 16px 20px 15px 20px;
             box-sizing: border-box;
             backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
         }
 
@@ -782,6 +777,33 @@
             transition: none !important;
         }
 
+        /* 双语翻译歌词行：保持同一居中节点，避免 className 重写覆盖样式 */
+        .lyric-line[data-has-sub="1"] {
+            height: auto;
+            min-height: calc(var(--lyric-line-height, 50px) * 1.48);
+            line-height: 1.32;
+            padding: 6px 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 3px;
+        }
+
+        .lyric-line[data-has-sub="1"] .lyric-main {
+            line-height: 1.3;
+        }
+
+        .lyric-line[data-has-sub="1"] .lyric-sub {
+            font-size: calc(var(--lyric-font-size, 20px) * 0.72);
+            font-weight: 400;
+            opacity: 0.78;
+            line-height: 1.28;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
         /* 蓝牙实时单行车载歌词视口：纯净大字无晕光 */
         .live-stream-box {
             display: flex;
@@ -915,6 +937,7 @@
             border: 1px solid rgba(255, 255, 255, 0.14);
             border-radius: 18px;
             backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
             box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
             font-size: 13px;
             font-weight: 600;
@@ -1093,6 +1116,7 @@
             user-select: none;
             -webkit-tap-highlight-color: transparent;
             backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
             box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
             position: relative;
         }
@@ -1441,6 +1465,7 @@
         .lyric-source-menu:not(.show),
         .toast-tip:not(.show),
         body.idle .top-bar .device-pill,
+        body.idle .top-bar .btn-close,
         body.idle .bottom-bar .audio-spec-card,
         body.idle .bottom-bar .source-tag,
         body.idle .volume-widget:not(.force-show) {
@@ -1736,10 +1761,6 @@
                             <span class="spec-label">音频通道</span>
                             <span class="spec-val-text">SINK (无线立体声)</span>
                         </div>
-                        <div class="spec-row" style="margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.08); cursor: pointer;" onclick="togglePerfMode(event)" title="点击切换流畅模式">
-                            <span class="spec-label">低配流畅模式</span>
-                            <span class="spec-val-text" id="perfModeStatus">已关闭</span>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -1945,6 +1966,11 @@
                     <span class="menu-item-name">律动氛围</span>
                     <span class="menu-item-check" id="check-visualizer"><svg viewBox="0 0 24 24" width="13" height="13" stroke="#31c27c" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
                 </button>
+                <button class="source-menu-item" id="menuItem-translation" onclick="toggleTranslation(event)" style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.10);">
+                    <span class="menu-item-dot" style="background-color: #f472b6; box-shadow: 0 0 8px #f472b6;"></span>
+                    <span class="menu-item-name">双语翻译</span>
+                    <span id="translationStatusText" style="margin-left: auto; font-size: 11.5px; font-weight: 600; color: #31c27c;">已开启</span>
+                </button>
             </div>
         </div>
 
@@ -2075,40 +2101,8 @@
         document.addEventListener('touchstart', handleOutsideDismiss, { passive: true });
         document.addEventListener('click', handleOutsideDismiss);
 
-        // 低配流畅模式切换 (禁用 backdrop-filter 毛玻璃，提升低端芯片帧率)
-        function setPerfModeActive(enable, persistMode) {
-            if (enable) {
-                document.body.classList.add('perf-mode');
-            } else {
-                document.body.classList.remove('perf-mode');
-            }
-            if (persistMode !== undefined) {
-                try {
-                    localStorage.setItem('canvas_perf_mode', persistMode);
-                } catch (err) {}
-            }
-            const statusEl = document.getElementById('perfModeStatus');
-            if (statusEl) statusEl.textContent = enable ? '已开启 (禁用毛玻璃)' : '已关闭';
-        }
-
-        function togglePerfMode(e) {
-            if (e && e.stopPropagation) e.stopPropagation();
-            const isPerf = !document.body.classList.contains('perf-mode');
-            setPerfModeActive(isPerf, isPerf ? '1' : '0');
-        }
-        window.togglePerfMode = togglePerfMode;
-
-        (function initPerfMode() {
-            try {
-                const saved = localStorage.getItem('canvas_perf_mode');
-                if (saved === '1') {
-                    setPerfModeActive(true);
-                } else if (saved === null && window.AndroidApp && window.AndroidApp.isLowRamDevice && window.AndroidApp.isLowRamDevice()) {
-                    // 低内存设备首次启动自动开启流畅模式（用户仍可在左上角菜单手动关闭）
-                    setPerfModeActive(true);
-                }
-            } catch (err) {}
-        })();
+        try { localStorage.removeItem('canvas_perf_mode'); } catch (err) {}
+        document.body.classList.remove('perf-mode');
 
         // 免 ADB 首次启动权限自检引导回调
         function openPermGuide(e) {
@@ -2419,13 +2413,51 @@
             });
         }
 
+        // 演职员制作信息与纯音乐占位行统一过滤正则（供解析、纯音乐识别与蓝牙实时歌词校准共用）
+        const CREDIT_LINE_REGEX = /^(作词|作曲|编曲|制作|制作人|监制|混音|混音师|母带|母带工程|录音|录音师|录音棚|录音室|吉他|木吉他|电吉他|贝斯|鼓|键盘|钢琴|弦乐|小提琴|大提琴|古筝|二胡|笛子|箫|琵琶|和声|和音|伴唱|演唱|女声|男声|主唱|合唱|配唱|制作统筹|统筹|企划|文案|宣传|推广|出品|出品人|发行|监制人|封面|设计|鸣谢|特别鸣谢|指导|配音|念白|旁白|语言指导|粤语指导|潮语指导|闽南语指导|方言指导|原唱|翻唱|词|曲|编|混|录|唱|op|sp|written by|composed by|arranged by|produced by|mixed by|mastered by|recorded by|recorded at|vocal|vocals|chorus|guitar|bass|drums|piano|strings|lyrics by|music by|published by)[:：\s]/i;
+        const PURE_MUSIC_REGEX = /(纯音乐|请欣赏|没有填词|暂无歌词|无歌词|享受音乐|instrumental|no lyrics|pure music)/i;
+
+        let showTranslation = true;
+        try {
+            showTranslation = localStorage.getItem('bmc_show_translation') !== '0';
+        } catch (e) {}
+
+        function syncTranslationMenuUI() {
+            const label = document.getElementById('translationStatusText');
+            if (label) {
+                label.textContent = showTranslation ? '已开启' : '已关闭';
+                label.style.color = showTranslation ? '#31c27c' : 'rgba(255,255,255,0.45)';
+            }
+        }
+
+        function populateLyricLine(div, item) {
+            if (!div || !item) return;
+            if (showTranslation && item.subText) {
+                div.textContent = '';
+                div.dataset.hasSub = '1';
+                const mainSpan = document.createElement('span');
+                mainSpan.className = 'lyric-main';
+                mainSpan.textContent = item.text;
+                const subSpan = document.createElement('span');
+                subSpan.className = 'lyric-sub';
+                subSpan.textContent = item.subText;
+                div.appendChild(mainSpan);
+                div.appendChild(subSpan);
+            } else {
+                delete div.dataset.hasSub;
+                div.textContent = item.text;
+            }
+        }
+
         try {
             applyLyricFontSize(currentLyricFontSize, false);
             initLyricFontWidgetTouch();
+            syncTranslationMenuUI();
         } catch (e) {}
         document.addEventListener('DOMContentLoaded', function() {
             applyLyricFontSize(currentLyricFontSize, false);
             initLyricFontWidgetTouch();
+            syncTranslationMenuUI();
         });
         setTimeout(initLyricFontWidgetTouch, 200);
 
@@ -2449,7 +2481,7 @@
                             const div = document.createElement('div');
                             div.className = 'lyric-line far';
                             div.id = `line-${index}`;
-                            div.textContent = item.text;
+                            populateLyricLine(div, item);
                             stream.appendChild(div);
                         });
                         let newIdx = 0;
@@ -2463,6 +2495,12 @@
                         scrollToLyricIndex(activeLyricIndex, false);
                         return;
                     }
+                }
+            }
+            if (hasOfficialLyrics && lyrics && lyrics.length > 0) {
+                for (let i = 0; i < lyrics.length; i++) {
+                    const lineEl = document.getElementById(`line-${i}`);
+                    if (lineEl) populateLyricLine(lineEl, lyrics[i]);
                 }
             }
             if (activeLyricIndex >= 0) {
@@ -2507,17 +2545,22 @@
                 const next = items[index + 1];
                 const duration = next ? Math.max(0, next.time - item.time) : 4000;
                 let consumed = 0;
-                for (const part of parts) {
-                    result.push({ time: item.time + Math.floor(duration * consumed / total), text: part });
+                for (let pIdx = 0; pIdx < parts.length; pIdx++) {
+                    const part = parts[pIdx];
+                    const row = { time: item.time + Math.floor(duration * consumed / total), text: part };
+                    if (item.subText && pIdx === parts.length - 1) {
+                        row.subText = item.subText;
+                    }
+                    result.push(row);
                     consumed += getVisualLength(part);
                 }
             });
             return result;
         }
 
-        function parseLRC(lrcText) {
-            if (!lrcText) return [];
-            const lines = lrcText.split('\n');
+        function parseRawLrcEntries(blockText) {
+            if (!blockText) return [];
+            const lines = blockText.split('\n');
             const result = [];
             let globalOffsetMs = 0;
 
@@ -2554,6 +2597,42 @@
                 }
             }
             result.sort((a, b) => a.time - b.time);
+            return result;
+        }
+
+        function parseLRC(lrcText) {
+            if (!lrcText) return [];
+            const marker = '\n[bmc:trans]\n';
+            const splitIdx = lrcText.indexOf(marker);
+            const primaryBlock = splitIdx >= 0 ? lrcText.slice(0, splitIdx) : lrcText;
+            const transBlock = splitIdx >= 0 ? lrcText.slice(splitIdx + marker.length) : '';
+
+            const result = parseRawLrcEntries(primaryBlock);
+            if (transBlock && result.length > 0) {
+                const transEntries = parseRawLrcEntries(transBlock).filter(t => {
+                    const txt = (t.text || '').trim();
+                    return txt && txt !== '//' && !CREDIT_LINE_REGEX.test(txt);
+                });
+                if (transEntries.length > 0) {
+                    for (const item of result) {
+                        const mainTxt = (item.text || '').trim();
+                        if (!mainTxt || CREDIT_LINE_REGEX.test(mainTxt)) continue;
+                        let bestTrans = null;
+                        let bestDelta = 301;
+                        for (const t of transEntries) {
+                            const delta = Math.abs(t.time - item.time);
+                            if (delta <= 300 && delta < bestDelta) {
+                                bestDelta = delta;
+                                bestTrans = t;
+                            }
+                        }
+                        if (bestTrans && bestTrans.text !== mainTxt) {
+                            item.subText = bestTrans.text;
+                        }
+                    }
+                }
+            }
+
             return isPureMusicLyric(result) ? result : splitLongLyrics(result);
         }
         window.parseLRC = parseLRC;
@@ -2889,10 +2968,6 @@
         document.addEventListener('DOMContentLoaded', initLyricsDragGesture);
         setTimeout(initLyricsDragGesture, 200);
 
-        // 演职员制作信息与纯音乐占位行统一过滤正则（供纯音乐识别与蓝牙实时歌词校准共用）
-        const CREDIT_LINE_REGEX = /^(作词|作曲|编曲|制作|制作人|监制|混音|混音师|母带|母带工程|录音|录音师|录音棚|录音室|吉他|木吉他|电吉他|贝斯|鼓|键盘|钢琴|弦乐|小提琴|大提琴|古筝|二胡|笛子|箫|琵琶|和声|和音|伴唱|演唱|女声|男声|主唱|合唱|配唱|制作统筹|统筹|企划|文案|宣传|推广|出品|出品人|发行|监制人|封面|设计|鸣谢|特别鸣谢|指导|配音|念白|旁白|语言指导|粤语指导|潮语指导|闽南语指导|方言指导|原唱|翻唱|词|曲|编|混|录|唱|op|sp|written by|composed by|arranged by|produced by|mixed by|mastered by|recorded by|recorded at|vocal|vocals|chorus|guitar|bass|drums|piano|strings|lyrics by|music by|published by)[:：\s]/i;
-        const PURE_MUSIC_REGEX = /(纯音乐|请欣赏|没有填词|暂无歌词|无歌词|享受音乐|instrumental|no lyrics|pure music)/i;
-
         // 智能判断歌词是否为纯音乐（覆盖“作词：... 作曲：... 纯音乐，请欣赏”、无填词、或纯制作演职员信息）
         function isPureMusicLyric(lrcArray) {
             if (!lrcArray || lrcArray.length === 0) return true;
@@ -3146,7 +3221,7 @@
                     const div = document.createElement('div');
                     div.className = 'lyric-line' + (index === 0 ? ' active' : (index <= 4 ? ` near near-${index}` : ' far'));
                     div.id = `line-${index}`;
-                    div.textContent = item.text;
+                    populateLyricLine(div, item);
                     stream.appendChild(div);
                 });
 
@@ -3264,7 +3339,22 @@
                     }
                 }
             });
+            syncTranslationMenuUI();
         }
+
+        function toggleTranslation(e) {
+            if (e && e.stopPropagation) e.stopPropagation();
+            showTranslation = !showTranslation;
+            try {
+                localStorage.setItem('bmc_show_translation', showTranslation ? '1' : '0');
+            } catch (err) {}
+            syncTranslationMenuUI();
+            reapplyLyricsAtCurrentFontSize();
+            showToastTip(showTranslation ? '译文显示：已开启' : '译文显示：已关闭');
+            resetIdleTimer();
+        }
+        window.toggleTranslation = toggleTranslation;
+        window.isTranslationEnabled = () => showTranslation;
 
         // 点击页面其它任意地方自动收起二级菜单
         document.addEventListener('click', function(e) {
@@ -3436,15 +3526,15 @@
             if (userExplicitMode === source) {
                 if (currentTrack.streamLyric) {
                     showStreamLyric(currentTrack.streamLyric);
-                    updateStatusTag('蓝牙歌词 (原源无词)', SOURCE_META.bluetooth.color);
+                    updateStatusTag(data.degraded ? '蓝牙歌词 (原源受限)' : '蓝牙歌词 (原源无词)', SOURCE_META.bluetooth.color);
                 } else {
                     renderLyrics([]);
-                    updateStatusTag(meta.label + ' (无词)', '#888888');
+                    updateStatusTag(meta.label + (data.degraded ? ' (接口受限)' : ' (无词)'), '#888888');
                 }
             }
         };
 
-        // 接收来自 Java 原生多源高速检索的网络封面与官方歌词 (iTunes, Kugou, LRCLIB)
+        // 接收来自 Java 原生多源高速检索的网络封面与歌词 (NetEase / QQ / Kugou / iTunes / LRCLIB)
         window.onOnlineResult = function(data) {
             if (!data) return;
             if (typeof data.generation === 'number' && data.generation !== currentPlaybackGeneration) {
@@ -3757,47 +3847,10 @@
         let lastRenderedTonearmAngle = -999;
         let timelineRafId = null;
 
-        // 帧率探针（FPS Watchdog）：播放期间持续监测渲染帧耗时，若连续 90 帧平均低于 ~29fps 且用户未强制关闭，自动开启低配流畅模式
-        let fpsSampleCount = 0;
-        let fpsTotalDeltaMs = 0;
-        let lastFrameTimestamp = 0;
-        let fpsAutoDowngraded = false;
-
         function updateTimeline() {
             timelineRafId = null;
             if (document.hidden) {
-                lastFrameTimestamp = 0;
                 return;
-            }
-
-            const nowPerf = performance.now();
-            if (isPlaying && !fpsAutoDowngraded && !document.body.classList.contains('perf-mode')) {
-                if (lastFrameTimestamp > 0) {
-                    const frameDelta = nowPerf - lastFrameTimestamp;
-                    // 仅统计正常连续帧（排除切后台或 GC 长暂停 >250ms）
-                    if (frameDelta > 5 && frameDelta < 250) {
-                        fpsSampleCount++;
-                        fpsTotalDeltaMs += frameDelta;
-                        if (fpsSampleCount >= 90) {
-                            const avgDelta = fpsTotalDeltaMs / fpsSampleCount;
-                            fpsSampleCount = 0;
-                            fpsTotalDeltaMs = 0;
-                            if (avgDelta > 34.5) {
-                                let userForcedOff = false;
-                                try {
-                                    userForcedOff = (localStorage.getItem('canvas_perf_mode') === '0');
-                                } catch (e) {}
-                                if (!userForcedOff) {
-                                    fpsAutoDowngraded = true;
-                                    setPerfModeActive(true);
-                                }
-                            }
-                        }
-                    }
-                }
-                lastFrameTimestamp = nowPerf;
-            } else {
-                lastFrameTimestamp = 0;
             }
 
             let currentPos = lastPositionMs;
@@ -4050,7 +4103,7 @@
         window.toggleLyricMenu = toggleLyricMenu;
 
         // ===== 电视遥控器 (D-Pad 方向键 / 确认键 / 菜单键) 与触控双栖导航支持 =====
-        const LYRIC_MENU_ORDER = ['auto', 'netease', 'qq', 'kugou', 'lrclib', 'bluetooth', 'visualizer'];
+        const LYRIC_MENU_ORDER = ['auto', 'netease', 'qq', 'kugou', 'lrclib', 'bluetooth', 'visualizer', 'translation'];
         let remoteMenuFocusIdx = -1;
 
         function clearRemoteMenuFocus() {
@@ -4154,7 +4207,11 @@
                 case 66: // KEYCODE_ENTER
                     if (isLyricMenuOpen) {
                         const src = LYRIC_MENU_ORDER[remoteMenuFocusIdx >= 0 ? remoteMenuFocusIdx : 0];
-                        selectLyricSource(src);
+                        if (src === 'translation') {
+                            toggleTranslation();
+                        } else {
+                            selectLyricSource(src);
+                        }
                     } else {
                         triggerPlayPause();
                     }

@@ -45,13 +45,16 @@ adb shell pm grant com.bluetoothmusiccanvas android.permission.DUMP
 - **按需跨桥门控（On-Demand Spectrum Gating）**：当正常滚动歌词激活、频谱组件隐藏时，前端自动通知原生层关闭 25Hz `evaluateJavascript` 跨桥推送，转为 250ms 低功耗静默环境音监测，大幅释放 WebView 与主线程 CPU。
 - **静音平滑平息与休眠基底**：无音频或播放暂停时，柱条自适应衰减归位于底座胶囊基线（通过柱高变化保留圆角），彻底消除静音死循环正弦波。
 
-### 🖼️ 3. 多源官方超清封面与智能语义排版
-- **四平台聚合检索与时长校验**：原生多线程聚合检索（网易云音乐 / QQ音乐 / 酷狗音乐 / Apple Music iTunes 600×600 / LRCLIB），结合曲目时长差值（$\Delta \le 2\text{s}$ 满分，$\Delta > 15\text{s}$ 降权）精准防翻唱/伴奏误配，无惧跨域与防盗链。
+### 🖼️ 3. 多源高清专辑封面与智能语义排版
+- **多平台聚合检索与时长校验**：原生多线程聚合检索（网易云音乐 / QQ音乐 / 酷狗音乐 / Apple iTunes Search API 600×600 / LRCLIB），结合曲目时长差值（$\Delta \le 2\text{s}$ 满分，$\Delta > 15\text{s}$ 降权）精准防翻唱/伴奏误配，无惧跨域与防盗链。
 - **平台默认白底人像/占位封面精准拦截**：原生与前端双层拦截各音乐平台默认歌手头像与默认封面 URL（如 `default_singer`、`default_album`、`default_avatar`、`singerimg.kugou.com` 等），无真实专辑图或切换至 B 站等视频音轨时优雅回退至纯粹微距空白黑胶盘。
 - **古典乐与长曲名智能分行排版**：智能识别作品编号与乐章号（如 `K. 285: I. Allegro`），将乐章号与速度标记紧密绑定防孤立折行；长副标题括号与破折号自动语义断行。
 
 ### 🎤 4. 6 大歌词来源自由切换 & 车载蓝牙歌词双层校准 (Sub-Second Lyric Sync)
-- **多歌词源一键切换与偏好记忆**：支持「自动推荐」、「网易云音乐」、「QQ音乐」、「酷狗音乐」、「LRCLIB 全球库」、「蓝牙实时歌词」及「律动氛围」自由切换，切歌时严格保持用户选定的歌词源偏好。
+- **多歌词源一键切换、双语翻译与偏好记忆**：支持「自动推荐」、「网易云音乐」、「QQ音乐」、「酷狗音乐」、「LRCLIB 全球库」、「蓝牙实时歌词」及「律动氛围」自由切换，切歌时严格保持用户选定的歌词源偏好；自动提取网易云（`tlyric` 翻译 / `romalrc` 罗马音）与 QQ 音乐译文，并可在歌词菜单中一键开关 **「双语翻译」**。
+- **公开 API 与非官方源分层容错（抗风控与熔断冷却）**：
+  - **公开 / 标准接口**：`LRCLIB`（同步歌词）、`Apple iTunes Search API`（专辑封面）及 `Android MediaSession / AVRCP`（蓝牙实时歌词）为标准公开或系统级接口；
+  - **非官方网页/客户端接口**：`网易云音乐`、`QQ音乐` 与 `酷狗音乐` 调用公开网页/客户端接口（非商业开发者授权 API），内置单曲检索次数精简（每源最多 2 次）、网易云备用检索接口回退、3 分钟负缓存防重查，以及单源 HTTP 429/403/5xx 或风控错误触发 120 秒熔断冷却并自动跳转下一顺位音源，手动切换若遇受限也会明确提示 `(接口受限)`。
 - **车载蓝牙歌词流原生解析**：完美兼容网易云音乐与 QQ 音乐「车载蓝牙歌词」模式（自动剥离动态歌词头、提取歌名/歌手/内嵌专辑并维持稳态播放代次，不引发假切歌）。
 - **双层时间窗口与防倒跳权威校准**：
   - **第一层（优先窗口）**：在估计进度 $\pm 15$ 秒内严密匹配（无论精准文本匹配或子串包含匹配均优先约束于 $\pm 15\text{s}$ 邻域），彻底杜绝《Sign of the Times》等长曲目中相同副歌或短句重复段落跨段误跳；
@@ -77,14 +80,13 @@ adb shell pm grant com.bluetoothmusiccanvas android.permission.DUMP
 - **免 ADB 首次安装权限自检与一键引导**：
   - 启动及从后台返回时自动检测 `NotificationListenerService` 通知使用权；若未授权，顶部自动展示醒目引导胶囊，选择「前往系统设置」后手动授权，也可选择「稍后」暂时关闭引导。
 
-### 🚀 8. 针对低配电视盒 / 车机的深度渲染与能效优化
+### 🚀 8. 针对电视盒 / 车机的深度渲染与能效优化
 - **`<canvas>` 离屏预烘焙氛围背景模糊（零实时 GPU 消耗）**：
   - 切歌封面加载完成时，仅在 `onload` 瞬间通过 `16×16 ➔ 64×64` 双线性降采样/升采样离屏预烘焙一次全屏流体氛围背景（耗时 `< 0.5ms`，零 CORS 跨域报错），并自动卸载 CSS `filter: blur(85px)`，使 **60fps 播放期间背景高斯模糊 GPU 着色器负载降为 0**。
-- **硬件性能自动分级与运行时帧率探针（FPS Watchdog）**：
-  - 首次启动自动查询 `ActivityManager.isLowRamDevice()`，并在播放期间实时监控渲染帧耗时；若连续 90 帧平均低于 ~29 FPS，自动开启 `body.perf-mode` 流畅模式卸载毛玻璃开销。
+- **全系默认开启磨砂毛玻璃（与隐藏态智能卸载）**：
+  - 顶部状态胶囊、歌词来源控制区、唱机底座与弹窗浮层均默认开启 `backdrop-filter` 磨砂毛玻璃质感；仅在隐藏态弹窗与沉浸模式（`body.idle`）自动卸载 `backdrop-filter`，避免隐藏透明图层持续触发全屏高斯模糊采样。
 - **WebView & GPU 管线减负**：
   - 60fps 时间轴更新内置秒数、进度百分比与唱针角度脏值阈值检测，消除无效 DOM 写入与 CSS Transition 抖动；
-  - 隐藏态弹窗与沉浸模式（`body.idle`）自动卸载 `backdrop-filter`，避免透明图层持续触发全屏高斯模糊采样；
   - 退居后台悬浮球时自动调用 `WebView.onPause()` / `pauseTimers()`，后台 WebView 渲染 CPU 降至 **0%**。
   - 在四核 ARMv7 Cortex-A53 + Mali-450 电视盒实机测试中，全屏播放总 CPU 占用降低 **47%**，`Chrome_InProcGp` 降低 **88%**，P99 帧耗时缩短 **45%**。
 - **100% 真实硬件蓝牙 A2DP 编码与音频参数探测**：
@@ -157,7 +159,7 @@ python build.py --test --install 192.168.5.18:5555 --launch
 python tests/run_all.py
 ```
 
-构建流水线会自动查找系统 JDK 与 Android 工具链，按序执行：资源编译打包 (`aapt2 compile/link`) ➔ Java 编译 (`javac`) ➔ Dalvik Release 字节码优化生成 (`D8 --release`) ➔ APK 归档与签名 (`jarsigner`)，并在根目录输出最终的 `BluetoothMusicCanvas.apk`。
+构建流水线会自动查找系统 JDK 与 Android 工具链，按序执行：前端模块化打包 (`frontend/` ➔ `assets/index.html`) ➔ 资源编译打包 (`aapt2 compile/link`) ➔ Java 编译 (`javac`) ➔ Dalvik Release 字节码优化生成 (`D8 --release`) ➔ 签名与 `4-byte` zipalign 对齐（优先 `apksigner` v1/v2/v3，兜底 `jarsigner` + 内置对齐与验签），并在根目录输出最终的 `BluetoothMusicCanvas.apk`。
 
 ---
 
@@ -174,13 +176,13 @@ MediaMonitorService (com.bluetoothmusiccanvas.MediaMonitorService)
        │
        ├──> BluetoothMetadataNormalizer & MediaStateStore (车载歌词剥离、防抖与 PlaybackGeneration 代次状态机)
        ├──> MediaClassifier (视频/音乐漏斗式单一权威分类器)
-       ├──> MetadataFetcher (网易云 / QQ音乐 / 酷狗 / iTunes / LRCLIB 多线程聚合检索 + 50首 LRU 缓存 + 时长打分)
+       ├──> MetadataFetcher (网易云 / QQ音乐 / 酷狗 / iTunes / LRCLIB 多线程聚合检索 + 双语译文合并 + 50首 LRU/负缓存 + 120s 熔断)
        ├──> AudioVisualizerHelper (1024点 FFT 9频段物理频谱 + AGC 动态增益 + 按需跨桥门控)
        ├──> WindowManager (桌面迷你旋转黑胶悬浮窗 TYPE_APPLICATION_OVERLAY，按需懒加载封面 Bitmap)
        └──> MainActivity (硬件加速 WebView 沉浸容器，支持后台 onPause/pauseTimers 休眠)
               │
               ▼
-       assets/index.html (分层合成3D黑胶、毛玻璃唱针循迹、双层窗口歌词校准、9/5频段音浪)
+       frontend/ ➔ assets/index.html (模块化前端：分层合成3D黑胶、毛玻璃唱针循迹、双语歌词渲染与双层窗口校准、9/5频段音浪)
 ```
 
 ---

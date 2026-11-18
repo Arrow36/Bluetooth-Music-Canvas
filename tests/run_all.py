@@ -4,11 +4,18 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+import build
+
 
 def main():
     print("==================================================")
     print("Running Bluetooth Music Canvas Test Suite")
     print("==================================================")
+
+    build.bundle_frontend()
 
     # 1. Run Node.js Tests
     print("\n--- Running Frontend Unit Tests (Node.js) ---")

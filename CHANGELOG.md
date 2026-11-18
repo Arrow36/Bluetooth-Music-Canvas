@@ -1,13 +1,35 @@
 # 更新记录
 
-## 未发布 — 2026-11-09
+## 1.2.0 — 2026-11-18
+
+### 双语歌词与多源容灾
+
+- 网易云音乐支持 `tlyric` 中文译文（日韩曲目无有效译文时回退 `romalrc` 罗马音），QQ 音乐支持 `trans` 译文提取，通过 `[bmc:trans]` 合并下发并在前端 300ms 容差内对齐渲染。
+- 歌词菜单新增「双语翻译」开关，支持触控及电视遥控器方向键/确认键实时切换显示。
+- 新增 `LRCLIB` 公开歌词检索与 `Apple iTunes`（HK / Global）封面兜底；酷狗歌词检索升级为 HTTPS。
+- 为歌词与封面请求接入 120 秒限流熔断冷却及 3 分钟负缓存保护，受限回退时显示对应状态提示。
+
+### 曲目识别修复
+
+- 修复括号内含斜杠的副标题（如 `TV动画《Fate/Grand Order ...》`）误触发歌手/歌名切分的问题，并补充专辑消歧与多歌手保护逻辑。
+
+### 视觉与系统兼容优化
+
+- 移除低配流畅模式开关与自动降级逻辑，默认全局启用毛玻璃视觉效果。
+- `MediaMonitorService` 新增 `android.permission.DUMP` 权限门控、`Permission Denial:` 锁存跳过与 `dumpsys -t 1` 超时保护，避免无权限时重复创建子进程。
+- `MainActivity.restartApp()` 在 Android 6.0+（API 23+）为 `PendingIntent` 补充 `FLAG_IMMUTABLE`。
+
+### 前端模块化与构建对齐
+
+- 将单文件前端无损拆分为 `frontend/` 模块目录（`template.html`、`styles/*.css`、`js/*.js`），由 `build.py`（支持 `--bundle-only`）与 `tests/run_all.py` 自动打包生成 `assets/index.html`。
+- 构建流程支持可选探测 SDK `zipalign` / `apksigner`，并在缺失时执行内置 4 字节 ZIP 对齐（`zipalign_apk`）、对齐核验与 `jarsigner -verify` 校验。
 
 ### 触屏字号修复
 
 - 字号按钮统一由 click 事件调整，避免同一次触摸的 pointerup、touchend 与延迟 click 重复改变字号。
 - 初始化监听器只执行一次；移除时间防抖，使连续点击每次均改变 1px。
 - 补充重复初始化、延迟点击及快速连点回归测试。前端 97 项断言和仓库 Java 回归测试通过。
-- 仓库根目录 APK 已更新为此修复构建，已覆盖安装到 Android 9 设备并核对安装文件；设备上的实际触屏操作由用户验收。应用版本仍为 1.1.1。
+- 仓库根目录 APK 已更新为此构建，已覆盖安装到 Android 9 设备并核对安装文件；设备上的实际触屏操作由用户验收。
 
 
 ## 1.1.1 — 2026-11-09

@@ -227,6 +227,90 @@ public class TestMediaStateStore {
         assert neSnap2.streamLyric.equals("We got to, we got to（away）");
         System.out.println("  PASS [14]: NetEase mid-song stream lyrics maintain steady track title and generation across subsequent lines");
 
+        // 15. Regression: slash inside bracketed subtitle (Fate/Grand Order) must NOT split the song title
+        MediaStateStore miletStore = new MediaStateStore();
+        long miletEpoch = miletStore.getSessionEpoch();
+        String miletRawArtist = "milet/Tell me (TV动画《Fate/Grand Order 绝对魔兽战线 巴比伦尼亚》片尾曲3)";
+        String miletExpectedTitle = "Tell me (TV动画《Fate/Grand Order 绝对魔兽战线 巴比伦尼亚》片尾曲3)";
+        MediaStateStore.MediaSnapshot miletSnap1 = miletStore.handleMetadata(
+                miletEpoch, "繰り返してしまうよ また", miletRawArtist, "Prover / Tell me", 223000, "milet1"
+        );
+        assert miletSnap1 != null;
+        assert miletSnap1.playbackGeneration == 1 : "Expected generation 1, got: " + miletSnap1.playbackGeneration;
+        assert miletSnap1.title.equals(miletExpectedTitle) : "Expected full title, got: " + miletSnap1.title;
+        assert miletSnap1.artist.equals("milet") : "Expected artist milet, got: " + miletSnap1.artist;
+        assert miletSnap1.album.equals("Prover / Tell me") : "Expected album preserved, got: " + miletSnap1.album;
+        assert miletSnap1.streamLyric.equals("繰り返してしまうよ また") : "Expected first stream lyric preserved";
+        assert miletSnap1.format == MetadataNormalizer.MetadataFormat.CAR_LYRICS_CONFIRMED;
+
+        for (String line : new String[]{"作词: milet/Ryosuke Dr.R Sakai", "So just tell me now"}) {
+            MediaStateStore.MediaSnapshot lyricUpdate = miletStore.handleMetadata(
+                    miletEpoch, line, miletRawArtist, "Prover / Tell me", 223000, "milet1"
+            );
+            assert lyricUpdate != null && lyricUpdate.changeType == MediaStateStore.ChangeType.STREAM_LYRIC;
+            assert lyricUpdate.playbackGeneration == 1 : "Generation must stay 1 across lyric lines";
+            assert lyricUpdate.streamLyric.equals(line);
+        }
+        System.out.println("  PASS [15]: Bracketed slash inside anime subtitle does not split track title");
+
+        // 16. Nested mixed brackets in subtitle
+        String aimerRawArtist = "Aimer/Brave Shine (TVアニメ『Fate/stay night [Unlimited Blade Works]』OPテーマ)";
+        String aimerExpectedTitle = "Brave Shine (TVアニメ『Fate/stay night [Unlimited Blade Works]』OPテーマ)";
+        MetadataNormalizer.NormalizedResult aimerRes = MetadataNormalizer.normalize(
+                "左手に隠した願いは", aimerRawArtist, "Brave Shine", 233000,
+                "", "", MetadataNormalizer.MetadataFormat.UNKNOWN
+        );
+        assert aimerRes != null;
+        assert aimerRes.artist.equals("Aimer") : "Expected artist Aimer, got: " + aimerRes.artist;
+        assert aimerRes.title.equals(aimerExpectedTitle) : "Expected full nested-bracket title, got: " + aimerRes.title;
+        assert MetadataNormalizer.cleanTitle(aimerRes.title).equals("Brave Shine")
+                : "cleanTitle must strip nested mixed brackets cleanly, got: " + MetadataNormalizer.cleanTitle(aimerRes.title);
+        System.out.println("  PASS [16]: Nested mixed brackets preserved in title and stripped cleanly by cleanTitle");
+
+        // 17. Top-level slash inside title disambiguated by album
+        MetadataNormalizer.NormalizedResult slashInTitle1 = MetadataNormalizer.normalize(
+                "背中合わせの二人", "川本真琴/1/2", "1/2", 315000,
+                "", "", MetadataNormalizer.MetadataFormat.UNKNOWN
+        );
+        assert slashInTitle1 != null;
+        assert slashInTitle1.title.equals("1/2") : "Expected title 1/2, got: " + slashInTitle1.title;
+        assert slashInTitle1.artist.equals("川本真琴") : "Expected artist 川本真琴, got: " + slashInTitle1.artist;
+
+        MetadataNormalizer.NormalizedResult slashInTitle2 = MetadataNormalizer.normalize(
+                "纯音乐，请欣赏", "milet/Prover / Tell me", "Prover / Tell me", 240000,
+                "", "", MetadataNormalizer.MetadataFormat.UNKNOWN
+        );
+        assert slashInTitle2 != null;
+        assert slashInTitle2.title.equals("Prover / Tell me") : "Expected title Prover / Tell me, got: " + slashInTitle2.title;
+        assert slashInTitle2.artist.equals("milet") : "Expected artist milet, got: " + slashInTitle2.artist;
+        System.out.println("  PASS [17]: Top-level slash inside title disambiguated via album");
+
+        // 18. Multi-artist no-false-inversion guards & unspaced NetEase mid-song check
+        MetadataNormalizer.NormalizedResult psyRes = MetadataNormalizer.normalize(
+                "That That", "PSY / (G)I-DLE", "PSY 9th", 174000,
+                "", "", MetadataNormalizer.MetadataFormat.UNKNOWN
+        );
+        assert psyRes != null && psyRes.format == MetadataNormalizer.MetadataFormat.STANDARD
+                : "PSY / (G)I-DLE must stay STANDARD, got: " + (psyRes != null ? psyRes.format : null);
+        assert psyRes.title.equals("That That") && psyRes.artist.equals("PSY / (G)I-DLE");
+
+        MetadataNormalizer.NormalizedResult menuhinRes = MetadataNormalizer.normalize(
+                "Violin Concerto", "Menuhin / Li", "Violin Masterpieces", 420000,
+                "", "", MetadataNormalizer.MetadataFormat.UNKNOWN
+        );
+        assert menuhinRes != null && menuhinRes.format == MetadataNormalizer.MetadataFormat.STANDARD
+                : "Menuhin / Li must stay STANDARD, got: " + (menuhinRes != null ? menuhinRes.format : null);
+        assert menuhinRes.title.equals("Violin Concerto") && menuhinRes.artist.equals("Menuhin / Li");
+
+        MetadataNormalizer.NormalizedResult unspacedMidSong = MetadataNormalizer.normalize(
+                "It's a sign of the times", "Harry Styles/Falling", "Fine Line", 240000,
+                "", "", MetadataNormalizer.MetadataFormat.UNKNOWN
+        );
+        assert unspacedMidSong != null && unspacedMidSong.format == MetadataNormalizer.MetadataFormat.CAR_LYRICS_CONFIRMED;
+        assert unspacedMidSong.title.equals("Falling") : "Expected title Falling, got: " + unspacedMidSong.title;
+        assert unspacedMidSong.artist.equals("Harry Styles") : "Expected artist Harry Styles, got: " + unspacedMidSong.artist;
+        System.out.println("  PASS [18]: Multi-artist guards and unspaced mid-song extraction passed");
+
         System.out.println("==================================================");
         System.out.println("All MediaStateStore & Normalizer tests PASSED!");
         System.out.println("==================================================");

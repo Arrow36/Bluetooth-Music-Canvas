@@ -90,6 +90,15 @@ public class MediaMonitorService extends NotificationListenerService {
     private static volatile String sCachedNegotiatedCodec = "";
     private static volatile String sCachedNegotiatedPeer = "";
     private static volatile long sLastCodecProbeTimeMs = 0;
+    private static volatile boolean sDumpPermissionDenied = false;
+
+    private static boolean canRunDumpsys(Context context) {
+        if (sDumpPermissionDenied) return false;
+        Context ctx = (context != null) ? context : sInstance;
+        if (ctx == null) return false;
+        return ctx.checkCallingOrSelfPermission(android.Manifest.permission.DUMP)
+                == android.content.pm.PackageManager.PERMISSION_GRANTED;
+    }
 
     private final android.bluetooth.BluetoothProfile.ServiceListener mProfileListener =
             new android.bluetooth.BluetoothProfile.ServiceListener() {
@@ -213,6 +222,7 @@ public class MediaMonitorService extends NotificationListenerService {
     public void onCreate() {
         super.onCreate();
         sInstance = this;
+        sDumpPermissionDenied = false;
         mWindowManager = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
         mPrefs = getSharedPreferences("floating_widget_prefs", Context.MODE_PRIVATE);
         mFloatingX = mPrefs.getInt("pos_x", 40);
@@ -643,10 +653,13 @@ public class MediaMonitorService extends NotificationListenerService {
      * 2. 若 A2DP Sink 处于活动态，解析对应 peer 的 BTA AV Stream Control Block 中各 SEP 的
      *    "SEP AVDTP handle: <H>" -> "Codec: <C>" 映射表，并与当前激活流句柄 "AVDTP handle: <H>" 精确匹配。
      */
-    private static String probeActiveA2dpCodec(String peerAddress) {
+    private static String probeActiveA2dpCodec(Context context, String peerAddress) {
         String normPeer = (peerAddress != null) ? peerAddress.trim().toLowerCase(java.util.Locale.US) : "";
         if (!sCachedNegotiatedCodec.isEmpty() && normPeer.equals(sCachedNegotiatedPeer)) {
             return sCachedNegotiatedCodec;
+        }
+        if (!canRunDumpsys(context)) {
+            return "";
         }
         long now = android.os.SystemClock.elapsedRealtime();
         if (now - sLastCodecProbeTimeMs < 5000 && sLastCodecProbeTimeMs > 0 && normPeer.equals(sCachedNegotiatedPeer)) {
@@ -658,7 +671,7 @@ public class MediaMonitorService extends NotificationListenerService {
         java.lang.Process proc = null;
         java.io.BufferedReader reader = null;
         try {
-            proc = Runtime.getRuntime().exec(new String[]{"dumpsys", "bluetooth_manager"});
+            proc = Runtime.getRuntime().exec(new String[]{"dumpsys", "-t", "1", "bluetooth_manager"});
             reader = new java.io.BufferedReader(new java.io.InputStreamReader(proc.getInputStream()));
 
             java.util.Map<Integer, String> sepCodecMap = new java.util.HashMap<>();
@@ -671,6 +684,10 @@ public class MediaMonitorService extends NotificationListenerService {
             String line;
 
             while ((line = reader.readLine()) != null) {
+                if (line.contains("Permission Denial:")) {
+                    sDumpPermissionDenied = true;
+                    break;
+                }
                 String trimmed = line.trim();
                 if (trimmed.startsWith("Current Codec:")) {
                     String val = trimmed.substring("Current Codec:".length()).trim();
@@ -752,7 +769,7 @@ public class MediaMonitorService extends NotificationListenerService {
      * 从 AudioManager.getActivePlaybackConfigurations() 或 dumpsys audio 的 PlaybackActivityMonitor 中
      * 提取 com.android.bluetooth (UID 1002) 当前活动 AAudio/AudioTrack 播放流的真实采样率（如 44100Hz）。
      */
-    private static int probeActiveBluetoothStreamSampleRateHz(AudioManager am) {
+    private static int probeActiveBluetoothStreamSampleRateHz(Context context, AudioManager am) {
         long now = android.os.SystemClock.elapsedRealtime();
         if (sCachedBtStreamHz > 0 && now - sLastBtStreamHzProbeMs < 5000) {
             return sCachedBtStreamHz;
@@ -789,18 +806,22 @@ public class MediaMonitorService extends NotificationListenerService {
             } catch (Throwable ignored) {}
         }
 
-        // 2. 若公开 API 因匿名化隐藏了 sampleRate 或 UID，从 dumpsys audio 读取真实蓝牙播放流采样率
-        if (foundHz <= 0) {
+        // 2. 若公开 API 因匿名化隐藏了 sampleRate 或 UID，在具备 DUMP 权限时从 dumpsys audio 读取真实蓝牙播放流采样率
+        if (foundHz <= 0 && canRunDumpsys(context)) {
             java.lang.Process proc = null;
             java.io.BufferedReader reader = null;
             try {
-                proc = Runtime.getRuntime().exec(new String[]{"dumpsys", "audio"});
+                proc = Runtime.getRuntime().exec(new String[]{"dumpsys", "-t", "1", "audio"});
                 reader = new java.io.BufferedReader(new java.io.InputStreamReader(proc.getInputStream()));
                 String line;
                 int startedBtHz = 0;
                 int anyBtHz = 0;
                 java.util.regex.Pattern srPattern = java.util.regex.Pattern.compile("sampleRate=(\\d+)");
                 while ((line = reader.readLine()) != null) {
+                    if (line.contains("Permission Denial:")) {
+                        sDumpPermissionDenied = true;
+                        break;
+                    }
                     if (line.contains("com.android.bluetooth") || line.contains("u/pid:1002/")) {
                         java.util.regex.Matcher m = srPattern.matcher(line);
                         if (m.find()) {
@@ -1028,7 +1049,7 @@ public class MediaMonitorService extends NotificationListenerService {
                     } catch (Throwable ignored) {}
                 }
                 if (codecLabel.isEmpty()) {
-                    String btaCodec = probeActiveA2dpCodec(address);
+                    String btaCodec = probeActiveA2dpCodec(context, address);
                     if (!btaCodec.isEmpty()) {
                         codecLabel = "A2DP · " + btaCodec;
                         specSource += "+BTA_AV(" + btaCodec + ")";
@@ -1038,7 +1059,7 @@ public class MediaMonitorService extends NotificationListenerService {
                 }
                 if (detectedHz <= 0 && context != null) {
                     AudioManager btAm = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
-                    int btStreamHz = probeActiveBluetoothStreamSampleRateHz(btAm);
+                    int btStreamHz = probeActiveBluetoothStreamSampleRateHz(context, btAm);
                     if (btStreamHz > 0) {
                         detectedHz = btStreamHz;
                         specSource += "+BtAudioTrack(" + btStreamHz + "Hz)";

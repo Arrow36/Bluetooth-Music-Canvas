@@ -1,0 +1,319 @@
+        /* 中部主体双栏区 */
+        .main-body {
+            flex: 1;
+            width: 100%;
+            display: flex;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        /* 左侧面板：黑胶唱机与播控一体化高阶设计 */
+        .left-panel {
+            width: 44%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding-right: 36px;
+            border-right: 1px solid rgba(255, 255, 255, 0.07);
+            gap: 20px;
+        }
+
+        .turntable-container {
+            position: relative;
+            width: 280px;
+            height: 280px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-shrink: 0;
+            isolation: isolate;
+            contain: layout style;
+        }
+
+        /* 静态黑胶投影层：与旋转层分离，避免 GPU 每帧重绘旋转的非对称阴影 */
+        .turntable-container::before {
+            content: '';
+            position: absolute;
+            width: 260px;
+            height: 260px;
+            border-radius: 50%;
+            box-shadow: 0 24px 55px rgba(0, 0, 0, 0.8);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .vinyl-record {
+            width: 260px;
+            height: 260px;
+            border-radius: 50%;
+            background:
+                radial-gradient(circle, transparent 36%, rgba(255, 255, 255, 0.04) 37%, transparent 38%),
+                radial-gradient(circle, transparent 48%, rgba(255, 255, 255, 0.035) 49%, transparent 50%),
+                radial-gradient(circle, transparent 62%, rgba(255, 255, 255, 0.04) 63%, transparent 64%),
+                radial-gradient(circle, transparent 76%, rgba(255, 255, 255, 0.035) 77%, transparent 78%),
+                radial-gradient(circle, #0e1013 0%, #17191d 30%, #0d0f12 50%, #1a1d22 70%, #08090a 100%);
+            box-shadow:
+                inset 0 0 0 2px rgba(255, 255, 255, 0.08),
+                inset 0 0 16px rgba(0, 0, 0, 0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            z-index: 1;
+            animation: spinVinyl 24s linear infinite;
+            animation-play-state: paused;
+            will-change: transform;
+        }
+
+        .vinyl-record.playing {
+            animation-play-state: running;
+            box-shadow:
+                inset 0 0 0 2px rgba(255, 255, 255, 0.14),
+                inset 0 0 16px rgba(0, 0, 0, 0.9);
+        }
+
+        @keyframes spinVinyl {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .vinyl-cover {
+            position: relative;
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            overflow: hidden;
+            box-shadow:
+                0 0 0 4px #0d0f12,
+                0 0 0 5px rgba(255, 255, 255, 0.16),
+                inset 0 0 16px rgba(0, 0, 0, 0.7);
+            background: #14161b;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .vinyl-cover-img {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 50%;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+            z-index: 2;
+        }
+
+        .vinyl-cover-placeholder {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1;
+        }
+
+        .vinyl-center-dot {
+            display: none;
+        }
+
+        .tonearm-base {
+            display: none;
+        }
+
+        /* 真实黑胶唱臂：精工金属材质、高保真倒角与唱头，根据播放进度实时计算旋转角度 */
+        .tonearm {
+            position: absolute;
+            top: -38px;
+            right: 8px;
+            width: 72px;
+            height: 208px;
+            transform-origin: 36px 54.4px;
+            transform: rotate(-16deg);
+            transition: transform  0.35s cubic-bezier(0.25, 1, 0.5, 1);
+            z-index: 10;
+            mix-blend-mode: screen;
+            pointer-events: none;
+            will-change: transform;
+        }
+
+        .tonearm-overlay {
+            width: 100%;
+            height: 100%;
+            display: block;
+            pointer-events: none;
+        }
+
+        .tonearm svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* 紧凑而富有质感的控制底座 */
+        .player-deck {
+            width: 100%;
+            max-width: 390px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.035);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 24px;
+            padding: 16px 20px 15px 20px;
+            box-sizing: border-box;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+        }
+
+        .meta-container {
+            width: 100%;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        .song-title {
+            font-size: 22px;
+            font-weight: 700;
+            color: #ffffff;
+            letter-spacing: 0.3px;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+            line-height: 1.34;
+            display: -webkit-box;
+            -webkit-line-clamp: 4;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            word-break: break-word;
+            overflow-wrap: break-word;
+            line-break: strict;
+            text-wrap: balance;
+            white-space: pre-line;
+        }
+
+        .song-artist {
+            font-size: 15.5px;
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.75);
+            margin-top: 6px;
+            line-height: 1.38;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            word-break: break-word;
+        }
+
+        .progress-box {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.5);
+            margin-bottom: 12px;
+        }
+
+        .time-label {
+            font-variant-numeric: tabular-nums;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            min-width: 36px;
+            text-align: center;
+        }
+
+        .progress-bar-bg {
+            flex: 1;
+            height: 5px;
+            background: rgba(255, 255, 255, 0.12);
+            border-radius: 3px;
+            position: relative;
+            overflow: visible;
+        }
+
+        .progress-bar-fill {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #ff416c, #ff4b2b);
+            border-radius: 3px;
+        }
+
+        .progress-bar-thumb {
+            position: absolute;
+            right: -4px;
+            top: -2.5px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ffffff;
+            box-shadow: 0 0 8px rgba(255, 75, 43, 0.9);
+        }
+
+        .controls-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            width: 100%;
+        }
+
+        .btn-ctrl {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 50%;
+            width: 44px;
+            height: 44px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+            outline: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .btn-ctrl:active {
+            transform: scale(0.92);
+            background: rgba(255, 255, 255, 0.22);
+        }
+
+        .btn-ctrl svg {
+            width: 18px;
+            height: 18px;
+            fill: #ffffff;
+            pointer-events: none;
+        }
+
+        .btn-main {
+            width: 52px;
+            height: 52px;
+            background: #ffffff;
+            border: none;
+            box-shadow: 0 6px 20px rgba(255, 255, 255, 0.28);
+        }
+
+        .btn-main:active {
+            transform: scale(0.92);
+            background: #e6e6e6;
+            box-shadow: 0 3px 12px rgba(255, 255, 255, 0.2);
+        }
+
+        .btn-main svg {
+            width: 24px;
+            height: 24px;
+            fill: #0b0d10;
+        }
+

@@ -1,5 +1,7 @@
 package com.bluetoothmusiccanvas;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -58,15 +60,42 @@ public class MetadataNormalizer {
      * 2. QQ Music / Kugou format: "Title — Artist" or "Title — Artist · Album"
      */
     public static CandidateTrack parseCandidate(String rawArtist, String rawAlbum) {
+        return parseCandidate(rawArtist, rawAlbum, null);
+    }
+
+    /**
+     * Parses candidate title, artist, and optional album from raw artist field,
+     * ignoring delimiters inside balanced brackets and disambiguating top-level slashes
+     * using album or raw title when multiple top-level slashes exist.
+     */
+    public static CandidateTrack parseCandidate(String rawArtist, String rawAlbum, String rawTitle) {
         if (rawArtist == null || rawArtist.trim().isEmpty()) {
             return null;
         }
         String artist = rawArtist.trim();
         String album = rawAlbum != null ? rawAlbum.trim() : "";
+        boolean[] enclosed = computeEnclosedMask(artist);
 
-        // 1. NetEase format: "Artist / Title"
-        int slashIndex = artist.lastIndexOf('/');
-        if (slashIndex > 0 && slashIndex < artist.length() - 1) {
+        // 1. NetEase format: "Artist / Title" (ignoring slashes inside balanced brackets)
+        List<Integer> topSlashes = new ArrayList<>();
+        for (int i = 1; i < artist.length() - 1; i++) {
+            if (artist.charAt(i) == '/' && !enclosed[i]) {
+                topSlashes.add(i);
+            }
+        }
+        if (!topSlashes.isEmpty()) {
+            int slashIndex = topSlashes.get(topSlashes.size() - 1);
+            if (topSlashes.size() > 1) {
+                for (int idx : topSlashes) {
+                    String cand = artist.substring(idx + 1).trim();
+                    String perf = artist.substring(0, idx).trim();
+                    if (!cand.isEmpty() && !perf.isEmpty()
+                            && (matchesTargetExactly(cand, album) || matchesTargetExactly(cand, rawTitle))) {
+                        slashIndex = idx;
+                        break;
+                    }
+                }
+            }
             String candidateTitle = artist.substring(slashIndex + 1).trim();
             String performers = artist.substring(0, slashIndex).trim();
             if (!candidateTitle.isEmpty() && !performers.isEmpty()) {
@@ -82,12 +111,18 @@ public class MetadataNormalizer {
         String[] dashSeparators = new String[]{" — ", "—", " – ", "–", "——", " - "};
         for (String sep : dashSeparators) {
             int idx = artist.indexOf(sep);
-            if (idx > 0 && idx < artist.length() - sep.length()) {
-                dashIndex = idx;
-                dashLen = sep.length();
-                if (sep.contains("—") || sep.contains("–")) {
-                    isEmDash = true;
+            while (idx > 0 && idx < artist.length() - sep.length()) {
+                if (!isSpanEnclosed(enclosed, idx, idx + sep.length())) {
+                    dashIndex = idx;
+                    dashLen = sep.length();
+                    if (sep.contains("—") || sep.contains("–")) {
+                        isEmDash = true;
+                    }
+                    break;
                 }
+                idx = artist.indexOf(sep, idx + 1);
+            }
+            if (dashIndex > 0) {
                 break;
             }
         }
@@ -96,22 +131,33 @@ public class MetadataNormalizer {
             String part1 = artist.substring(0, dashIndex).trim();
             String part2 = artist.substring(dashIndex + dashLen).trim();
 
-            // Extract optional album after ' · ' or '・' or ' • ' in part2
+            // Extract optional album after top-level ' · ' or '・' or ' • ' in part2
             String extraAlbum = album;
+            boolean[] part2Enclosed = computeEnclosedMask(part2);
             String[] dotSeparators = new String[]{" · ", " ·", "· ", "・", " • "};
+            boolean foundDot = false;
             for (String dot : dotSeparators) {
                 int dotIdx = part2.indexOf(dot);
-                if (dotIdx > 0 && dotIdx < part2.length() - dot.length()) {
-                    extraAlbum = part2.substring(dotIdx + dot.length()).trim();
-                    part2 = part2.substring(0, dotIdx).trim();
+                while (dotIdx > 0 && dotIdx < part2.length() - dot.length()) {
+                    if (!isSpanEnclosed(part2Enclosed, dotIdx, dotIdx + dot.length())) {
+                        extraAlbum = part2.substring(dotIdx + dot.length()).trim();
+                        part2 = part2.substring(0, dotIdx).trim();
+                        foundDot = true;
+                        break;
+                    }
+                    dotIdx = part2.indexOf(dot, dotIdx + 1);
+                }
+                if (foundDot) {
                     break;
                 }
             }
 
             // In Chinese car AVRCP dash format, part1 is song title, part2 is artist (e.g. "花开满篱院 — 谭松韵")
             // If part2 matches album, part2 is title and part1 is artist
-            if (!album.isEmpty() && (cleanTitle(part2).equalsIgnoreCase(cleanTitle(album))
-                    || cleanTitle(album).contains(cleanTitle(part2)))) {
+            String cleanPart2 = cleanTitle(part2);
+            String cleanAlb = cleanTitle(album);
+            if (!album.isEmpty() && !cleanPart2.isEmpty()
+                    && (cleanPart2.equalsIgnoreCase(cleanAlb) || cleanAlb.contains(cleanPart2))) {
                 return new CandidateTrack(part2, part1, extraAlbum, isEmDash);
             }
 
@@ -144,7 +190,7 @@ public class MetadataNormalizer {
         String album = rawAlbum != null ? rawAlbum.trim() : "";
         duration = Math.max(0, duration);
 
-        CandidateTrack candidate = parseCandidate(artist, album);
+        CandidateTrack candidate = parseCandidate(artist, album, title);
         String candidateTitle = candidate != null ? candidate.title : null;
         String performers = candidate != null ? candidate.artist : null;
         String resolvedAlbum = (candidate != null && !candidate.album.isEmpty()) ? candidate.album : album;
@@ -155,52 +201,45 @@ public class MetadataNormalizer {
 
         String cleanCandidate = cleanTitle(candidateTitle);
         String cleanAlbum = cleanTitle(resolvedAlbum);
-        boolean hasSubtitle = candidateTitle != null && candidateTitle.matches(".*[\\(（\\[].+[\\)）\\]].*");
+        boolean hasSubtitle = hasBracketedSubtitle(candidateTitle);
 
         boolean albumConfirmsCandidate = false;
         boolean albumConfirmsPerformer = false;
         String cleanPerformers = cleanTitle(performers);
         if (!resolvedAlbum.isEmpty() && candidateTitle != null && !title.equalsIgnoreCase(resolvedAlbum)) {
             if (candidateTitle.equalsIgnoreCase(resolvedAlbum)
-                    || cleanCandidate.equalsIgnoreCase(cleanAlbum)
-                    || cleanCandidate.equalsIgnoreCase(resolvedAlbum)
-                    || candidateTitle.equalsIgnoreCase(cleanAlbum)) {
+                    || (!cleanCandidate.isEmpty() && !cleanAlbum.isEmpty() && cleanCandidate.equalsIgnoreCase(cleanAlbum))
+                    || (!cleanCandidate.isEmpty() && cleanCandidate.equalsIgnoreCase(resolvedAlbum))
+                    || (!cleanAlbum.isEmpty() && candidateTitle.equalsIgnoreCase(cleanAlbum))) {
                 albumConfirmsCandidate = true;
             } else if (!cleanAlbum.isEmpty() && !cleanCandidate.isEmpty()) {
-                String lowerCandidate = cleanCandidate.toLowerCase(Locale.ROOT);
-                String lowerAlbum = cleanAlbum.toLowerCase(Locale.ROOT);
-                if (lowerCandidate.contains(lowerAlbum) || lowerAlbum.contains(lowerCandidate)) {
+                if (containsMeaningfulToken(cleanAlbum, cleanCandidate)
+                        || containsMeaningfulToken(cleanCandidate, cleanAlbum)) {
                     albumConfirmsCandidate = true;
                 }
             }
         }
-        if (!resolvedAlbum.isEmpty() && performers != null && !title.equalsIgnoreCase(resolvedAlbum)) {
+        // Performers only confirm packed car-lyrics metadata via exact album match,
+        // avoiding false inversion on artist-prefixed albums such as "PSY 9th".
+        if (!resolvedAlbum.isEmpty() && performers != null && !performers.isEmpty() && !title.equalsIgnoreCase(resolvedAlbum)) {
             if (performers.equalsIgnoreCase(resolvedAlbum)
-                    || cleanPerformers.equalsIgnoreCase(cleanAlbum)
-                    || cleanPerformers.equalsIgnoreCase(resolvedAlbum)
-                    || performers.equalsIgnoreCase(cleanAlbum)) {
+                    || (!cleanPerformers.isEmpty() && !cleanAlbum.isEmpty() && cleanPerformers.equalsIgnoreCase(cleanAlbum))
+                    || (!cleanPerformers.isEmpty() && cleanPerformers.equalsIgnoreCase(resolvedAlbum))
+                    || (!cleanAlbum.isEmpty() && performers.equalsIgnoreCase(cleanAlbum))) {
                 albumConfirmsPerformer = true;
-            } else if (!cleanAlbum.isEmpty() && !cleanPerformers.isEmpty()) {
-                String lowerPerf = cleanPerformers.toLowerCase(Locale.ROOT);
-                String lowerAlbum = cleanAlbum.toLowerCase(Locale.ROOT);
-                if (lowerPerf.contains(lowerAlbum) || lowerAlbum.contains(lowerPerf)) {
-                    albumConfirmsPerformer = true;
-                }
             }
         }
 
         boolean titleContainsCandidate = false;
         if (candidateTitle != null && !cleanCandidate.isEmpty()) {
-            String lowerTitle = cleanTitle(title).toLowerCase(Locale.ROOT);
-            String lowerCandidate = cleanCandidate.toLowerCase(Locale.ROOT);
-            if (lowerTitle.contains(lowerCandidate) && !lowerTitle.equals(lowerCandidate)) {
+            String cleanRawTitle = cleanTitle(title);
+            if (!cleanRawTitle.equalsIgnoreCase(cleanCandidate)
+                    && containsMeaningfulToken(cleanRawTitle, cleanCandidate)) {
                 titleContainsCandidate = true;
             }
         }
 
-        // Bare slashes commonly delimit a list of performers. A long or translated
-        // title alone is insufficient evidence for extracting a song from that list.
-        boolean isLyricLike = artist.contains(" / ") && isLyricLineLike(title);
+        boolean isLyricLike = isLyricLineLike(title);
 
         // Case 1: Active car Bluetooth stream for the currently playing song
         // In car lyric mode, subsequent AVRCP updates keep the same song in Artist (performers / candidateTitle),
@@ -338,7 +377,165 @@ public class MetadataNormalizer {
     }
 
     public static String cleanTitle(String text) {
-        if (text == null) return "";
-        return text.replaceAll("\\s*[\\(（\\[].*?[\\)）\\]]", "").trim();
+        if (text == null || text.isEmpty()) return "";
+        List<int[]> pairs = findMatchedBrackets(text, false);
+        if (pairs.isEmpty()) {
+            return text.trim();
+        }
+        boolean[] strip = new boolean[text.length()];
+        for (int[] pair : pairs) {
+            for (int i = pair[0]; i <= pair[1]; i++) {
+                strip[i] = true;
+            }
+        }
+        StringBuilder sb = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); i++) {
+            if (strip[i]) {
+                if (i == 0 || !strip[i - 1]) {
+                    while (sb.length() > 0 && Character.isWhitespace(sb.charAt(sb.length() - 1))) {
+                        sb.setLength(sb.length() - 1);
+                    }
+                }
+                continue;
+            }
+            sb.append(text.charAt(i));
+        }
+        return sb.toString().trim();
+    }
+
+    private static int openBracketGroup(char c) {
+        switch (c) {
+            case '(': case '（': return 1;
+            case '[': case '【': case '［': return 2;
+            case '《': case '〈': return 3;
+            case '「': case '『': return 4;
+            default: return 0;
+        }
+    }
+
+    private static int closeBracketGroup(char c) {
+        switch (c) {
+            case ')': case '）': return 1;
+            case ']': case '】': case '］': return 2;
+            case '》': case '〉': return 3;
+            case '」': case '』': return 4;
+            default: return 0;
+        }
+    }
+
+    /**
+     * Finds matched bracket index pairs [openIdx, closeIdx].
+     * Tracks all 4 bracket groups on a stack so nested brackets of any type
+     * do not prematurely close outer brackets.
+     */
+    private static List<int[]> findMatchedBrackets(String s, boolean includeAngleAndQuotes) {
+        List<int[]> pairs = new ArrayList<>();
+        if (s == null || s.isEmpty()) return pairs;
+        int n = s.length();
+        int[] stackIdx = new int[n];
+        int[] stackGrp = new int[n];
+        int sp = 0;
+
+        for (int i = 0; i < n; i++) {
+            char c = s.charAt(i);
+            int og = openBracketGroup(c);
+            if (og > 0) {
+                stackIdx[sp] = i;
+                stackGrp[sp] = og;
+                sp++;
+                continue;
+            }
+            int cg = closeBracketGroup(c);
+            if (cg > 0) {
+                for (int k = sp - 1; k >= 0; k--) {
+                    if (stackGrp[k] == cg) {
+                        int openIdx = stackIdx[k];
+                        sp = k;
+                        if (includeAngleAndQuotes || cg <= 2) {
+                            pairs.add(new int[]{openIdx, i});
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        return pairs;
+    }
+
+    private static boolean[] computeEnclosedMask(String s) {
+        boolean[] mask = new boolean[s != null ? s.length() : 0];
+        for (int[] pair : findMatchedBrackets(s, true)) {
+            for (int i = pair[0]; i <= pair[1]; i++) {
+                mask[i] = true;
+            }
+        }
+        return mask;
+    }
+
+    private static boolean isSpanEnclosed(boolean[] enclosed, int start, int end) {
+        for (int i = start; i < end; i++) {
+            if (enclosed[i]) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasBracketedSubtitle(String text) {
+        if (text == null) return false;
+        String trimmed = text.trim();
+        if (trimmed.isEmpty()) return false;
+        for (int[] pair : findMatchedBrackets(trimmed, false)) {
+            if (pair[0] > 0 && pair[1] > pair[0] + 1) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean matchesTargetExactly(String cand, String target) {
+        if (cand == null || target == null) return false;
+        String c = cand.trim();
+        String t = target.trim();
+        if (c.isEmpty() || t.isEmpty()) return false;
+        if (c.equalsIgnoreCase(t)) return true;
+        String cc = cleanTitle(c);
+        String ct = cleanTitle(t);
+        return !cc.isEmpty() && !ct.isEmpty() && cc.equalsIgnoreCase(ct);
+    }
+
+    private static boolean containsMeaningfulToken(String container, String token) {
+        if (container == null || token == null) return false;
+        String c = container.trim().toLowerCase(Locale.ROOT);
+        String t = token.trim().toLowerCase(Locale.ROOT);
+        if (c.isEmpty() || t.isEmpty()) return false;
+        boolean hasCjk = false;
+        for (int i = 0; i < t.length(); i++) {
+            char ch = t.charAt(i);
+            if ((ch >= '\u4e00' && ch <= '\u9fff')
+                    || (ch >= '\u3040' && ch <= '\u30ff')
+                    || (ch >= '\uac00' && ch <= '\ud7af')) {
+                hasCjk = true;
+                break;
+            }
+        }
+        if (hasCjk) {
+            return t.length() >= 2 && c.contains(t);
+        }
+        if (t.length() < 3) {
+            return false;
+        }
+        int from = 0;
+        while (true) {
+            int idx = c.indexOf(t, from);
+            if (idx < 0) return false;
+            boolean leftOk = (idx == 0) || !Character.isLetterOrDigit(c.charAt(idx - 1));
+            int end = idx + t.length();
+            boolean rightOk = (end == c.length()) || !Character.isLetterOrDigit(c.charAt(end));
+            if (leftOk && rightOk) {
+                return true;
+            }
+            from = idx + 1;
+        }
     }
 }

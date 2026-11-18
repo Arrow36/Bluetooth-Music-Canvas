@@ -60,6 +60,35 @@ public class TestStep2CacheAndTickets {
                 : "Valid NetEase album cover must be accepted";
         System.out.println("  PASS [6]: Default white-background portrait & singer avatar URLs rejected by isValidCoverUrl");
 
+        // 7. Provider circuit-breaker cooldown & negative cache TTL
+        MetadataFetcher.resetProviderCooldowns();
+        assert !MetadataFetcher.isProviderInCooldown("netease") : "Provider must start healthy";
+        MetadataFetcher.markProviderDegraded("netease", "HTTP 429");
+        assert MetadataFetcher.isProviderInCooldown("netease") : "Degraded provider must enter cooldown";
+        MetadataFetcher.resetProviderCooldowns();
+        assert !MetadataFetcher.isProviderInCooldown("netease") : "Cooldown reset must restore provider";
+
+        MetadataFetcher.recordNegativeCache("Miss Song", "Miss Artist", "Miss Album");
+        assert MetadataFetcher.isRecentlyMissed("Miss Song", "Miss Artist", "Miss Album")
+                : "Negative cache must record missed track";
+        MetadataFetcher.putInCache("Miss Song", "Miss Artist", "Miss Album",
+                new MetadataFetcher.CachedMeta("http://cover/ok.jpg", "[00:01] Found", "LRCLIB"));
+        assert !MetadataFetcher.isRecentlyMissed("Miss Song", "Miss Artist", "Miss Album")
+                : "Positive cache insertion must clear negative cache entry";
+        System.out.println("  PASS [7]: Provider cooldown circuit-breaker and negative cache lifecycle passed");
+
+        // 8. Bilingual LRC merging (primary + translation/romaji)
+        String primaryLrc = "[00:02.490]If you need me I'm here\n[00:07.490]染み付いた声がまだ思い出せると";
+        String transLrc = "[00:02.490]如果你需要 我就在这里\n[00:07.490]还是会想起 熟悉的声音";
+        String merged = MetadataFetcher.mergeBilingualLrc(primaryLrc, transLrc);
+        assert merged.contains("\n[bmc:trans]\n") && merged.contains("如果你需要 我就在这里")
+                : "mergeBilingualLrc must append [bmc:trans] section for valid translations";
+        assert MetadataFetcher.mergeBilingualLrc(primaryLrc, "[00:02.00]//").equals(primaryLrc)
+                : "mergeBilingualLrc must ignore placeholder-only translation lines";
+        assert MetadataFetcher.mergeBilingualLrc(primaryLrc, "").equals(primaryLrc)
+                : "mergeBilingualLrc must leave primary LRC unchanged when translation is empty";
+        System.out.println("  PASS [8]: Bilingual LRC merging handles valid translations and placeholders");
+
         System.out.println("==================================================");
         System.out.println("All Step 2 Cache & Ticket tests PASSED!");
         System.out.println("==================================================");

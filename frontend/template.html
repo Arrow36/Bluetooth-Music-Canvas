@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, minimum-scale=1.0">
+    <meta name="referrer" content="no-referrer">
+    <title>蓝牙音乐看板</title>
+    <style>
+/* __INJECT_CSS__ */
+    </style>
+</head>
+<body>
+
+    <!-- 背景约束容器，彻底杜绝任何拖拽滚动溢出 -->
+    <div class="ambient-wrapper">
+        <canvas class="ambient-canvas" id="ambientCanvas" width="64" height="64"></canvas>
+        <div class="ambient-overlay"></div>
+    </div>
+
+    <div class="container">
+        <!-- 顶部全宽栏：左上角设备电量胶囊与详情卡片，右上角关闭按钮 -->
+        <div class="top-bar">
+            <div class="device-card-wrapper" id="deviceCardWrapper">
+                <button class="device-pill" id="devicePill" onclick="toggleDeviceInfo(event)" title="点击查看连接设备详情">
+                    <span class="device-bt-icon">
+                        <svg viewBox="0 0 24 24"><path d="M17.71 7.71L12 2h-1v7.59L6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 11 14.41V22h1l5.71-5.71-4.3-4.29 4.3-4.29zM13 5.83l1.88 1.88L13 9.59V5.83zm1.88 10.46L13 18.17v-3.76l1.88 1.88z"/></svg>
+                    </span>
+                    <span class="device-status-text" id="deviceStatusText">等待连接</span>
+                </button>
+
+                <!-- 浮层设备详情卡片 -->
+                <div class="device-dropdown" id="deviceDropdown">
+                    <div class="device-dropdown-header">
+                        <div class="device-name-row">
+                            <span class="device-status-dot" id="dropdownStatusDot"></span>
+                            <span class="device-name" id="dropdownDeviceName">—</span>
+                        </div>
+                        <span class="device-status-badge" id="dropdownStatusBadge">等待连接</span>
+                    </div>
+                    <div class="device-dropdown-body">
+                        <div class="spec-row">
+                            <span class="spec-label">MAC 地址</span>
+                            <span class="spec-val-text" id="dropdownDeviceMac">—</span>
+                        </div>
+                        <div class="spec-row">
+                            <span class="spec-label">传输协议</span>
+                            <span class="spec-val-text">A2DP / AVRCP</span>
+                        </div>
+                        <div class="spec-row">
+                            <span class="spec-label">音频通道</span>
+                            <span class="spec-val-text">SINK (无线立体声)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn-close" id="closeBtn" title="短按返回桌面，长按3秒重启App" aria-label="返回桌面">
+                <svg class="close-ring-svg" viewBox="0 0 36 36">
+                    <circle class="close-ring-bg" cx="18" cy="18" r="17" />
+                    <circle class="close-ring-bar" id="closeRingBar" cx="18" cy="18" r="17" />
+                </svg>
+                <svg class="close-x-icon" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
+            </button>
+        </div>
+
+        <!-- 首次安装免 ADB 权限自检居中弹窗：支持电视遥控器直接按【确认/OK键】一键跳转开启 -->
+        <div class="perm-guide-pill" id="permGuideBtn" role="dialog" aria-labelledby="notificationGuideTitle">
+            <div class="perm-guide-header" id="notificationGuideTitle">开启通知访问权限</div>
+            <div class="perm-guide-desc">开启后，看板可以读取当前播放的曲目和进度，用于显示歌曲信息和同步歌词。请在电视系统设置中为“蓝牙音乐看板”开启此权限。</div>
+            <div>
+                <button class="perm-guide-cta" id="notificationSettings" onclick="openPermGuide(event)">前往系统设置</button>
+                <button class="perm-guide-cta" id="notificationLater" onclick="dismissNotificationGuide()">稍后</button>
+            </div>
+        </div>
+
+        <!-- 中部主体区：左侧唱机与播控，右侧歌词流 -->
+        <div class="main-body">
+            <!-- 左侧面板：黑胶唱机与控制底座 -->
+            <div class="left-panel">
+                <div class="turntable-container">
+                    <div class="vinyl-record" id="vinylRecord">
+                        <div class="vinyl-cover" id="vinylCover">
+                            <img id="vinylCoverImg" class="vinyl-cover-img" src="" alt="" referrerpolicy="no-referrer" />
+                            <div class="vinyl-cover-placeholder" id="vinylCoverPlaceholder">
+                                <svg viewBox="0 0 100 100" width="48" height="48">
+                                    <circle cx="50" cy="50" r="46" fill="#222" stroke="#444" stroke-width="2"/>
+                                    <circle cx="50" cy="50" r="28" fill="#151515" stroke="#333" stroke-width="1.5"/>
+                                    <circle cx="50" cy="50" r="14" fill="#ff416c" opacity="0.85"/>
+                                    <polygon points="46,42 58,50 46,58" fill="#ffffff"/>
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tonearm-base">
+                        <svg viewBox="0 0 110 205" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;display:block;">
+                            <defs>
+                                <radialGradient id="orgBasePlinth" cx="44%" cy="36%" r="64%">
+                                    <stop offset="0%" stop-color="rgba(255,255,255,0.48)"/>
+                                    <stop offset="48%" stop-color="rgba(255,255,255,0.20)"/>
+                                    <stop offset="82%" stop-color="rgba(255,255,255,0.08)"/>
+                                    <stop offset="100%" stop-color="rgba(255,255,255,0.02)"/>
+                                </radialGradient>
+                                <linearGradient id="orgArmRest" x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop offset="0%" stop-color="rgba(255,255,255,0.72)"/>
+                                    <stop offset="100%" stop-color="rgba(255,255,255,0.22)"/>
+                                </linearGradient>
+                            </defs>
+                            <!-- 1. 磨砂亚克力基座圆托盘 (与万向球同心的大圆盘) -->
+                            <circle cx="52" cy="34" r="26" fill="url(#orgBasePlinth)" stroke="rgba(255,255,255,0.45)" stroke-width="1.0"/>
+                            <circle cx="52" cy="34" r="19" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="0.6"/>
+
+                            <!-- 2. 唱臂停放位置 (-32°) 的支撑托架 -->
+                            <path d="M 54 53 C 55 60, 61 65, 67 67" fill="none" stroke="url(#orgArmRest)" stroke-width="3.4" stroke-linecap="round"/>
+                            <path d="M 64 63 C 65 70, 72 70, 74 63" fill="none" stroke="rgba(255,255,255,0.92)" stroke-width="1.8" stroke-linecap="round"/>
+                            <circle cx="74" cy="63" r="1.0" fill="#ffffff"/>
+                        </svg>
+                    </div>
+                    <div class="tonearm" id="tonearm">
+                        <img src="tonearm_screen.png" alt="Tonearm" class="tonearm-overlay">
+                    </div>
+                </div>
+
+                <div class="player-deck">
+                    <div class="meta-container">
+                        <div class="song-title" id="songTitle">等待播放蓝牙音乐...</div>
+                        <div class="song-artist" id="songArtist">请在手机端播放任意音乐</div>
+                    </div>
+
+                    <div class="progress-box">
+                        <span id="timeCurrent" class="time-label">00:00</span>
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill" id="progressBar">
+                                <div class="progress-bar-thumb"></div>
+                            </div>
+                        </div>
+                        <span id="timeTotal" class="time-label">00:00</span>
+                    </div>
+
+                    <div class="controls-row">
+                        <button class="btn-ctrl" onclick="triggerPrev()" title="上一首">
+                            <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+                        </button>
+                        <button class="btn-ctrl btn-main" onclick="triggerPlayPause()" title="播放/暂停">
+                            <svg id="playIcon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                        </button>
+                        <button class="btn-ctrl" onclick="triggerNext()" title="下一首">
+                            <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧面板：透明渐隐滚动歌词 -->
+            <div class="right-panel">
+                <div class="lyrics-viewport" id="lyricsViewport">
+                    <div class="empty-lyrics" id="emptyLyrics">
+                        <div class="equalizer-wave" id="equalizerWave">
+                            <div class="wave-bar"></div>
+                            <div class="wave-bar"></div>
+                            <div class="wave-bar"></div>
+                            <div class="wave-bar"></div>
+                            <div class="wave-bar"></div>
+                        </div>
+                        <div class="empty-lyrics-text" id="emptyText">正在检索官方歌词与封面...</div>
+                    </div>
+                    <div class="lyrics-stream" id="lyricsStream"></div>
+                    <!-- 律动氛围：大号声波频谱动画 -->
+                    <div class="large-visualizer" id="largeVisualizer">
+                        <div class="large-wave" id="largeWave">
+                            <div class="large-bar" id="lw0"></div>
+                            <div class="large-bar" id="lw1"></div>
+                            <div class="large-bar" id="lw2"></div>
+                            <div class="large-bar" id="lw3"></div>
+                            <div class="large-bar" id="lw4"></div>
+                            <div class="large-bar" id="lw5"></div>
+                            <div class="large-bar" id="lw6"></div>
+                            <div class="large-bar" id="lw7"></div>
+                            <div class="large-bar" id="lw8"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 底部全宽栏：左下角音频硬件规格，右下角歌词源切换及字号调节 -->
+        <div class="bottom-bar">
+            <div class="audio-spec-card">
+                <span class="spec-param" id="specCodec">A2DP</span>
+                <span class="spec-slash">/</span>
+                <span class="spec-param" id="specRate">蓝牙音频</span>
+                <span class="spec-slash" id="specBitsSlash" style="display: none;">/</span>
+                <span class="spec-param" id="specBits" style="display: none;"></span>
+                <span class="spec-bullet">·</span>
+                <span class="spec-param" id="specChannels">立体声</span>
+            </div>
+
+            <div class="bottom-right-cluster">
+                <div class="lyric-font-widget" id="lyricFontWidget">
+                    <button class="font-btn" id="btnFontDec" title="缩小歌词字号" aria-label="缩小歌词字号">
+                        <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    </button>
+                    <span class="font-size-label" id="fontSizeLabel">20px</span>
+                    <button class="font-btn" id="btnFontInc" title="放大歌词字号" aria-label="放大歌词字号">
+                        <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    </button>
+                </div>
+                <button class="source-tag" id="statusTag" onclick="toggleLyricMenu(event)" title="点击切换歌词源">
+                    <span class="source-dot" id="sourceDot"></span>
+                    <span id="statusTagText">正在匹配歌词...</span>
+                    <span class="source-switch-icon">▾</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+        <!-- 歌词源二级选择弹层菜单：极简深空磨砂毛玻璃 -->
+        <div class="lyric-source-menu" id="lyricSourceMenu">
+            <div class="source-menu-header">
+                <span>歌词来源设置</span>
+                <span style="font-size: 11px; opacity: 0.5;">点击切换</span>
+            </div>
+            <div class="source-menu-items">
+                <button class="source-menu-item active" id="menuItem-auto" onclick="selectLyricSource('auto', event)">
+                    <span class="menu-item-dot" style="background-color: #f59e0b; box-shadow: 0 0 8px #f59e0b;"></span>
+                    <span class="menu-item-name">自动推荐</span>
+                    <span class="menu-item-check" id="check-auto"><svg viewBox="0 0 24 24" width="13" height="13" stroke="#31c27c" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                </button>
+                <button class="source-menu-item" id="menuItem-netease" onclick="selectLyricSource('netease', event)">
+                    <span class="menu-item-dot" style="background-color: #ff3a3a; box-shadow: 0 0 8px #ff3a3a;"></span>
+                    <span class="menu-item-name">网易云音乐</span>
+                    <span class="menu-item-check" id="check-netease"><svg viewBox="0 0 24 24" width="13" height="13" stroke="#31c27c" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                </button>
+                <button class="source-menu-item" id="menuItem-qq" onclick="selectLyricSource('qq', event)">
+                    <span class="menu-item-dot" style="background-color: #31c27c; box-shadow: 0 0 8px #31c27c;"></span>
+                    <span class="menu-item-name">QQ音乐</span>
+                    <span class="menu-item-check" id="check-qq"><svg viewBox="0 0 24 24" width="13" height="13" stroke="#31c27c" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                </button>
+                <button class="source-menu-item" id="menuItem-kugou" onclick="selectLyricSource('kugou', event)">
+                    <span class="menu-item-dot" style="background-color: #0084ff; box-shadow: 0 0 8px #0084ff;"></span>
+                    <span class="menu-item-name">酷狗音乐</span>
+                    <span class="menu-item-check" id="check-kugou"><svg viewBox="0 0 24 24" width="13" height="13" stroke="#31c27c" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                </button>
+                <button class="source-menu-item" id="menuItem-lrclib" onclick="selectLyricSource('lrclib', event)">
+                    <span class="menu-item-dot" style="background-color: #a855f7; box-shadow: 0 0 8px #a855f7;"></span>
+                    <span class="menu-item-name">LRCLIB 全球库</span>
+                    <span class="menu-item-check" id="check-lrclib"><svg viewBox="0 0 24 24" width="13" height="13" stroke="#31c27c" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                </button>
+                <button class="source-menu-item" id="menuItem-bluetooth" onclick="selectLyricSource('bluetooth', event)">
+                    <span class="menu-item-dot" style="background-color: #38bdf8; box-shadow: 0 0 8px #38bdf8;"></span>
+                    <span class="menu-item-name">蓝牙实时歌词</span>
+                    <span class="menu-item-check" id="check-bluetooth"><svg viewBox="0 0 24 24" width="13" height="13" stroke="#31c27c" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                </button>
+                <button class="source-menu-item" id="menuItem-visualizer" onclick="selectLyricSource('visualizer', event)">
+                    <span class="menu-item-dot" style="background-color: #00f2fe; box-shadow: 0 0 10px #00f2fe;"></span>
+                    <span class="menu-item-name">律动氛围</span>
+                    <span class="menu-item-check" id="check-visualizer"><svg viewBox="0 0 24 24" width="13" height="13" stroke="#31c27c" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                </button>
+                <button class="source-menu-item" id="menuItem-translation" onclick="toggleTranslation(event)" style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.10);">
+                    <span class="menu-item-dot" style="background-color: #f472b6; box-shadow: 0 0 8px #f472b6;"></span>
+                    <span class="menu-item-name">双语翻译</span>
+                    <span id="translationStatusText" style="margin-left: auto; font-size: 11.5px; font-weight: 600; color: #31c27c;">已开启</span>
+                </button>
+            </div>
+        </div>
+
+    <!-- 常驻垂直音量控制组件：左右严格对齐右上角关闭按键、宽度相等（36px） -->
+    <div class="volume-widget" id="volumeWidget">
+        <button class="vol-btn vol-btn-plus" id="volBtnPlus" onclick="handleVolumeStep(1, event)" title="音量增加 (+1%)" aria-label="增加音量">
+            <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        </button>
+        <div class="vol-track-container" id="volTrackContainer">
+            <div class="vol-track">
+                <div class="vol-fill" id="volFill" style="height: 50%;"></div>
+            </div>
+        </div>
+        <span class="vol-pct-text" id="volPctText">50%</span>
+        <button class="vol-btn vol-btn-minus" id="volBtnMinus" onclick="handleVolumeStep(-1, event)" title="音量减小 (-1%)" aria-label="减小音量">
+            <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        </button>
+    </div>
+
+    <!-- 优雅提示轻弹层 -->
+    <div class="toast-tip" id="toastTip">正在重启应用...</div>
+
+    <script>
+/* __INJECT_JS__ */
+    </script>
+</body>
+</html>

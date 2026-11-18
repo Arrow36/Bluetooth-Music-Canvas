@@ -386,6 +386,75 @@ async function runTests() {
 
         // Seek / auto-return transition animation function existence
         assert(typeof window.triggerLyricFadeTransition === 'function', "triggerLyricFadeTransition exists on window");
+
+        // Low-spec smooth mode removed & frosted glass active by default
+        assert(document.getElementById('perfModeStatus') === null, "Low-spec perfModeStatus element is removed");
+        assert(typeof window.togglePerfMode === 'undefined', "window.togglePerfMode is removed");
+        assert(!document.body.classList.contains('perf-mode'), "body does not have perf-mode class by default");
+
+        // Manual lyric source degraded status feedback
+        const activeGen = (window.currentTrack && typeof window.currentTrack.generation === 'number')
+            ? window.currentTrack.generation : 1;
+        window.selectLyricSource('netease');
+        window.currentTrack.streamLyric = '';
+        window.onSpecificLyricResult({
+            source: 'netease',
+            lyrics: '',
+            lyricSource: '网易云音乐',
+            degraded: true,
+            generation: activeGen,
+            sourceRequestId: 999
+        });
+        const statusTextEl = document.getElementById('statusTagText');
+        assert(statusTextEl && statusTextEl.textContent.includes('接口受限'),
+            "Degraded manual lyric source displays (接口受限) notice");
+
+        window.currentTrack.streamLyric = 'Fallback stream line';
+        window.onSpecificLyricResult({
+            source: 'netease',
+            lyrics: '',
+            lyricSource: '网易云音乐',
+            degraded: true,
+            generation: activeGen,
+            sourceRequestId: 1000
+        });
+        assert(statusTextEl && statusTextEl.textContent.includes('原源受限'),
+            "Degraded manual lyric source with stream fallback displays (原源受限) notice");
+        window.selectLyricSource('auto');
+
+        // Bilingual [bmc:trans] LRC parsing, rendering & translation toggle
+        window.applyLyricFontSize(20, false);
+        if (!window.isTranslationEnabled()) window.toggleTranslation();
+        const bilingualLrc = "[00:02.490]If you need me I'm here\n[00:07.490]染み付いた声がまだ思い出せると\n[bmc:trans]\n[00:02.490]如果你需要 我就在这里\n[00:07.490]还是会想起 熟悉的声音";
+        const bilingualRows = window.parseLRC(bilingualLrc);
+        assert(bilingualRows.length === 2
+                && bilingualRows[0].subText === '如果你需要 我就在这里'
+                && bilingualRows[1].subText === '还是会想起 熟悉的声音',
+            "parseLRC aligns [bmc:trans] bilingual subtitles onto primary lyric rows");
+
+        window.renderLyrics(bilingualRows);
+        const line0 = document.getElementById('line-0');
+        assert(line0 && line0.dataset.hasSub === '1', "Bilingual lyric line sets data-has-sub='1'");
+        const main0 = line0 ? line0.querySelector('.lyric-main') : null;
+        const sub0 = line0 ? line0.querySelector('.lyric-sub') : null;
+        assert(main0 && main0.textContent === "If you need me I'm here"
+                && sub0 && sub0.textContent === "如果你需要 我就在这里",
+            "Bilingual lyric line renders .lyric-main and .lyric-sub safely");
+
+        window.toggleTranslation();
+        assert(!window.isTranslationEnabled(), "toggleTranslation disables bilingual translation");
+        const line0Off = document.getElementById('line-0');
+        assert(line0Off && !line0Off.dataset.hasSub && line0Off.querySelector('.lyric-sub') === null
+                && line0Off.textContent === "If you need me I'm here",
+            "Disabling translation collapses line-0 back to primary text only");
+
+        window.toggleTranslation();
+        assert(window.isTranslationEnabled(), "Second toggleTranslation re-enables bilingual translation");
+        const line0On = document.getElementById('line-0');
+        assert(line0On && line0On.dataset.hasSub === '1'
+                && line0On.querySelector('.lyric-sub')
+                && line0On.querySelector('.lyric-sub').textContent === "如果你需要 我就在这里",
+            "Re-enabling translation restores .lyric-sub immediately");
     }
 
     console.log("\n==================================================");

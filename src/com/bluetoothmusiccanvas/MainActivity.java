@@ -244,8 +244,12 @@ public class MainActivity extends Activity {
                     Intent intent = ctx.getPackageManager().getLaunchIntentForPackage(ctx.getPackageName());
                     if (intent != null) {
                         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                        int flags = PendingIntent.FLAG_CANCEL_CURRENT;
+                        if (Build.VERSION.SDK_INT >= 23) {
+                            flags |= PendingIntent.FLAG_IMMUTABLE;
+                        }
                         PendingIntent restartIntent = PendingIntent.getActivity(
-                                ctx, 0, intent, PendingIntent.FLAG_CANCEL_CURRENT);
+                                ctx, 0, intent, flags);
                         AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
                         if (am != null) {
                             am.set(AlarmManager.RTC, System.currentTimeMillis() + 400, restartIntent);
@@ -595,6 +599,7 @@ public class MainActivity extends Activity {
                     obj.put("generation", generation);
                     obj.put("trackKey", trackKey != null ? trackKey : "");
                     obj.put("sourceRequestId", sourceRequestId);
+                    obj.put("degraded", MetadataFetcher.isProviderInCooldown(source));
                     mWebView.evaluateJavascript("window.onSpecificLyricResult && window.onSpecificLyricResult(" + obj.toString() + ");", null);
                 } catch (Exception e) {
                     e.printStackTrace();
@@ -652,11 +657,16 @@ public class MainActivity extends Activity {
         sCachedStreamLyric = streamLyric;
 
         MediaStateStore.MediaSnapshot snap = MediaStateStore.getInstance().getSnapshot();
-        final boolean isVideo = (snap != null && snap.isVideo())
-                || MediaClassifier.classify(title, artist, album, duration, MetadataNormalizer.MetadataFormat.UNKNOWN).isVideo();
-        final String contentKind = (snap != null && snap.classification != null) ? snap.classification.kind.name() : (isVideo ? "VIDEO" : "MUSIC");
-        final String evidenceLevel = (snap != null && snap.classification != null) ? snap.classification.evidenceLevel.name() : "HEURISTIC";
-        final String reasonCode = (snap != null && snap.classification != null) ? snap.classification.reasonCode : "";
+        final boolean useSnap = snap != null && snap.hasTrack() && snap.playbackGeneration == generation;
+        final MediaClassifier.ClassificationResult effectiveClass = useSnap
+                ? snap.classification
+                : MediaClassifier.classify(title, artist, album, duration, MetadataNormalizer.MetadataFormat.UNKNOWN);
+        final boolean isVideo = useSnap
+                ? snap.isVideo()
+                : (effectiveClass != null && effectiveClass.isVideo());
+        final String contentKind = (effectiveClass != null) ? effectiveClass.kind.name() : (isVideo ? "VIDEO" : "MUSIC");
+        final String evidenceLevel = (effectiveClass != null) ? effectiveClass.evidenceLevel.name() : "HEURISTIC";
+        final String reasonCode = (effectiveClass != null) ? effectiveClass.reasonCode : "";
 
         if (!mPageLoaded || mWebView == null) return;
         if (isFinishing() || (Build.VERSION.SDK_INT >= 17 && isDestroyed())) return;

@@ -13,12 +13,43 @@ Usage examples:
 import argparse
 import os
 import shutil
+import struct
 import subprocess
 import sys
 import zipfile
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parent
+
+
+def bundle_frontend():
+    """Bundle modular frontend/template.html + styles/*.css + js/*.js into assets/index.html."""
+    frontend_dir = PROJECT_DIR / "frontend"
+    template_path = frontend_dir / "template.html"
+    if not template_path.exists():
+        print("[WARN] frontend/template.html not found; using existing assets/index.html")
+        return PROJECT_DIR / "assets" / "index.html"
+
+    template = template_path.read_text(encoding="utf-8")
+    css_files = sorted((frontend_dir / "styles").glob("*.css"))
+    js_files = sorted((frontend_dir / "js").glob("*.js"))
+
+    css_bundle = "".join(p.read_text(encoding="utf-8") for p in css_files)
+    js_bundle = "".join(p.read_text(encoding="utf-8") for p in js_files)
+
+    bundled = template.replace("/* __INJECT_CSS__ */\n", css_bundle, 1)
+    if bundled == template and "/* __INJECT_CSS__ */" in template:
+        bundled = template.replace("/* __INJECT_CSS__ */", css_bundle, 1)
+    after_css = bundled
+    bundled = after_css.replace("/* __INJECT_JS__ */\n", js_bundle, 1)
+    if bundled == after_css and "/* __INJECT_JS__ */" in after_css:
+        bundled = after_css.replace("/* __INJECT_JS__ */", js_bundle, 1)
+
+    out_path = PROJECT_DIR / "assets" / "index.html"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(bundled, encoding="utf-8", newline="")
+    print(f"[*] Bundled frontend ({len(css_files)} CSS, {len(js_files)} JS) -> {out_path.name} ({len(bundled):,} chars)")
+    return out_path
 
 
 def find_jdk_tools():
@@ -186,7 +217,104 @@ def find_android_tools():
         print("You can also place them in a 'tools/' directory inside the project root.")
         sys.exit(1)
 
+    # Optional tools: zipalign and apksigner.jar (for v2/v3 APK signing when SDK build-tools are available)
+    if os.environ.get("ZIPALIGN_PATH"):
+        tools["zipalign"] = Path(os.environ["ZIPALIGN_PATH"])
+    else:
+        za_in_path = shutil.which("zipalign")
+        if za_in_path:
+            tools["zipalign"] = Path(za_in_path)
+        else:
+            for root in sdk_roots:
+                if not root.exists():
+                    continue
+                direct = root / ("zipalign" + exe_suffix)
+                if direct.exists():
+                    tools["zipalign"] = direct
+                    break
+                bt_dir = root / "build-tools"
+                if bt_dir.exists():
+                    for v in sorted(bt_dir.glob("*"), reverse=True):
+                        cand = v / ("zipalign" + exe_suffix)
+                        if cand.exists():
+                            tools["zipalign"] = cand
+                            break
+                    if "zipalign" in tools:
+                        break
+
+    if os.environ.get("APKSIGNER_JAR"):
+        tools["apksigner_jar"] = Path(os.environ["APKSIGNER_JAR"])
+    else:
+        for root in sdk_roots:
+            if not root.exists():
+                continue
+            direct = root / "apksigner.jar"
+            if direct.exists():
+                tools["apksigner_jar"] = direct
+                break
+            bt_dir = root / "build-tools"
+            if bt_dir.exists():
+                for v in sorted(bt_dir.glob("*"), reverse=True):
+                    cand = v / "lib" / "apksigner.jar"
+                    if cand.exists():
+                        tools["apksigner_jar"] = cand
+                        break
+                if "apksigner_jar" in tools:
+                    break
+
     return tools
+
+
+def zipalign_apk(src_apk, dst_apk, zipalign_bin=None, alignment=4):
+    """Align ZIP_STORED entries (4-byte default, 4096-byte for .so) in pure Python or via native zipalign."""
+    if zipalign_bin and Path(zipalign_bin).exists():
+        subprocess.check_call([str(zipalign_bin), "-f", "-p", str(alignment), str(src_apk), str(dst_apk)])
+        return
+
+    with zipfile.ZipFile(src_apk, "r") as zin, zipfile.ZipFile(dst_apk, "w") as zout:
+        for info in zin.infolist():
+            data = zin.read(info.filename)
+            new_info = zipfile.ZipInfo(filename=info.filename, date_time=info.date_time)
+            new_info.compress_type = info.compress_type
+            new_info.create_system = info.create_system
+            new_info.external_attr = info.external_attr
+            new_info.internal_attr = info.internal_attr
+            new_info.flag_bits = info.flag_bits & ~0x08
+            new_info.comment = info.comment
+            new_info.extra = info.extra
+
+            if new_info.compress_type == zipfile.ZIP_STORED:
+                target_align = 4096 if new_info.filename.endswith(".so") else alignment
+                cur_offset = zout.fp.tell()
+                new_info.CRC = info.CRC
+                new_info.file_size = len(data)
+                new_info.compress_size = len(data)
+                hdr_len = len(new_info.FileHeader(False))
+                rem = (cur_offset + hdr_len) % target_align
+                pad = (target_align - rem) % target_align
+                if pad:
+                    new_info.extra = new_info.extra + (b"\x00" * pad)
+
+            zout.writestr(new_info, data, compress_type=new_info.compress_type)
+
+
+def verify_zip_alignment(apk_path, alignment=4):
+    """Verify every ZIP_STORED entry's payload offset matches alignment requirements."""
+    with open(apk_path, "rb") as raw, zipfile.ZipFile(apk_path, "r") as zin:
+        for info in zin.infolist():
+            if info.compress_type != zipfile.ZIP_STORED:
+                continue
+            raw.seek(info.header_offset)
+            lfh = raw.read(30)
+            sig, _, _, _, _, _, _, _, _, fname_len, extra_len = struct.unpack("<IHHHHHIIIHH", lfh)
+            if sig != 0x04034B50:
+                raise RuntimeError(f"Invalid ZIP local file header for {info.filename}")
+            data_offset = info.header_offset + 30 + fname_len + extra_len
+            target_align = 4096 if info.filename.endswith(".so") else alignment
+            if data_offset % target_align != 0:
+                raise RuntimeError(
+                    f"Entry {info.filename} data offset {data_offset} is not {target_align}-byte aligned"
+                )
 
 
 def ensure_keystore(keytool_bin, keystore_path):
@@ -282,7 +410,8 @@ def build(clean_after=False):
     final_apk = PROJECT_DIR / "BluetoothMusicCanvas.apk"
     keystore = PROJECT_DIR / "debug.jks"
 
-    # 0. Clean & Prepare
+    # 0. Bundle modular frontend & clean/prepare build dir
+    bundle_frontend()
     if build_dir.exists():
         shutil.rmtree(build_dir)
     gen_dir.mkdir(parents=True, exist_ok=True)
@@ -354,31 +483,54 @@ def build(clean_after=False):
     with zipfile.ZipFile(unaligned_apk, "a", zipfile.ZIP_DEFLATED) as z:
         z.write(dex_file, "classes.dex")
 
-    # 5. Sign APK with jarsigner
-    print("[5/5] Signing APK with jarsigner...")
+    # 5. Align & Sign APK (apksigner if available -> align first; jarsigner -> sign first, then align)
     if final_apk.exists():
         final_apk.unlink()
 
-    cmd_sign = [
-        str(jdk["jarsigner"]),
-        "-J-Dfile.encoding=UTF-8",
-        "-keystore", str(keystore),
-        "-storepass", "android",
-        "-keypass", "android",
-        "-sigalg", "SHA256withRSA",
-        "-digestalg", "SHA-256",
-        "-signedjar", str(final_apk),
-        str(unaligned_apk),
-        "androiddebugkey"
-    ]
-    subprocess.check_call(cmd_sign)
+    if "apksigner_jar" in android:
+        print("[5/5] Aligning & signing APK with apksigner (v1/v2/v3)...")
+        aligned_apk = build_dir / "aligned_unsigned.apk"
+        zipalign_apk(unaligned_apk, aligned_apk, zipalign_bin=android.get("zipalign"))
+        verify_zip_alignment(aligned_apk)
+        cmd_apksign = [
+            str(jdk["java"]),
+            "-Dfile.encoding=UTF-8",
+            "-jar", str(android["apksigner_jar"]),
+            "sign",
+            "--ks", str(keystore),
+            "--ks-key-alias", "androiddebugkey",
+            "--ks-pass", "pass:android",
+            "--key-pass", "pass:android",
+            "--out", str(final_apk),
+            str(aligned_apk),
+        ]
+        subprocess.check_call(cmd_apksign)
+    else:
+        print("[5/5] Signing APK with jarsigner & running 4-byte zipalign...")
+        signed_unaligned_apk = build_dir / "signed_unaligned.apk"
+        cmd_sign = [
+            str(jdk["jarsigner"]),
+            "-J-Dfile.encoding=UTF-8",
+            "-keystore", str(keystore),
+            "-storepass", "android",
+            "-keypass", "android",
+            "-sigalg", "SHA256withRSA",
+            "-digestalg", "SHA-256",
+            "-signedjar", str(signed_unaligned_apk),
+            str(unaligned_apk),
+            "androiddebugkey"
+        ]
+        subprocess.check_call(cmd_sign)
+        zipalign_apk(signed_unaligned_apk, final_apk, zipalign_bin=android.get("zipalign"))
+        verify_zip_alignment(final_apk)
+        subprocess.check_call([str(jdk["jarsigner"]), "-verify", str(final_apk)])
 
     if clean_after and build_dir.exists():
         shutil.rmtree(build_dir)
 
     size = os.path.getsize(final_apk)
     print("=" * 60)
-    print(f"SUCCESS! Signed APK built: {final_apk.name} ({size:,} bytes)")
+    print(f"SUCCESS! Aligned & signed APK built: {final_apk.name} ({size:,} bytes)")
     print("=" * 60)
     return final_apk
 
@@ -386,6 +538,11 @@ def build(clean_after=False):
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Bluetooth Music Canvas - Zero-Dependency Build & Deploy Pipeline"
+    )
+    parser.add_argument(
+        "--bundle-only",
+        action="store_true",
+        help="Bundle frontend/ sources into assets/index.html without compiling APK"
     )
     parser.add_argument(
         "-t", "--test",
@@ -414,7 +571,11 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
+    if args.bundle_only:
+        bundle_frontend()
+        sys.exit(0)
     if args.test:
+        bundle_frontend()
         run_test_suite()
     apk = build(clean_after=args.clean)
     if args.install:

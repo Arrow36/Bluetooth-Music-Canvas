@@ -1,0 +1,1038 @@
+        /* 右侧面板：歌词大视口（完全对称居中，右侧仅预留音量条安全间距） */
+        .right-panel {
+            width: 56%;
+            height: 100%;
+            padding: 0 28px 0 8px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            min-height: 0;
+        }
+
+        .lyrics-viewport {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+            position: relative;
+            overflow: hidden;
+            cursor: grab;
+            user-select: none;
+            touch-action: pan-y;
+        }
+
+        .lyrics-viewport:active {
+            cursor: grabbing;
+        }
+
+        .lyrics-stream {
+            position: absolute;
+            width: 100%;
+            top: 40%;
+            /* 平滑跨行缓动曲线：五次减速曲线柔顺回弹 */
+            transition: transform 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+            text-align: center;
+            will-change: transform;
+        }
+
+        /* 
+           歌词固定行高设计：彻底杜绝动态字体尺寸变化引起的 DOM 布局重排（Reflow）颠簸抖动！
+           完全水平居中对齐，高亮放大通过 transform-origin: center center 从正中心等比放大，平滑对称！
+        */
+        .lyric-line {
+            height: var(--lyric-line-height, 50px);
+            line-height: var(--lyric-line-height, 50px);
+            font-size: var(--lyric-font-size, 20px);
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.4);
+            opacity: 0.15;
+            padding: 0 12px;
+            box-sizing: border-box;
+            transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.4s cubic-bezier(0.25, 1, 0.5, 1), color 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+            transform-origin: center center;
+            white-space: nowrap;
+            overflow: visible;
+        }
+
+        /* 当前激活歌词：高亮、实心白、中心视觉焦点（严格保证大于上下所有歌词） */
+        .lyric-line.active {
+            font-weight: 700;
+            color: #ffffff;
+            opacity: 1;
+            transform: scale(1.18);
+            text-shadow: none !important;
+        }
+
+        .lyric-line.near-1 {
+            color: rgba(255, 255, 255, 0.80);
+            opacity: 0.65;
+            transform: scale(0.92);
+        }
+
+        .lyric-line.near-2 {
+            color: rgba(255, 255, 255, 0.55);
+            opacity: 0.40;
+            transform: scale(0.85);
+        }
+
+        .lyric-line.near-3 {
+            color: rgba(255, 255, 255, 0.38);
+            opacity: 0.20;
+            transform: scale(0.78);
+        }
+
+        .lyric-line.near-4 {
+            color: rgba(255, 255, 255, 0.25);
+            opacity: 0.08;
+            transform: scale(0.72);
+        }
+
+        .lyric-line.far {
+            opacity: 0 !important;
+            visibility: hidden !important;
+            pointer-events: none;
+            transform: scale(0.68);
+            transition: none !important;
+        }
+
+        /* 双语翻译歌词行：保持同一居中节点，避免 className 重写覆盖样式 */
+        .lyric-line[data-has-sub="1"] {
+            height: auto;
+            min-height: calc(var(--lyric-line-height, 50px) * 1.48);
+            line-height: 1.32;
+            padding: 6px 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 3px;
+        }
+
+        .lyric-line[data-has-sub="1"] .lyric-main {
+            line-height: 1.3;
+        }
+
+        .lyric-line[data-has-sub="1"] .lyric-sub {
+            font-size: calc(var(--lyric-font-size, 20px) * 0.72);
+            font-weight: 400;
+            opacity: 0.78;
+            line-height: 1.28;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* 蓝牙实时单行车载歌词视口：纯净大字无晕光 */
+        .live-stream-box {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding-top: 10px;
+            padding-bottom: 20px;
+            text-align: center;
+            padding-left: 20px;
+            padding-right: 20px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .live-stream-lyric {
+            font-size: 38px;
+            font-weight: 700;
+            color: #ffffff;
+            line-height: 1.5;
+            letter-spacing: 0.6px;
+            text-shadow: none !important;
+            transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+            max-width: 92%;
+            word-break: break-word;
+        }
+
+        .empty-lyrics {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            width: 100%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 18px;
+            gap: 20px;
+            pointer-events: none;
+            z-index: 5;
+            transition: opacity 0.4s ease;
+        }
+
+        .empty-lyrics-text {
+            font-size: 26px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.88);
+            letter-spacing: 1.2px;
+            text-align: center;
+        }
+
+        .equalizer-wave {
+            display: flex;
+            gap: 7px;
+            align-items: flex-end;
+            height: 38px;
+        }
+
+        .wave-bar {
+            width: 5px;
+            background: linear-gradient(to top, #ff416c, #ff4b2b);
+            border-radius: 2.5px;
+            height: 8%;
+            min-height: 5px;
+            transition: height 80ms ease-out;
+        }
+
+        /* 律动氛围：大号发烧级全屏声波频谱动画 */
+        .large-visualizer {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 28px;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .large-wave {
+            display: flex;
+            align-items: flex-end;
+            gap: 12px;
+            height: 120px;
+        }
+
+        .large-bar {
+            width: 10px;
+            background: linear-gradient(to top, #ff416c, #ff4b2b, #f5a623);
+            border-radius: 5px;
+            height: 8%;
+            min-height: 10px;
+            box-shadow: 0 0 18px rgba(255, 75, 43, 0.45);
+            transition: height 80ms ease-out;
+        }
+
+        .large-wave-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.85);
+            letter-spacing: 2.5px;
+            text-align: center;
+            text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+        }
+
+        /* 底部全宽栏：左下角音频硬件规格，右下角歌词源切换 */
+        .bottom-bar {
+            width: 100%;
+            height: 36px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+            z-index: 50;
+            flex-shrink: 0;
+            padding-top: 4px;
+        }
+
+        /* 全屏左下角：发烧级音频参数卡片（与四个角落及音量组件统一 36px 规格） */
+        .audio-spec-card {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            height: 36px;
+            padding: 0 16px;
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 18px;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+            font-size: 13px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.85);
+            letter-spacing: 0.3px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .spec-param {
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.85);
+        }
+
+        .spec-slash, .spec-bullet {
+            color: rgba(255, 255, 255, 0.35);
+        }
+
+        .bottom-right-cluster {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            position: relative;
+        }
+
+        /* 歌词字号精细调节控件：置于歌词来源控件左侧，极简磨砂毛玻璃胶囊（与音量及底部组件规范统一） */
+        .lyric-font-widget {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0;
+            height: 38px;
+            padding: 0 4px;
+            box-sizing: border-box;
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 19px;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+            opacity: 0;
+            pointer-events: none !important;
+            visibility: hidden;
+            transform: translateX(8px);
+            transition: opacity 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            position: relative;
+            z-index: 20;
+        }
+
+        .lyric-font-widget * {
+            pointer-events: none !important;
+        }
+
+        body.lyric-menu-open .lyric-font-widget {
+            opacity: 1 !important;
+            pointer-events: auto !important;
+            visibility: visible !important;
+            transform: translateX(0);
+        }
+
+        body.lyric-menu-open .lyric-font-widget .font-btn {
+            pointer-events: auto !important;
+        }
+
+        body.idle .lyric-font-widget {
+            opacity: 0 !important;
+            pointer-events: none !important;
+            visibility: hidden !important;
+        }
+
+        /* 参考音量组件 vol-btn 设计规范：无周围常驻圆圈、中心对齐、超大触控热区、点击时微光反馈 */
+        .font-btn {
+            width: 38px;
+            height: 38px;
+            box-sizing: border-box;
+            border: none;
+            background: transparent;
+            color: rgba(255, 255, 255, 0.75);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            outline: none;
+            padding: 0;
+            margin: 0;
+            border-radius: 50%;
+            position: relative;
+            touch-action: manipulation;
+            transition: all 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+            -webkit-tap-highlight-color: transparent;
+            pointer-events: auto !important;
+            user-select: none;
+            z-index: 25;
+        }
+
+        /* 触控命中热区无形扩展：上下各扩 20px，覆盖完整半区，与右侧来源标签互不侵占 */
+        .font-btn::after {
+            content: '';
+            position: absolute;
+            top: -20px;
+            bottom: -20px;
+            z-index: 30;
+        }
+
+        #btnFontDec::after {
+            left: -24px;
+            right: 0;
+        }
+
+        #btnFontInc::after {
+            left: 0;
+            right: 0;
+        }
+
+        .font-btn:hover {
+            color: rgba(255, 255, 255, 0.95);
+        }
+
+        .font-btn:active {
+            background: rgba(255, 255, 255, 0.14);
+            color: #ffffff;
+            transform: scale(0.9);
+        }
+
+        .font-btn svg {
+            width: 18px;
+            height: 18px;
+            display: block;
+            margin: auto;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2.2;
+            stroke-linecap: round;
+            pointer-events: none !important;
+        }
+
+        .font-btn svg * {
+            pointer-events: none !important;
+        }
+
+        .font-size-label {
+            min-width: 44px;
+            height: 38px;
+            line-height: 38px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            font-size: 13.5px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.85);
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 0.3px;
+            user-select: none;
+            pointer-events: none;
+        }
+
+        /* 全屏右下角：歌词源切换胶囊（与四个角落及音量组件统一 36px 规格） */
+        .source-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            height: 38px;
+            padding: 0 18px;
+            font-size: 13.5px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.85);
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 20px;
+            letter-spacing: 0.3px;
+            cursor: pointer;
+            outline: none;
+            transition: all 0.2s ease;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+            position: relative;
+        }
+
+        /* 触控命中热区舒适扩展（上下各 10px，左右各 8px），杜绝大面积侵占 */
+        .source-tag::after {
+            content: '';
+            position: absolute;
+            top: -10px;
+            bottom: -10px;
+            left: -8px;
+            right: -8px;
+            z-index: 1;
+        }
+
+        body.lyric-menu-open .source-tag::after {
+            left: 0 !important;
+            right: -8px;
+        }
+
+        .source-tag * {
+            pointer-events: none;
+        }
+
+        .source-tag:active {
+            background: rgba(255, 255, 255, 0.18);
+            transform: scale(0.96);
+        }
+
+        .source-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #ff3a3a;
+            display: inline-block;
+            transition: background-color 0.25s ease, box-shadow 0.25s ease;
+            box-shadow: 0 0 10px rgba(255, 58, 58, 0.8);
+            flex-shrink: 0;
+        }
+
+        /* 歌词源二级选择弹层菜单：与四个角落及音量组件完全相同的磨砂毛玻璃风格 */
+        .lyric-source-menu {
+            position: fixed;
+            right: 36px;
+            bottom: 58px;
+            width: 216px;
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 18px;
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            z-index: 200;
+            padding: 10px;
+            box-sizing: border-box;
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(8px) scale(0.96);
+            transform-origin: bottom right;
+            transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .lyric-source-menu.show {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateY(0) scale(1);
+        }
+
+        .source-menu-header {
+            font-size: 11.5px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.55);
+            padding: 2px 6px 9px 6px;
+            letter-spacing: 0.8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+            margin-bottom: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .source-menu-items {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .source-menu-item {
+            width: 100%;
+            height: 46px;
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 0 14px;
+            background: transparent;
+            border: none;
+            border-radius: 14px;
+            cursor: pointer;
+            text-align: left;
+            transition: background 0.15s ease, transform 0.1s ease;
+            outline: none;
+            position: relative;
+        }
+
+        /* 菜单项无死角命中扩展 */
+        .source-menu-item::after {
+            content: '';
+            position: absolute;
+            top: -3px;
+            bottom: -3px;
+            left: 0;
+            right: 0;
+            z-index: 1;
+        }
+
+        .source-menu-item:hover, .source-menu-item:active {
+            background: rgba(255, 255, 255, 0.10);
+        }
+
+        .source-menu-item.active {
+            background: rgba(255, 255, 255, 0.16);
+        }
+
+        .menu-item-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            transition: transform 0.2s ease;
+        }
+
+        .source-menu-item:hover .menu-item-dot {
+            transform: scale(1.25);
+        }
+
+        .menu-item-name {
+            font-size: 13px;
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.90);
+            flex: 1;
+            letter-spacing: 0.2px;
+        }
+
+        .menu-item-check {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.15s ease, transform 0.15s ease;
+            transform: scale(0.8);
+        }
+
+        .source-menu-item.active .menu-item-check {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .source-switch-icon {
+            font-size: 12px;
+            opacity: 0.6;
+            margin-left: 2px;
+        }
+
+        /* 无操作后自动优雅渐隐四个角落的控件与二级菜单 */
+        .top-bar, .bottom-bar {
+            transition: opacity 0.8s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+            opacity: 1;
+        }
+
+        body.idle .top-bar {
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(-8px);
+        }
+
+        body.idle .bottom-bar {
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(8px);
+        }
+
+        body.idle .lyric-source-menu,
+        body.idle .device-dropdown {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* 常驻垂直音量控制组件：极简磨砂质感，与右上角关闭按钮宽度相等（36px）、右边距严格对齐（36px），加减号位于圆弧圆心 */
+        .volume-widget {
+            position: fixed;
+            right: 36px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 36px;
+            padding: 0;
+            box-sizing: border-box;
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 18px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            z-index: 60;
+            opacity: 1;
+            transition: opacity 0.8s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body.idle .volume-widget {
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(-50%) scale(0.96);
+        }
+
+        /* 展开右下角歌词源菜单时自动避让右侧音量条，彻底杜绝控件重叠遮挡 */
+        body.lyric-menu-open .volume-widget:not(.force-show) {
+            opacity: 0 !important;
+            pointer-events: none !important;
+            transform: translateY(-50%) scale(0.92);
+        }
+
+        /* 手机端按键调整音量时：仅淡入音量条，四个角的控件保持隐藏 */
+        body.idle .volume-widget.force-show {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateY(-50%) scale(1);
+        }
+
+        .vol-btn {
+            width: 36px;
+            height: 36px;
+            box-sizing: border-box;
+            border: none;
+            background: transparent;
+            color: rgba(255, 255, 255, 0.75);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            outline: none;
+            padding: 0;
+            margin: 0;
+            border-radius: 50%;
+            transition: all 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .vol-btn:active {
+            background: rgba(255, 255, 255, 0.14);
+            color: #ffffff;
+            transform: scale(0.9);
+        }
+
+        .vol-btn svg {
+            width: 18px;
+            height: 18px;
+            display: block;
+            margin: auto;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2.2;
+            stroke-linecap: round;
+            pointer-events: none;
+        }
+
+        .vol-track-container {
+            width: 100%;
+            padding: 2px 0 3px 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            pointer-events: none; /* 禁止按到音量条直接跳跃调节 */
+        }
+
+        .vol-track {
+            width: 4px;
+            height: 96px;
+            background: rgba(255, 255, 255, 0.16);
+            border-radius: 2px;
+            position: relative;
+            overflow: hidden;
+            pointer-events: none;
+        }
+
+        .vol-fill {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 50%;
+            background: linear-gradient(to top, #00d2ff, #0072ff);
+            border-radius: 2px;
+            transition: height 0.12s ease-out;
+            pointer-events: none;
+        }
+
+        .vol-pct-text {
+            font-size: 11px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.8);
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 0.2px;
+            text-align: center;
+            width: 100%;
+            padding: 2px 0 2px 0;
+            line-height: 1;
+            user-select: none;
+            pointer-events: none;
+        }
+
+        /* 优雅提示小弹窗 */
+        .toast-tip {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0.9);
+            background: rgba(18, 22, 28, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            border-radius: 16px;
+            padding: 14px 24px;
+            color: #ffffff;
+            font-size: 14px;
+            font-weight: 600;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            opacity: 0;
+            pointer-events: none;
+            z-index: 999;
+            transition: opacity 0.25s ease, transform 0.25s ease;
+        }
+
+        .toast-tip.show {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
+        }
+
+        /* 隐藏状态的浮层与沉浸模式隐藏栏禁用 backdrop-filter，消除透明层的全屏背景采样合成开销 */
+        .device-dropdown:not(.show),
+        .lyric-source-menu:not(.show),
+        .toast-tip:not(.show),
+        body.idle .top-bar .device-pill,
+        body.idle .top-bar .btn-close,
+        body.idle .bottom-bar .audio-spec-card,
+        body.idle .bottom-bar .source-tag,
+        body.idle .volume-widget:not(.force-show) {
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+        }
+
+        /* 首次安装免 ADB 权限自检居中弹窗（适配无触屏电视遥控器一键按 OK 开启） */
+        .perm-guide-pill {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 950;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            width: 420px;
+            max-width: 88vw;
+            padding: 24px 28px;
+            background: rgba(18, 22, 30, 0.96);
+            border: 1.5px solid rgba(255, 65, 108, 0.65);
+            border-radius: 24px;
+            color: #ffffff;
+            cursor: pointer;
+            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.85), 0 0 0 100vmax rgba(0, 0, 0, 0.62);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            transition: transform 0.2s ease, border-color 0.2s ease;
+            outline: none;
+            user-select: none;
+            text-align: center;
+        }
+        .perm-guide-pill.show {
+            display: flex;
+        }
+        .perm-guide-pill:active, .perm-guide-pill:focus {
+            border-color: #00d2ff;
+            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.85), 0 0 24px rgba(0, 210, 255, 0.55), 0 0 0 100vmax rgba(0, 0, 0, 0.62);
+        }
+        .perm-guide-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            font-size: 18px;
+            font-weight: 700;
+            color: #ffffff;
+        }
+        .perm-guide-desc {
+            font-size: 13.5px;
+            font-weight: 400;
+            line-height: 1.5;
+            color: rgba(255, 255, 255, 0.78);
+        }
+        .perm-guide-cta {
+            margin-top: 4px;
+            padding: 10px 22px;
+            border-radius: 18px;
+            background: linear-gradient(90deg, #ff416c, #ff4b2b);
+            color: #ffffff;
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+            box-shadow: 0 6px 18px rgba(255, 65, 108, 0.45);
+        }
+        .perm-guide-cta:focus { outline: 3px solid white; }
+        #notificationLater { background: #39404b; }
+        .perm-guide-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ff416c;
+            box-shadow: 0 0 10px #ff416c;
+            flex-shrink: 0;
+        }
+
+        /* 电视遥控器焦点高亮样式 */
+        .source-menu-item.remote-focus,
+        .btn-ctrl.remote-focus,
+        .device-pill.remote-focus,
+        .source-tag.remote-focus {
+            outline: 2px solid rgba(0, 210, 255, 0.85) !important;
+            box-shadow: 0 0 16px rgba(0, 210, 255, 0.45) !important;
+        }
+
+        /* ===== 多尺寸屏幕、分辨率与横竖屏自适应媒体查询 ===== */
+        /* 1. 标准 Android TV 2x 缩放视口 (960x540 = 1920x1080 @ 320dpi) 与紧凑型智慧屏 */
+        @media (max-height: 560px), (max-width: 980px) {
+            .container {
+                padding: 12px 26px 10px 26px;
+            }
+            .main-body {
+                gap: 14px;
+            }
+            .left-panel {
+                flex: 0 0 38%;
+                max-width: 336px;
+                gap: 4px;
+            }
+            .turntable-container {
+                transform: scale(0.76);
+                transform-origin: center center;
+                margin: -28px 0 -24px 0;
+            }
+            .player-deck {
+                max-width: 330px;
+                padding: 10px 15px 10px 15px;
+                border-radius: 18px;
+            }
+            .meta-container {
+                margin-bottom: 6px;
+            }
+            .song-title {
+                font-size: 17px;
+                -webkit-line-clamp: 2;
+            }
+            .song-artist {
+                font-size: 12.5px;
+                margin-top: 3px;
+            }
+            .progress-box {
+                margin-bottom: 8px;
+            }
+            .btn-ctrl {
+                width: 38px;
+                height: 38px;
+            }
+            .btn-main {
+                width: 44px;
+                height: 44px;
+            }
+            .right-panel {
+                width: 62%;
+                padding: 0 26px 0 4px;
+            }
+            .lyric-line {
+                height: var(--lyric-line-height, 42px);
+                line-height: var(--lyric-line-height, 42px);
+                font-size: var(--lyric-font-size, 16px);
+            }
+            .lyric-line.active {
+                transform: scale(1.15);
+            }
+            .volume-widget {
+                right: 22px;
+            }
+            .vol-track {
+                height: 72px;
+            }
+            .lyric-source-menu {
+                right: 26px;
+                bottom: 50px;
+                width: 204px;
+                padding: 8px;
+            }
+            .source-menu-header {
+                padding: 2px 6px 6px 6px;
+                margin-bottom: 4px;
+            }
+            .source-menu-items {
+                gap: 2px;
+            }
+            .source-menu-item {
+                height: 36px;
+                padding: 0 12px;
+                border-radius: 11px;
+            }
+        }
+
+        /* 2. 超小高度屏幕 (如 800x480 4.3寸/5寸桌面音箱) */
+        @media (max-height: 440px) {
+            .turntable-container {
+                transform: scale(0.62);
+                margin: -42px 0 -38px 0;
+            }
+            .lyric-line {
+                height: var(--lyric-line-height, 36px);
+                line-height: var(--lyric-line-height, 36px);
+                font-size: var(--lyric-font-size, 14.5px);
+            }
+            .lyric-line.active {
+                transform: scale(1.14);
+            }
+        }
+
+        /* 3. 1x DPR 大屏 1080p / 4K 智能电视视距增强 */
+        @media (min-width: 1800px) and (min-height: 960px) {
+            .container {
+                padding: 28px 56px 24px 56px;
+            }
+            .left-panel {
+                max-width: 520px;
+            }
+            .turntable-container {
+                transform: scale(1.22);
+                transform-origin: center center;
+                margin: 26px 0 32px 0;
+            }
+            .player-deck {
+                max-width: 480px;
+                padding: 22px 26px 20px 26px;
+            }
+            .song-title {
+                font-size: 27px;
+            }
+            .song-artist {
+                font-size: 18px;
+            }
+            .lyric-line {
+                height: var(--lyric-line-height, 64px);
+                line-height: var(--lyric-line-height, 64px);
+                font-size: var(--lyric-font-size, 25px);
+            }
+            .lyric-line.active {
+                transform: scale(1.18);
+            }
+        }
+
+        /* 4. 竖屏副屏 / 方形屏自动切换上下堆叠布局 */
+        @media (max-aspect-ratio: 6/5) {
+            .main-body {
+                flex-direction: column;
+                justify-content: center;
+                gap: 12px;
+            }
+            .left-panel {
+                flex: 0 0 auto;
+                width: 100%;
+                max-width: 420px;
+                gap: 8px;
+            }
+            .turntable-container {
+                transform: scale(0.78);
+                margin: -24px 0 -20px 0;
+            }
+            .right-panel {
+                width: 100%;
+                flex: 1;
+                padding-left: 0;
+            }
+            .lyric-line {
+                text-align: center;
+                transform-origin: center center;
+            }
+            .bluetooth-lyric-box {
+                text-align: center;
+                padding-right: 0;
+            }
+        }
