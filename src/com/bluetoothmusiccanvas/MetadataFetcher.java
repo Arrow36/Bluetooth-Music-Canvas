@@ -6,8 +6,10 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
@@ -23,6 +25,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.zip.Inflater;
 
 public class MetadataFetcher {
     private static final String TAG = "BTMusicFetcher";
@@ -932,7 +937,7 @@ public class MetadataFetcher {
                 }
             }
 
-            // 2. Lyrics (HTTPS krcs.kugou.com)
+            // 2. Lyrics (HTTPS krcs.kugou.com, prefer KRC for bilingual/romaji, fallback to LRC)
             if (needLyric) {
                 try {
                     String lSearchUrl = "https://krcs.kugou.com/search?ver=1&man=yes&client=mobi&keyword=" + q + "&duration=0&hash=" + hash;
@@ -945,23 +950,57 @@ public class MetadataFetcher {
                         JSONObject lsObj = new JSONObject(lSearchRes.body);
                         JSONArray candidates = lsObj.optJSONArray("candidates");
                         if (candidates != null && candidates.length() > 0) {
-                            JSONObject cand = candidates.getJSONObject(0);
-                            String candId = cand.optString("id", "");
-                            String accessKey = cand.optString("accesskey", "");
+                            JSONObject chosenCand = null;
+                            int scanLimit = Math.min(3, candidates.length());
+                            for (int ci = 0; ci < scanLimit; ci++) {
+                                JSONObject c = candidates.optJSONObject(ci);
+                                if (c == null) continue;
+                                String cid = c.optString("id", "");
+                                String ckey = c.optString("accesskey", "");
+                                if (!cid.isEmpty() && !ckey.isEmpty() && c.optInt("krctype", 0) == 1) {
+                                    chosenCand = c;
+                                    break;
+                                }
+                            }
+                            if (chosenCand == null) {
+                                chosenCand = candidates.getJSONObject(0);
+                            }
+                            String candId = chosenCand.optString("id", "");
+                            String accessKey = chosenCand.optString("accesskey", "");
                             if (!candId.isEmpty() && !accessKey.isEmpty()) {
-                                String dlUrl = "https://krcs.kugou.com/download?ver=1&client=mobi&id=" + candId + "&accesskey=" + accessKey + "&fmt=lrc&charset=utf8";
-                                HttpResult dlRes = httpGetResponse(dlUrl, null, null);
-                                if (dlRes.isBlockedOrError()) {
-                                    markProviderDegraded("kugou", "krcs download HTTP " + dlRes.code);
+                                String krcUrl = "https://krcs.kugou.com/download?ver=1&client=mobi&id=" + candId + "&accesskey=" + accessKey + "&fmt=krc&charset=utf8";
+                                HttpResult krcRes = httpGetResponse(krcUrl, null, null);
+                                if (krcRes.isBlockedOrError()) {
+                                    markProviderDegraded("kugou", "krcs krc download HTTP " + krcRes.code);
                                     return out;
                                 }
-                                if (dlRes.code == 200 && dlRes.body != null) {
-                                    JSONObject dlObj = new JSONObject(dlRes.body);
-                                    String b64Content = dlObj.optString("content", "");
-                                    if (!b64Content.isEmpty()) {
-                                        byte[] bytes = Base64.decode(b64Content, Base64.DEFAULT);
-                                        out[1] = new String(bytes, "UTF-8");
-                                        Log.i(TAG, "Kugou lyrics downloaded (" + out[1].length() + " chars)");
+                                if (krcRes.code == 200 && krcRes.body != null) {
+                                    JSONObject krcObj = new JSONObject(krcRes.body);
+                                    String b64Krc = krcObj.optString("content", "");
+                                    if (!b64Krc.isEmpty()) {
+                                        String parsedKrc = decodeKrcBase64ToLrc(b64Krc);
+                                        if (parsedKrc != null && !parsedKrc.isEmpty()) {
+                                            out[1] = parsedKrc;
+                                            Log.i(TAG, "Kugou KRC lyrics decoded (" + out[1].length() + " chars)");
+                                        }
+                                    }
+                                }
+
+                                if (out[1] == null || out[1].isEmpty()) {
+                                    String dlUrl = "https://krcs.kugou.com/download?ver=1&client=mobi&id=" + candId + "&accesskey=" + accessKey + "&fmt=lrc&charset=utf8";
+                                    HttpResult dlRes = httpGetResponse(dlUrl, null, null);
+                                    if (dlRes.isBlockedOrError()) {
+                                        markProviderDegraded("kugou", "krcs lrc download HTTP " + dlRes.code);
+                                        return out;
+                                    }
+                                    if (dlRes.code == 200 && dlRes.body != null) {
+                                        JSONObject dlObj = new JSONObject(dlRes.body);
+                                        String b64Content = dlObj.optString("content", "");
+                                        if (!b64Content.isEmpty()) {
+                                            byte[] bytes = Base64.decode(b64Content, Base64.DEFAULT);
+                                            out[1] = unescapeLyricEntities(new String(bytes, "UTF-8"));
+                                            Log.i(TAG, "Kugou LRC fallback downloaded (" + out[1].length() + " chars)");
+                                        }
                                     }
                                 }
                             }
@@ -975,6 +1014,185 @@ public class MetadataFetcher {
             Log.w(TAG, "fetchFromKugou error: " + e.getMessage());
         }
         return out;
+    }
+
+    private static final int[] KRC_XOR_KEY = {
+        64, 71, 97, 119, 94, 50, 116, 71, 81, 54, 49, 45, 206, 210, 110, 105
+    };
+    private static final Pattern KRC_LINE_PATTERN = Pattern.compile("^\\[(\\d+),(\\d+)\\](.*)$");
+
+    public static String unescapeLyricEntities(String s) {
+        if (s == null || !s.contains("&")) return s;
+        return s.replace("&apos;", "'")
+                .replace("&#39;", "'")
+                .replace("&#x27;", "'")
+                .replace("&quot;", "\"")
+                .replace("&#34;", "\"")
+                .replace("&lt;", "<")
+                .replace("&#60;", "<")
+                .replace("&gt;", ">")
+                .replace("&#62;", ">")
+                .replace("&nbsp;", " ")
+                .replace("&#160;", " ")
+                .replace("&amp;", "&")
+                .replace("&#38;", "&");
+    }
+
+    public static String decryptKrcBytes(byte[] raw) {
+        if (raw == null || raw.length <= 4) return null;
+        if (raw[0] != 'k' || raw[1] != 'r' || raw[2] != 'c' || raw[3] != '1') {
+            return null;
+        }
+        int len = raw.length - 4;
+        byte[] xored = new byte[len];
+        for (int i = 0; i < len; i++) {
+            xored[i] = (byte) ((raw[i + 4] & 0xFF) ^ KRC_XOR_KEY[i & 15]);
+        }
+        Inflater inflater = new Inflater();
+        try {
+            inflater.setInput(xored);
+            ByteArrayOutputStream bos = new ByteArrayOutputStream(len * 2);
+            byte[] buf = new byte[4096];
+            while (!inflater.finished()) {
+                int count = inflater.inflate(buf);
+                if (count == 0) {
+                    if (inflater.needsInput() || inflater.needsDictionary()) {
+                        break;
+                    }
+                } else {
+                    bos.write(buf, 0, count);
+                }
+            }
+            return new String(bos.toByteArray(), "UTF-8");
+        } catch (Exception e) {
+            Log.w(TAG, "decryptKrcBytes failed: " + e.getMessage());
+            return null;
+        } finally {
+            inflater.end();
+        }
+    }
+
+    public static String formatLrcTimestamp(long ms) {
+        long clamped = Math.max(0L, ms);
+        long mins = clamped / 60000L;
+        long secs = (clamped % 60000L) / 1000L;
+        long millis = clamped % 1000L;
+        return String.format(Locale.US, "[%02d:%02d.%03d]", mins, secs, millis);
+    }
+
+    public static String buildBilingualLrcFromKrcParts(String krcText, List<String> transLines, List<String> romaLines) {
+        if (krcText == null || krcText.isEmpty()) return null;
+        StringBuilder primarySb = new StringBuilder();
+        StringBuilder transSb = new StringBuilder();
+        StringBuilder romaSb = new StringBuilder();
+
+        String[] rawLines = krcText.split("\\r?\\n");
+        int lineIdx = 0;
+        for (String rawLine : rawLines) {
+            Matcher m = KRC_LINE_PATTERN.matcher(rawLine.trim());
+            if (!m.matches()) continue;
+
+            long startMs = 0L;
+            try {
+                startMs = Long.parseLong(m.group(1));
+            } catch (NumberFormatException ignored) {}
+            String ts = formatLrcTimestamp(startMs);
+            String cleanMain = unescapeLyricEntities(m.group(3).replaceAll("<[^>]*>", "")).trim();
+            if (!cleanMain.isEmpty()) {
+                primarySb.append(ts).append(cleanMain).append('\n');
+            }
+            if (transLines != null && lineIdx < transLines.size()) {
+                String tr = transLines.get(lineIdx);
+                tr = (tr != null) ? unescapeLyricEntities(tr).trim() : "";
+                if (!tr.isEmpty() && !"//".equals(tr)) {
+                    transSb.append(ts).append(tr).append('\n');
+                }
+            }
+            if (romaLines != null && lineIdx < romaLines.size()) {
+                String rm = romaLines.get(lineIdx);
+                rm = (rm != null) ? unescapeLyricEntities(rm).trim() : "";
+                if (!rm.isEmpty() && !"//".equals(rm)) {
+                    romaSb.append(ts).append(rm).append('\n');
+                }
+            }
+            lineIdx++;
+        }
+
+        String primary = primarySb.toString().trim();
+        if (primary.isEmpty()) return null;
+
+        String merged = mergeBilingualLrc(primary, transSb.toString().trim());
+        if ((merged == null || merged.equals(primary)) && containsKanaOrHangul(primary)) {
+            merged = mergeBilingualLrc(primary, romaSb.toString().trim());
+        }
+        return merged;
+    }
+
+    private static String decodeKrcBase64ToLrc(String b64Content) {
+        try {
+            byte[] raw = Base64.decode(b64Content, Base64.DEFAULT);
+            String krcText = decryptKrcBytes(raw);
+            if (krcText == null || krcText.isEmpty()) return null;
+
+            List<String> transLines = null;
+            List<String> romaLines = null;
+
+            int langIdx = krcText.indexOf("[language:");
+            if (langIdx >= 0) {
+                int endIdx = krcText.indexOf(']', langIdx + 10);
+                if (endIdx > langIdx + 10) {
+                    String langB64 = krcText.substring(langIdx + 10, endIdx).trim();
+                    try {
+                        String langJson = new String(Base64.decode(langB64, Base64.DEFAULT), "UTF-8");
+                        JSONObject langObj = new JSONObject(langJson);
+                        JSONArray contentArr = langObj.optJSONArray("content");
+                        if (contentArr != null) {
+                            for (int i = 0; i < contentArr.length(); i++) {
+                                JSONObject item = contentArr.optJSONObject(i);
+                                if (item == null) continue;
+                                int type = item.optInt("type", -1);
+                                JSONArray lcArr = item.optJSONArray("lyricContent");
+                                if (lcArr == null) continue;
+                                if (type == 1 && transLines == null) {
+                                    transLines = extractKrcLanguageRows(lcArr, false);
+                                } else if (type == 0 && romaLines == null) {
+                                    romaLines = extractKrcLanguageRows(lcArr, true);
+                                }
+                            }
+                        }
+                    } catch (Exception e) {
+                        Log.w(TAG, "decodeKrc language tag parse error: " + e.getMessage());
+                    }
+                }
+            }
+            return buildBilingualLrcFromKrcParts(krcText, transLines, romaLines);
+        } catch (Exception e) {
+            Log.w(TAG, "decodeKrcBase64ToLrc error: " + e.getMessage());
+            return null;
+        }
+    }
+
+    private static List<String> extractKrcLanguageRows(JSONArray lcArr, boolean collapseWhitespace) {
+        List<String> rows = new ArrayList<>(lcArr.length());
+        for (int r = 0; r < lcArr.length(); r++) {
+            JSONArray rowArr = lcArr.optJSONArray(r);
+            if (rowArr == null) {
+                rows.add("");
+                continue;
+            }
+            StringBuilder rowSb = new StringBuilder();
+            for (int k = 0; k < rowArr.length(); k++) {
+                rowSb.append(rowArr.optString(k, ""));
+            }
+            String joined = rowSb.toString();
+            if (collapseWhitespace) {
+                joined = joined.replaceAll("\\s+", " ").trim();
+            } else {
+                joined = joined.trim();
+            }
+            rows.add(joined);
+        }
+        return rows;
     }
 
     public static String mergeBilingualLrc(String primaryLrc, String transLrc) {
@@ -1084,26 +1302,77 @@ public class MetadataFetcher {
                     out[0] = "https://y.gtimg.cn/music/photo_new/T002R500x500M000" + albummid + ".jpg";
                 }
                 String songmid = bestSong.optString("songmid", "");
+                long songid = bestSong.optLong("songid", 0);
                 if (!songmid.isEmpty()) {
-                    String lrcUrl = "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid=" + songmid + "&format=json&nobase64=0";
-                    HttpResult lrcRes = httpGetResponse(lrcUrl, headers, null);
-                    if (lrcRes.isBlockedOrError()) {
-                        markProviderDegraded("qq", "lyric HTTP " + lrcRes.code);
-                    } else if (lrcRes.code == 200 && lrcRes.body != null) {
-                        JSONObject lObj = new JSONObject(lrcRes.body);
-                        String lyricB64 = lObj.optString("lyric", "");
-                        if (!lyricB64.isEmpty()) {
-                            byte[] bytes = Base64.decode(lyricB64, Base64.DEFAULT);
-                            String primaryLrc = new String(bytes, "UTF-8");
-                            String transB64 = lObj.optString("trans", "");
-                            if (!transB64.isEmpty()) {
-                                try {
-                                    String transLrc = new String(Base64.decode(transB64, Base64.DEFAULT), "UTF-8");
-                                    primaryLrc = mergeBilingualLrc(primaryLrc, transLrc);
-                                } catch (Exception ignored) {}
+                    // Primary: musicu.fcg GetPlayLyricInfo (delivers complete Chinese translations)
+                    try {
+                        JSONObject param = new JSONObject();
+                        param.put("songMID", songmid);
+                        if (songid > 0) param.put("songID", songid);
+                        param.put("crypt", 0);
+                        param.put("ct", 19);
+                        param.put("cv", 1873);
+                        param.put("roma", 0);
+                        param.put("trans", 1);
+                        param.put("type", 0);
+
+                        JSONObject lyricReq = new JSONObject();
+                        lyricReq.put("module", "music.musichallSong.PlayLyricInfo");
+                        lyricReq.put("method", "GetPlayLyricInfo");
+                        lyricReq.put("param", param);
+
+                        JSONObject rootReq = new JSONObject();
+                        rootReq.put("lyric", lyricReq);
+
+                        HttpResult musicuRes = httpPostJsonResponse("https://u.y.qq.com/cgi-bin/musicu.fcg", rootReq.toString(), headers, null);
+                        if (musicuRes.code == 200 && musicuRes.body != null) {
+                            JSONObject rootResp = new JSONObject(musicuRes.body);
+                            JSONObject lyricWrap = rootResp.optJSONObject("lyric");
+                            JSONObject lData = (lyricWrap != null) ? lyricWrap.optJSONObject("data") : null;
+                            if (lData != null) {
+                                String lyricB64 = lData.optString("lyric", "");
+                                if (!lyricB64.isEmpty()) {
+                                    String primaryLrc = unescapeLyricEntities(new String(Base64.decode(lyricB64, Base64.DEFAULT), "UTF-8"));
+                                    String transB64 = lData.optString("trans", "");
+                                    if (!transB64.isEmpty()) {
+                                        try {
+                                            String transLrc = unescapeLyricEntities(new String(Base64.decode(transB64, Base64.DEFAULT), "UTF-8"));
+                                            transLrc = transLrc.replaceAll("(?m)^\\[kana:[^\\]]*\\]\\r?\\n?", "");
+                                            primaryLrc = mergeBilingualLrc(primaryLrc, transLrc);
+                                        } catch (Exception ignored) {}
+                                    }
+                                    out[1] = primaryLrc;
+                                    Log.i(TAG, "QQ musicu lyrics found (score " + bestScore + ", " + out[1].length() + " chars)");
+                                }
                             }
-                            out[1] = primaryLrc;
-                            Log.i(TAG, "QQ lyrics found (score " + bestScore + ", " + out[1].length() + " chars)");
+                        }
+                    } catch (Exception eq) {
+                        Log.w(TAG, "QQ musicu lyric error: " + eq.getMessage());
+                    }
+
+                    // Fallback: legacy fcg_query_lyric_new.fcg endpoint
+                    if (out[1] == null || out[1].isEmpty()) {
+                        String lrcUrl = "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid=" + songmid + "&format=json&nobase64=0";
+                        HttpResult lrcRes = httpGetResponse(lrcUrl, headers, null);
+                        if (lrcRes.isBlockedOrError()) {
+                            markProviderDegraded("qq", "lyric HTTP " + lrcRes.code);
+                        } else if (lrcRes.code == 200 && lrcRes.body != null) {
+                            JSONObject lObj = new JSONObject(lrcRes.body);
+                            String lyricB64 = lObj.optString("lyric", "");
+                            if (!lyricB64.isEmpty()) {
+                                byte[] bytes = Base64.decode(lyricB64, Base64.DEFAULT);
+                                String primaryLrc = unescapeLyricEntities(new String(bytes, "UTF-8"));
+                                String transB64 = lObj.optString("trans", "");
+                                if (!transB64.isEmpty()) {
+                                    try {
+                                        String transLrc = unescapeLyricEntities(new String(Base64.decode(transB64, Base64.DEFAULT), "UTF-8"));
+                                        transLrc = transLrc.replaceAll("(?m)^\\[kana:[^\\]]*\\]\\r?\\n?", "");
+                                        primaryLrc = mergeBilingualLrc(primaryLrc, transLrc);
+                                    } catch (Exception ignored) {}
+                                }
+                                out[1] = primaryLrc;
+                                Log.i(TAG, "QQ fallback lyrics found (score " + bestScore + ", " + out[1].length() + " chars)");
+                            }
                         }
                     }
                 }
@@ -1255,11 +1524,11 @@ public class MetadataFetcher {
                         } else {
                             JSONObject lrc = lrcObj.optJSONObject("lrc");
                             if (lrc != null) {
-                                String primary = lrc.optString("lyric", "");
+                                String primary = unescapeLyricEntities(lrc.optString("lyric", ""));
                                 JSONObject tObj = lrcObj.optJSONObject("tlyric");
-                                String tlyric = (tObj != null) ? tObj.optString("lyric", "") : "";
+                                String tlyric = (tObj != null) ? unescapeLyricEntities(tObj.optString("lyric", "")) : "";
                                 JSONObject rObj = lrcObj.optJSONObject("romalrc");
-                                String romalrc = (rObj != null) ? rObj.optString("lyric", "") : "";
+                                String romalrc = (rObj != null) ? unescapeLyricEntities(rObj.optString("lyric", "")) : "";
 
                                 String merged = mergeBilingualLrc(primary, tlyric);
                                 if ((merged == null || merged.equals(primary)) && containsKanaOrHangul(primary)) {
@@ -1297,18 +1566,40 @@ public class MetadataFetcher {
     }
 
     private static HttpResult httpGetResponse(String urlStr, Map<String, String> headers, String customUA) {
+        return executeHttpRequest("GET", urlStr, null, headers, customUA);
+    }
+
+    private static HttpResult httpPostJsonResponse(String urlStr, String jsonBody, Map<String, String> headers, String customUA) {
+        return executeHttpRequest("POST", urlStr, jsonBody, headers, customUA);
+    }
+
+    private static HttpResult executeHttpRequest(String method, String urlStr, String jsonBody, Map<String, String> headers, String customUA) {
         HttpURLConnection conn = null;
         try {
             URL url = new URL(urlStr);
             conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
+            conn.setRequestMethod(method);
             conn.setConnectTimeout(5000);
             conn.setReadTimeout(5000);
             String ua = (customUA != null) ? customUA : "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
             conn.setRequestProperty("User-Agent", ua);
+            if ("POST".equals(method)) {
+                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+            }
             if (headers != null) {
                 for (Map.Entry<String, String> entry : headers.entrySet()) {
                     conn.setRequestProperty(entry.getKey(), entry.getValue());
+                }
+            }
+            if (jsonBody != null && "POST".equals(method)) {
+                conn.setDoOutput(true);
+                byte[] bytes = jsonBody.getBytes("UTF-8");
+                OutputStream os = conn.getOutputStream();
+                try {
+                    os.write(bytes);
+                    os.flush();
+                } finally {
+                    os.close();
                 }
             }
 
@@ -1327,7 +1618,7 @@ public class MetadataFetcher {
             return new HttpResult(code, null);
         } catch (Exception e) {
             sThreadHadNetworkError.set(Boolean.TRUE);
-            Log.w(TAG, "HTTP GET failed for " + urlStr + ": " + e.getMessage());
+            Log.w(TAG, "HTTP " + method + " failed for " + urlStr + ": " + e.getMessage());
             return new HttpResult(-1, null);
         } finally {
             if (conn != null) {

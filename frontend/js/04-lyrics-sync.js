@@ -74,7 +74,11 @@
             if (!stream) return;
             const targetEl = document.getElementById(`line-${index}`);
             if (!targetEl) return;
-            const targetOffset = targetEl.offsetTop;
+            const baseH = parseFloat(document.documentElement.style.getPropertyValue('--lyric-line-height')) || 50;
+            const extraOffset = (targetEl.offsetHeight > baseH + 8)
+                ? Math.round((targetEl.offsetHeight - baseH) / 2)
+                : 0;
+            const targetOffset = targetEl.offsetTop + extraOffset;
             currentTranslateY = -targetOffset;
             if (animated) {
                 stream.style.transition = 'transform 0.85s cubic-bezier(0.22, 1, 0.36, 1)';
@@ -361,6 +365,9 @@
 
         function renderLyrics(lrcArray) {
             lyrics = lrcArray;
+            if (lrcArray && parsedRawLrcMap.has(lrcArray)) {
+                currentRawLrcText = parsedRawLrcMap.get(lrcArray);
+            }
             lastHardwarePosSyncTime = 0;
             const stream = document.getElementById('lyricsStream');
             const emptyBox = document.getElementById('emptyLyrics');

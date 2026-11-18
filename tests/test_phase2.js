@@ -455,6 +455,38 @@ async function runTests() {
                 && line0On.querySelector('.lyric-sub')
                 && line0On.querySelector('.lyric-sub').textContent === "如果你需要 我就在这里",
             "Re-enabling translation restores .lyric-sub immediately");
+
+        // Coordinated long-lyric splitting + Chinese translation display
+        window.applyLyricFontSize(20, false);
+        const multiClauseBilingual = "[00:10.00] Just stop your crying, it is fine, we gotta get away from here\n[bmc:trans]\n[00:10.00] 别再哭泣了，我们一起离开这里";
+        const splitMultiBilingual = window.parseLRC(multiClauseBilingual);
+        assert(splitMultiBilingual.length === 2
+                && splitMultiBilingual[0].subText === '别再哭泣了，'
+                && splitMultiBilingual[1].subText === '我们一起离开这里',
+            "Multi-clause bilingual long line splits into 2 rows with matched Chinese clauses");
+
+        const singleClauseLongBilingual = "[00:10.00] Just stop your crying, it is fine, we gotta get away from here\n[bmc:trans]\n[00:10.00] 请停止哭泣并跟着我一起毫无保留地逃离这个充满喧嚣又荒唐的遥远地方吧";
+        const cohesiveRows = window.parseLRC(singleClauseLongBilingual);
+        assert(cohesiveRows.length === 1 && cohesiveRows[0].text.includes('\n'),
+            "Single-clause Chinese translation keeps long primary line as one cohesive multi-line bilingual block");
+        assert(cohesiveRows[0].subText && cohesiveRows[0].subText.includes('\n'),
+            "Long Chinese translation wraps across balanced lines with newline instead of clipping");
+
+        window.renderLyrics(cohesiveRows);
+        const cohesiveEl = document.getElementById('line-0');
+        assert(cohesiveEl && cohesiveEl.dataset.multiline === '1' && cohesiveEl.dataset.hasSub === '1',
+            "Cohesive multi-line bilingual row sets data-multiline='1' and data-has-sub='1'");
+
+        window.toggleTranslation();
+        const splitWhenOffLine1 = document.getElementById('line-1');
+        assert(!window.isTranslationEnabled() && splitWhenOffLine1 && !document.getElementById('line-0').dataset.hasSub,
+            "Turning translation off lets the long primary line split into 2 timed rows");
+
+        window.toggleTranslation();
+        const restoredLine0 = document.getElementById('line-0');
+        assert(window.isTranslationEnabled() && restoredLine0 && restoredLine0.dataset.hasSub === '1'
+                && restoredLine0.dataset.multiline === '1' && !document.getElementById('line-1'),
+            "Re-enabling translation restores single cohesive multi-line bilingual block");
     }
 
     console.log("\n==================================================");

@@ -112,6 +112,7 @@
         const PURE_MUSIC_REGEX = /(纯音乐|请欣赏|没有填词|暂无歌词|无歌词|享受音乐|instrumental|no lyrics|pure music)/i;
 
         let showTranslation = true;
+        const parsedRawLrcMap = new WeakMap();
         try {
             showTranslation = localStorage.getItem('bmc_show_translation') !== '0';
         } catch (e) {}
@@ -126,6 +127,11 @@
 
         function populateLyricLine(div, item) {
             if (!div || !item) return;
+            if (item.text && item.text.includes('\n')) {
+                div.dataset.multiline = '1';
+            } else {
+                delete div.dataset.multiline;
+            }
             if (showTranslation && item.subText) {
                 div.textContent = '';
                 div.dataset.hasSub = '1';
@@ -209,41 +215,305 @@
             lyricResizeTimer = setTimeout(reapplyLyricsAtCurrentFontSize, 120);
         });
 
-        // 智能切分超长单行歌词：动态结合当前字号与视口真实宽度，能完整显示则绝不拆分
+        function normalizeLyricTypography(str) {
+            if (!str) return '';
+            return String(str)
+                .trim()
+                .replace(/[\u2018\u2019\u0060\u00b4]/g, "'")
+                .replace(/\b([a-zA-Z]+)\s*'\s*([a-zA-Z]+)\b/g, "$1'$2");
+        }
+
+        function scoreSemanticBreak(chars, pos, idealW, maxWidth, remLines, fontSize, allowTwoLineOverflow) {
+            const prefix = chars.slice(0, pos).join('').trim();
+            if (!prefix) return -Infinity;
+            const prefixW = measureLyricTextWidth(prefix, fontSize);
+            if (prefixW > maxWidth) return -Infinity;
+
+            const suffix = chars.slice(pos).join('').trimStart();
+            const suffixW = suffix ? measureLyricTextWidth(suffix, fontSize) : 0;
+            if (!allowTwoLineOverflow && remLines === 2 && suffixW > maxWidth) {
+                return -Infinity;
+            }
+
+            const prev = chars[pos - 1];
+            const next = pos < chars.length ? chars[pos] : '';
+            const isAfterOpen = /[\(\[（【《「『“‘"']/.test(prev);
+            const isBeforeCloseOrPunct = next ? /[\)\]）】》」』”’",，。！？、;；!?…—–:：]/.test(next) : false;
+            const isMidAsciiWord = /[A-Za-z0-9']/.test(prev) && next && /[A-Za-z0-9']/.test(next);
+            if (isAfterOpen || isBeforeCloseOrPunct || isMidAsciiWord) {
+                return -Infinity;
+            }
+
+            let bonus = 0;
+            if (/[,，。！？、;；!?…]/.test(prev)) {
+                bonus = 120;
+            } else if (/[\)\]）】》」』”"]/.test(prev)) {
+                bonus = 95;
+            } else if (/\s/.test(prev) || (next && /\s/.test(next))) {
+                bonus = 75;
+            } else {
+                const prevCode = prev.charCodeAt(0);
+                const nextCode = next ? next.charCodeAt(0) : 0;
+                const scriptBoundary = (prevCode > 255 && next && /[A-Za-z0-9]/.test(next))
+                    || (/[A-Za-z0-9]/.test(prev) && nextCode > 255);
+                const kanaParticle = /[はがをにでとも]/.test(prev) && nextCode > 255;
+                if (scriptBoundary || kanaParticle) {
+                    bonus = 35;
+                }
+            }
+
+            let score = bonus - (Math.abs(prefixW - idealW) / Math.max(1, idealW)) * 70;
+            if (prefixW < idealW * 0.38) {
+                score -= 120;
+            }
+            if (suffixW > 0 && suffixW < idealW * 0.35) {
+                score -= 80;
+            }
+            return score;
+        }
+
+        function splitTextIntoBalancedLines(rawText, fontSize, maxWidth) {
+            const text = normalizeLyricTypography(rawText);
+            if (!text) return [];
+            const safeMax = Math.max(40, maxWidth);
+            if (measureLyricTextWidth(text, fontSize) <= safeMax) {
+                return [text];
+            }
+
+            const lines = [];
+            let remaining = text;
+            while (remaining.length > 0) {
+                const remW = measureLyricTextWidth(remaining, fontSize);
+                if (remW <= safeMax) {
+                    lines.push(remaining);
+                    break;
+                }
+
+                const chars = Array.from(remaining);
+                const remLines = Math.max(2, Math.ceil(remW / safeMax));
+                const idealW = remW / remLines;
+
+                let maxEnd = 1;
+                for (let end = 1; end <= chars.length; end++) {
+                    const candidateTrimmed = chars.slice(0, end).join('').trim();
+                    if (measureLyricTextWidth(candidateTrimmed, fontSize) <= safeMax) {
+                        maxEnd = end;
+                    } else if (candidateTrimmed.length > 0) {
+                        break;
+                    }
+                }
+                if (maxEnd >= chars.length) {
+                    lines.push(remaining);
+                    break;
+                }
+
+                let bestPos = -1;
+                let bestScore = -Infinity;
+                for (let pos = 1; pos <= maxEnd; pos++) {
+                    const sc = scoreSemanticBreak(chars, pos, idealW, safeMax, remLines, fontSize, false);
+                    if (sc > bestScore) {
+                        bestScore = sc;
+                        bestPos = pos;
+                    }
+                }
+
+                if (bestPos < 0) {
+                    for (let pos = 1; pos <= maxEnd; pos++) {
+                        const sc = scoreSemanticBreak(chars, pos, idealW, safeMax, remLines, fontSize, true);
+                        if (sc > bestScore) {
+                            bestScore = sc;
+                            bestPos = pos;
+                        }
+                    }
+                }
+
+                if (bestPos < 0) {
+                    let bestDist = Infinity;
+                    for (let pos = 1; pos <= maxEnd; pos++) {
+                        const prefix = chars.slice(0, pos).join('').trim();
+                        if (!prefix) continue;
+                        const prefixW = measureLyricTextWidth(prefix, fontSize);
+                        const dist = Math.abs(prefixW - idealW);
+                        if (dist < bestDist) {
+                            bestDist = dist;
+                            bestPos = pos;
+                        }
+                    }
+                    if (bestPos < 1) bestPos = maxEnd;
+                }
+
+                const part = chars.slice(0, bestPos).join('').trim();
+                const nextRem = chars.slice(bestPos).join('').trimStart();
+                if (part) {
+                    lines.push(part);
+                    remaining = nextRem;
+                } else {
+                    lines.push(chars.slice(0, maxEnd).join('').trim());
+                    remaining = chars.slice(maxEnd).join('').trimStart();
+                }
+            }
+            return lines;
+        }
+
+        function extractTranslationClauses(subText) {
+            const normalized = normalizeLyricTypography(subText);
+            if (!normalized) return [];
+            const chars = Array.from(normalized);
+            const clauses = [];
+            let buf = '';
+
+            for (let i = 0; i < chars.length; i++) {
+                const ch = chars[i];
+                if ((ch === ' ' || ch === '\u3000') && buf.length === 0) {
+                    continue;
+                }
+                if (/[，。！？；、,!?;…]/.test(ch)) {
+                    buf += ch;
+                    while (i + 1 < chars.length && /[…!！?？”’）)】》」』"']/.test(chars[i + 1])) {
+                        buf += chars[++i];
+                    }
+                    const trimmed = buf.trim();
+                    if (trimmed) clauses.push(trimmed);
+                    buf = '';
+                } else if (ch === ' ' || ch === '\u3000') {
+                    let j = i;
+                    while (j + 1 < chars.length && (chars[j + 1] === ' ' || chars[j + 1] === '\u3000')) {
+                        j++;
+                    }
+                    const bufTrimmed = buf.trim();
+                    const prevNonSpace = bufTrimmed ? bufTrimmed.charAt(bufTrimmed.length - 1) : '';
+                    const nextNonSpace = (j + 1 < chars.length) ? chars[j + 1] : '';
+                    const isCjkSpaceBreak = (prevNonSpace && prevNonSpace.charCodeAt(0) > 255)
+                        || (nextNonSpace && nextNonSpace.charCodeAt(0) > 255);
+                    if (isCjkSpaceBreak && bufTrimmed && nextNonSpace) {
+                        clauses.push(bufTrimmed);
+                        buf = '';
+                    } else if (nextNonSpace) {
+                        buf += ' ';
+                    }
+                    i = j;
+                } else {
+                    buf += ch;
+                }
+            }
+            const tail = buf.trim();
+            if (tail) clauses.push(tail);
+            return clauses;
+        }
+
+        function splitTranslationToMatchParts(subText, targetCount, partWeights, subFontSize, safeMaxWidth) {
+            if (!subText || targetCount < 2) return null;
+            const clauses = extractTranslationClauses(subText);
+            if (clauses.length < targetCount) return null;
+
+            const clauseWeights = clauses.map(c => Math.max(1, getVisualLength(c)));
+            const totalClauseW = clauseWeights.reduce((sum, w) => sum + w, 0);
+            const totalPartW = partWeights.reduce((sum, w) => sum + w, 0) || targetCount;
+
+            const buckets = [];
+            let cIdx = 0;
+            let cumClauseW = 0;
+            let cumPartW = 0;
+
+            for (let bIdx = 0; bIdx < targetCount; bIdx++) {
+                if (bIdx === targetCount - 1) {
+                    buckets.push(clauses.slice(cIdx).join(' ').trim());
+                    break;
+                }
+                cumPartW += (partWeights[bIdx] || 1);
+                const targetCumW = (totalClauseW * cumPartW) / totalPartW;
+                const remainingBuckets = targetCount - bIdx - 1;
+                const maxEndIdx = clauses.length - remainingBuckets;
+
+                let bestEndIdx = cIdx + 1;
+                let bestDiff = Infinity;
+                let runningW = cumClauseW;
+                for (let end = cIdx + 1; end <= maxEndIdx; end++) {
+                    runningW += clauseWeights[end - 1];
+                    const diff = Math.abs(runningW - targetCumW);
+                    if (diff <= bestDiff) {
+                        bestDiff = diff;
+                        bestEndIdx = end;
+                    }
+                }
+
+                buckets.push(clauses.slice(cIdx, bestEndIdx).join(' ').trim());
+                for (let k = cIdx; k < bestEndIdx; k++) {
+                    cumClauseW += clauseWeights[k];
+                }
+                cIdx = bestEndIdx;
+            }
+
+            if (buckets.some(b => !b)) return null;
+            return buckets.map(bucket => {
+                const wrapped = splitTextIntoBalancedLines(bucket, subFontSize, safeMaxWidth);
+                return wrapped.length > 0 ? wrapped.join('\n') : bucket;
+            });
+        }
+
+        // 智能平衡拆分超长歌词，并与中文翻译协同分组/换行显示
         function splitLongLyrics(items) {
             if (!items || items.length === 0) return [];
             const result = [];
-            const limit = Math.max(1, getAvailableLyricWidth() / 1.18);
+            const safeMaxWidth = Math.max(80, (getAvailableLyricWidth() - 24) / 1.18);
+            const subFontSize = Math.max(12, Math.round(currentLyricFontSize * 0.72));
+
             items.forEach((item, index) => {
-                const text = item.text.trim().replace(/[\u2018\u2019\u0060\u00b4]/g, "'")
-                    .replace(/\b([a-zA-Z]+)\s*'\s*([a-zA-Z]+)\b/g, "$1'$2");
-                const chars = Array.from(text);
-                const parts = [];
-                for (let start = 0; start < chars.length;) {
-                    let end = start;
-                    let boundary = start;
-                    let line = '';
-                    while (end < chars.length) {
-                        const candidate = line + chars[end];
-                        if (end > start && measureLyricTextWidth(candidate, currentLyricFontSize) > limit) break;
-                        line = candidate;
-                        if (/[\s，。！？、,;；!?]/.test(chars[end])) boundary = end + 1;
-                        end++;
+                const parts = splitTextIntoBalancedLines(item.text, currentLyricFontSize, safeMaxWidth);
+                const hasSub = Boolean(item.subText && String(item.subText).trim());
+
+                if (parts.length <= 1) {
+                    const row = {
+                        time: item.time,
+                        text: parts[0] || normalizeLyricTypography(item.text)
+                    };
+                    if (hasSub) {
+                        const wrappedSub = splitTextIntoBalancedLines(item.subText, subFontSize, safeMaxWidth);
+                        row.subText = wrappedSub.length > 0 ? wrappedSub.join('\n') : String(item.subText).trim();
                     }
-                    if (end < chars.length && boundary > start) end = boundary;
-                    const part = chars.slice(start, end).join('').trim();
-                    if (part) parts.push(part);
-                    start = end;
+                    result.push(row);
+                    return;
                 }
-                const total = parts.reduce((sum, part) => sum + getVisualLength(part), 0);
+
+                if (hasSub && showTranslation) {
+                    const partWeights = parts.map(p => Math.max(1, getVisualLength(p)));
+                    const matchedSubs = splitTranslationToMatchParts(item.subText, parts.length, partWeights, subFontSize, safeMaxWidth);
+                    if (!matchedSubs || matchedSubs.length !== parts.length) {
+                        const wrappedSub = splitTextIntoBalancedLines(item.subText, subFontSize, safeMaxWidth);
+                        result.push({
+                            time: item.time,
+                            text: parts.join('\n'),
+                            subText: wrappedSub.length > 0 ? wrappedSub.join('\n') : String(item.subText).trim()
+                        });
+                        return;
+                    }
+
+                    const total = parts.reduce((sum, part) => sum + getVisualLength(part), 0) || parts.length;
+                    const next = items[index + 1];
+                    const duration = next ? Math.max(0, next.time - item.time) : 4000;
+                    let consumed = 0;
+                    for (let pIdx = 0; pIdx < parts.length; pIdx++) {
+                        const part = parts[pIdx];
+                        result.push({
+                            time: item.time + Math.floor(duration * consumed / total),
+                            text: part,
+                            subText: matchedSubs[pIdx]
+                        });
+                        consumed += getVisualLength(part);
+                    }
+                    return;
+                }
+
+                const total = parts.reduce((sum, part) => sum + getVisualLength(part), 0) || parts.length;
                 const next = items[index + 1];
                 const duration = next ? Math.max(0, next.time - item.time) : 4000;
                 let consumed = 0;
                 for (let pIdx = 0; pIdx < parts.length; pIdx++) {
                     const part = parts[pIdx];
                     const row = { time: item.time + Math.floor(duration * consumed / total), text: part };
-                    if (item.subText && pIdx === parts.length - 1) {
-                        row.subText = item.subText;
+                    if (hasSub && pIdx === parts.length - 1) {
+                        const wrappedSub = splitTextIntoBalancedLines(item.subText, subFontSize, safeMaxWidth);
+                        row.subText = wrappedSub.length > 0 ? wrappedSub.join('\n') : String(item.subText).trim();
                     }
                     result.push(row);
                     consumed += getVisualLength(part);
@@ -327,7 +597,9 @@
                 }
             }
 
-            return isPureMusicLyric(result) ? result : splitLongLyrics(result);
+            const finalRows = isPureMusicLyric(result) ? result : splitLongLyrics(result);
+            parsedRawLrcMap.set(finalRows, lrcText);
+            return finalRows;
         }
         window.parseLRC = parseLRC;
 

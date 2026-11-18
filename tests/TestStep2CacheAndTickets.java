@@ -2,10 +2,14 @@ package tests;
 
 import com.bluetoothmusiccanvas.MetadataFetcher;
 import com.bluetoothmusiccanvas.SongIdentity;
+import java.io.ByteArrayOutputStream;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.zip.Deflater;
 
 public class TestStep2CacheAndTickets {
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         System.out.println("==================================================");
         System.out.println("Starting Step 2 Cache & Request Ticket Test Suite");
         System.out.println("==================================================");
@@ -88,6 +92,56 @@ public class TestStep2CacheAndTickets {
         assert MetadataFetcher.mergeBilingualLrc(primaryLrc, "").equals(primaryLrc)
                 : "mergeBilingualLrc must leave primary LRC unchanged when translation is empty";
         System.out.println("  PASS [8]: Bilingual LRC merging handles valid translations and placeholders");
+
+        // 9. HTML entity unescaping, KRC binary XOR+zlib decryption & bilingual/romaji assembly
+        assert "If you need me I'm here & waiting".equals(
+                MetadataFetcher.unescapeLyricEntities("If you need me I&apos;m here &amp; waiting"))
+                : "unescapeLyricEntities must decode XML/HTML entities";
+
+        String sampleKrc = "[ti:Tell me]\n"
+                + "[1654,3100]<0,500,0>If <500,500,0>you <1000,500,0>need I&apos;m here\n"
+                + "[4829,2500]<0,500,0>染み付いた声\n";
+        byte[] sampleUtf8 = sampleKrc.getBytes("UTF-8");
+        Deflater deflater = new Deflater();
+        deflater.setInput(sampleUtf8);
+        deflater.finish();
+        ByteArrayOutputStream compressed = new ByteArrayOutputStream();
+        byte[] zbuf = new byte[512];
+        while (!deflater.finished()) {
+            compressed.write(zbuf, 0, deflater.deflate(zbuf));
+        }
+        deflater.end();
+        byte[] zBytes = compressed.toByteArray();
+        int[] krcKey = {64, 71, 97, 119, 94, 50, 116, 71, 81, 54, 49, 45, 206, 210, 110, 105};
+        byte[] encryptedKrc = new byte[4 + zBytes.length];
+        encryptedKrc[0] = 'k';
+        encryptedKrc[1] = 'r';
+        encryptedKrc[2] = 'c';
+        encryptedKrc[3] = '1';
+        for (int i = 0; i < zBytes.length; i++) {
+            encryptedKrc[4 + i] = (byte) ((zBytes[i] & 0xFF) ^ krcKey[i & 15]);
+        }
+        String decryptedKrc = MetadataFetcher.decryptKrcBytes(encryptedKrc);
+        assert sampleKrc.equals(decryptedKrc) : "decryptKrcBytes must round-trip XOR+zlib KRC payload";
+
+        String krcBilingual = MetadataFetcher.buildBilingualLrcFromKrcParts(
+                decryptedKrc, Arrays.asList("如果你需要 我就在这里", "//"), null);
+        assert krcBilingual != null
+                && krcBilingual.contains("[00:01.654]If you need I'm here")
+                && krcBilingual.contains("\n[bmc:trans]\n")
+                && krcBilingual.contains("[00:01.654]如果你需要 我就在这里")
+                && !krcBilingual.contains("//")
+                : "buildBilingualLrcFromKrcParts must emit timestamped bilingual LRC and skip //";
+
+        String krcRomaji = MetadataFetcher.buildBilingualLrcFromKrcParts(
+                "[7921,2000]<0,500,0>染み付いた声が\n",
+                null,
+                Collections.singletonList("shi mi tsu i ta ko e ga"));
+        assert krcRomaji != null
+                && krcRomaji.contains("[00:07.921]染み付いた声が")
+                && krcRomaji.contains("[00:07.921]shi mi tsu i ta ko e ga")
+                : "buildBilingualLrcFromKrcParts must fall back to romaji for Japanese/Korean tracks";
+        System.out.println("  PASS [9]: Entity unescaping, KRC XOR+zlib decryption & bilingual assembly passed");
 
         System.out.println("==================================================");
         System.out.println("All Step 2 Cache & Ticket tests PASSED!");
